@@ -58,12 +58,14 @@ The WhatsApp channel configuration in the `wa_company_data` DynamoDB table would
 When creating the conversation record:
 
 ```javascript
-// Generate a unique conversation ID that incorporates the company WhatsApp number
-// Format: {company_whatsapp_number}#{request_id}
-// This format optimizes for the reply handling flow where we'll have recipient_tel and company_whatsapp_number
+// Generate a unique conversation ID that incorporates multiple attributes for tracking and retrieval
+// Format: {company_id}#{project_id}#{request_id}#{company_whatsapp_number}
+// This structure allows for comprehensive data tracking while still enabling efficient reply handling
 const conversation_id = generateConversationId(
-  channel_config.whatsapp.phone_number,
-  request_data.request_id
+  company_data.company_id,
+  company_data.project_id,
+  request_data.request_id,
+  channel_config.whatsapp.phone_number
 );
 
 // Create conversation record
@@ -87,12 +89,12 @@ const newConversation = {
 ### Conversation ID Generation Logic
 
 ```javascript
-function generateConversationId(companyWhatsAppNumber, requestId) {
+function generateConversationId(companyId, projectId, requestId, companyWhatsAppNumber) {
   // Sanitize phone number by removing any non-alphanumeric characters
   const sanitizedCompanyNumber = companyWhatsAppNumber.replace(/\D/g, '');
   
   // Combine into a single string with a delimiter
-  return `${sanitizedCompanyNumber}#${requestId}`;
+  return `${companyId}#${projectId}#${requestId}#${sanitizedCompanyNumber}`;
 }
 ```
 
@@ -100,22 +102,62 @@ function generateConversationId(companyWhatsAppNumber, requestId) {
 
 This key structure was chosen for several specific reasons:
 
-1. **Optimized for the reply flow**: When replies come in via the Twilio API, we only have reliable access to the recipient's phone number and the company's WhatsApp number. Using these values as our primary lookup mechanism ensures we can quickly retrieve the correct conversation.
+1. **Comprehensive data tracking**: The four-attribute structure (company_id, project_id, request_id, company_whatsapp_number) provides complete traceability and context for each conversation.
 
-2. **Minimal indexes needed**: This structure eliminates the need for additional GSIs (Global Secondary Indexes), reducing cost and complexity.
+2. **Hierarchical querying**: Allows for querying conversations at various levels of the hierarchy (by company, by project, by request, by WhatsApp number).
 
-3. **Handles edge cases**: The inclusion of request_id provides additional uniqueness in the unlikely event of multiple conversations between the same numbers, adding important guardrails.
+3. **Optimized for the reply flow**: For handling replies, we can efficiently query based on recipient_tel (partition key) and use a begins_with condition on the conversation_id that includes the company WhatsApp number.
 
-4. **Query efficiency**: Allows efficient querying of all conversations for a specific company WhatsApp number using begins_with operations.
+4. **Edge case handling**: The inclusion of request_id provides additional uniqueness in the unlikely event of multiple conversations between the same numbers.
 
-5. **Follows DynamoDB best practices**: Designs the key structure based on the application's access patterns.
+5. **Follows DynamoDB best practices**: Designs the key structure based on the application's access patterns while maintaining flexibility.
 
-With this structure, when a reply comes in from a recipient, we can efficiently query:
+### Querying for Reply Handling
+
+When a reply comes in via Twilio, we receive the recipient's phone number and the company's WhatsApp number. We can efficiently retrieve the conversation with:
+
+```javascript
+// For handling replies
+async function findConversationForReply(recipientTel, companyWhatsAppNumber) {
+  // Sanitize phone number
+  const sanitizedCompanyNumber = companyWhatsAppNumber.replace(/\D/g, '');
+  
+  // Query DynamoDB
+  const params = {
+    TableName: "wa_conversation",
+    KeyConditionExpression: "recipient_tel = :tel AND contains(conversation_id, :companyNumber)",
+    ExpressionAttributeValues: {
+      ":tel": recipientTel,
+      ":companyNumber": sanitizedCompanyNumber
+    }
+  };
+  
+  const result = await dynamoDB.query(params).promise();
+  return result.Items;
+}
 ```
-GET from wa_conversation 
-WHERE recipient_tel = [incoming number] 
-AND begins_with(conversation_id, '[company_whatsapp_number]#')
+
+Alternatively, since the company WhatsApp number is also stored as a separate attribute:
+
+```javascript
+// Alternative approach using a query on the partition key and filter
+async function findConversationForReply(recipientTel, companyWhatsAppNumber) {
+  const params = {
+    TableName: "wa_conversation",
+    KeyConditionExpression: "recipient_tel = :tel",
+    FilterExpression: "company_phone_number = :companyNumber",
+    ExpressionAttributeValues: {
+      ":tel": recipientTel,
+      ":companyNumber": companyWhatsAppNumber
+    }
+  };
+  
+  const result = await dynamoDB.query(params).promise();
+  return result.Items;
+}
 ```
+
+This approach provides both comprehensive data organization and efficient querying for the reply handling flow.
 
 ## Status Tracking
 
