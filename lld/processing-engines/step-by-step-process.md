@@ -24,12 +24,17 @@ This document outlines the detailed step-by-step flow of the WhatsApp Processing
 3. **Conversation Record Creation**:
    - A composite key structure is used for the conversation table
    - Primary key would be `recipient_tel` (recipient's phone number)
-   - Sort key would be `conversation_id` (which could incorporate the company's WhatsApp number)
+   - Sort key would be `conversation_id` (which incorporates the company's WhatsApp number)
+   - The `conversation_id` follows this format: `{company_id}#{project_id}#{request_id}#{company_whatsapp_number}`
+   - This structure ensures uniqueness across all conversations while facilitating efficient queries
+   - Including the `project_id` in the conversation_id is critical for companies with multiple projects
+   - The company WhatsApp number is obtained from the `channel_config.whatsapp.company_whatsapp_number` field
 
 4. **Channel Configuration Access**:
-   - The company's WhatsApp number is stored in the `channel_config.whatsapp` object in DynamoDB rather than in Secrets Manager
+   - The company's WhatsApp number is stored in the `channel_config.whatsapp.company_whatsapp_number` object in DynamoDB rather than in Secrets Manager
    - This makes sense as the phone number itself isn't sensitive credentials (unlike API keys)
    - Makes it easier to create the conversation record without additional Secrets Manager calls
+   - The actual Twilio credentials are retrieved from AWS Secrets Manager using the reference `channel_config.whatsapp.whatsapp_credentials_id`
 
 5. **Multi-Channel Support in Conversations Table**:
    - A `channel_method` field differentiates between WhatsApp/SMS/Email records
@@ -65,7 +70,7 @@ const conversation_id = generateConversationId(
   company_data.company_id,
   company_data.project_id,
   request_data.request_id,
-  channel_config.whatsapp.phone_number
+  channel_config.whatsapp.company_whatsapp_number
 );
 
 // Create conversation record
@@ -75,8 +80,9 @@ const newConversation = {
   company_id: company_data.company_id,
   project_id: company_data.project_id,
   channel_method: "whatsapp",  // Indicates this is a WhatsApp conversation
-  company_phone_number: channel_config.whatsapp.phone_number,  // Store company's WhatsApp number
+  company_phone_number: channel_config.whatsapp.company_whatsapp_number,  // Store company's WhatsApp number
   request_id: request_data.request_id,
+  credentials_reference: channel_config.whatsapp.whatsapp_credentials_id, // Store reference to credentials
   processing_metadata: {
     conversation_status: "received",
     processing_started_at: new Date().toISOString(),
@@ -104,13 +110,15 @@ This key structure was chosen for several specific reasons:
 
 1. **Comprehensive data tracking**: The four-attribute structure (company_id, project_id, request_id, company_whatsapp_number) provides complete traceability and context for each conversation.
 
-2. **Hierarchical querying**: Allows for querying conversations at various levels of the hierarchy (by company, by project, by request, by WhatsApp number).
+2. **Project-level segmentation**: Including the `project_id` ensures that conversations for different projects within the same company are properly distinguished.
 
-3. **Optimized for the reply flow**: For handling replies, we can efficiently query based on recipient_tel (partition key) and use a begins_with condition on the conversation_id that includes the company WhatsApp number.
+3. **Hierarchical querying**: Allows for querying conversations at various levels of the hierarchy (by company, by project, by request, by WhatsApp number).
 
-4. **Edge case handling**: The inclusion of request_id provides additional uniqueness in the unlikely event of multiple conversations between the same numbers.
+4. **Optimized for the reply flow**: For handling replies, we can efficiently query based on recipient_tel (partition key) and use a begins_with condition on the conversation_id that includes the company WhatsApp number.
 
-5. **Follows DynamoDB best practices**: Designs the key structure based on the application's access patterns while maintaining flexibility.
+5. **Edge case handling**: The inclusion of request_id provides additional uniqueness in the unlikely event of multiple conversations between the same phone numbers.
+
+6. **Follows DynamoDB best practices**: Designs the key structure based on the application's access patterns while maintaining flexibility.
 
 ### Querying for Reply Handling
 
