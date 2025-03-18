@@ -18,10 +18,10 @@ This provides a secure, flexible system with centralized management of sensitive
 
 ```
 ┌────────────────┐     ┌───────────────┐     ┌─────────────────────┐
-│                │     │               │     │                     │
-│  DynamoDB      │     │  Context      │     │  Processing         │
-│  wa_company_data│────▶│  Object       │────▶│  Engine             │
-│                │     │               │     │                     │
+│                │     │               │     │  Processing         │
+│  DynamoDB      │     │  Context      │     │  Engine             │
+│  wa_company_data│────▶│  Object       │────▶│                    │
+│                │     │               │     │                    │
 └────────────────┘     └───────────────┘     └──────────┬──────────┘
                                                         │
                                                         ▼
@@ -38,10 +38,10 @@ This provides a secure, flexible system with centralized management of sensitive
 References in DynamoDB follow a consistent path format:
 
 ```
-{service}/{company_id}/{type}
+{service}/{company_id}/{project_id}/{type}
 ```
 
-This format makes it easy to organize and manage permissions at different levels of granularity.
+This format makes it easy to organize and manage permissions at different levels of granularity, while ensuring that credentials are properly scoped to specific projects within a company.
 
 ## Object Structure by Service Type
 
@@ -49,7 +49,7 @@ Each reference points to an object in AWS Secrets Manager with specific fields r
 
 ### WhatsApp Channel (Twilio)
 
-**Reference Path**: `twilio/{company_id}/whatsapp-credentials`
+**Reference Path**: `twilio/{company_id}/{project_id}/whatsapp-credentials`
 
 **Object Structure**:
 ```json
@@ -63,7 +63,7 @@ Each reference points to an object in AWS Secrets Manager with specific fields r
 
 ### SMS Channel (Twilio)
 
-**Reference Path**: `twilio/{company_id}/sms-credentials`
+**Reference Path**: `twilio/{company_id}/{project_id}/sms-credentials`
 
 **Object Structure**:
 ```json
@@ -77,7 +77,7 @@ Each reference points to an object in AWS Secrets Manager with specific fields r
 
 ### Email Channel (SendGrid)
 
-**Reference Path**: `sendgrid/{company_id}/email-credentials`
+**Reference Path**: `sendgrid/{company_id}/{project_id}/email-credentials`
 
 **Object Structure**:
 ```json
@@ -91,7 +91,7 @@ Each reference points to an object in AWS Secrets Manager with specific fields r
 
 ### AI Processing (OpenAI)
 
-**Reference Path**: `openai/{company_id}/credentials`
+**Reference Path**: `openai/{company_id}/{project_id}/credentials`
 
 **Object Structure**:
 ```json
@@ -121,13 +121,14 @@ The `wa_company_data` table stores only references:
 {
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/company-123/whatsapp-credentials"
+      "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
+      "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/company-123/sms-credentials"
+      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
     },
     "email": {
-      "email_credentials_id": "sendgrid/company-123/email-credentials"
+      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
     }
   }
 }
@@ -140,7 +141,8 @@ The Channel Router includes these references in the context object:
 ```json
 "channel_config": {
   "whatsapp": {
-    "whatsapp_credentials_id": "twilio/company-123/whatsapp-credentials"
+    "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
+    "company_whatsapp_number": "+14155238886"
   }
 }
 ```
@@ -191,8 +193,9 @@ Services accessing Secrets Manager require specific IAM permissions:
       "Effect": "Allow",
       "Action": "secretsmanager:GetSecretValue",
       "Resource": [
-        "arn:aws:secretsmanager:region:account-id:secret:twilio/*",
-        "arn:aws:secretsmanager:region:account-id:secret:openai/*"
+        "arn:aws:secretsmanager:region:account-id:secret:twilio/*/*/whatsapp-credentials",
+        "arn:aws:secretsmanager:region:account-id:secret:twilio/*/*/sms-credentials",
+        "arn:aws:secretsmanager:region:account-id:secret:openai/*/*/credentials"
       ]
     }
   ]
