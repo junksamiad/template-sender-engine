@@ -59,8 +59,9 @@ When creating the conversation record:
 
 ```javascript
 // Generate a unique conversation ID that incorporates the company WhatsApp number
+// Format: {company_whatsapp_number}#{request_id}
+// This format optimizes for the reply handling flow where we'll have recipient_tel and company_whatsapp_number
 const conversation_id = generateConversationId(
-  recipient_data.recipient_tel, 
   channel_config.whatsapp.phone_number,
   request_data.request_id
 );
@@ -83,7 +84,38 @@ const newConversation = {
 };
 ```
 
-This approach provides a flexible structure that works across all channels while maintaining the channel-specific details needed for each type of conversation.
+### Conversation ID Generation Logic
+
+```javascript
+function generateConversationId(companyWhatsAppNumber, requestId) {
+  // Sanitize phone number by removing any non-alphanumeric characters
+  const sanitizedCompanyNumber = companyWhatsAppNumber.replace(/\D/g, '');
+  
+  // Combine into a single string with a delimiter
+  return `${sanitizedCompanyNumber}#${requestId}`;
+}
+```
+
+### Rationale for this Key Structure
+
+This key structure was chosen for several specific reasons:
+
+1. **Optimized for the reply flow**: When replies come in via the Twilio API, we only have reliable access to the recipient's phone number and the company's WhatsApp number. Using these values as our primary lookup mechanism ensures we can quickly retrieve the correct conversation.
+
+2. **Minimal indexes needed**: This structure eliminates the need for additional GSIs (Global Secondary Indexes), reducing cost and complexity.
+
+3. **Handles edge cases**: The inclusion of request_id provides additional uniqueness in the unlikely event of multiple conversations between the same numbers, adding important guardrails.
+
+4. **Query efficiency**: Allows efficient querying of all conversations for a specific company WhatsApp number using begins_with operations.
+
+5. **Follows DynamoDB best practices**: Designs the key structure based on the application's access patterns.
+
+With this structure, when a reply comes in from a recipient, we can efficiently query:
+```
+GET from wa_conversation 
+WHERE recipient_tel = [incoming number] 
+AND begins_with(conversation_id, '[company_whatsapp_number]#')
+```
 
 ## Status Tracking
 
