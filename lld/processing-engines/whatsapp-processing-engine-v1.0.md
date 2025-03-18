@@ -7,7 +7,22 @@
 
 ## 1. Introduction
 
-This document provides a detailed description of the WhatsApp Processing Engine component of the WhatsApp AI chatbot system. The WhatsApp Processing Engine is responsible for consuming messages from the WhatsApp SQS queue (populated by the Channel Router), processing them through the OpenAI API, and delivering responses to end users via the Twilio WhatsApp API. This design enables a modular architecture that separates concerns between routing and processing while providing resilience through asynchronous processing.
+This document provides a detailed description of the WhatsApp Processing Engine component of the WhatsApp AI chatbot system. It is part of a series of low-level design documents, with similar documents existing for each channel processing engine (SMS, Email, etc.). Each processing engine operates independently but follows the same architectural patterns.
+
+### 1.1 Channel Routing Process
+
+The Channel Router, which sits upstream of all processing engines, determines which channel queue a request is routed to based on the `channel_method` field in the incoming payload's `request_data` object. When a frontend application sends a request, it specifies the desired communication channel (e.g., "whatsapp", "email", "sms") in this field.
+
+The routing process works as follows:
+
+1. Frontend applications send a standardized payload to the Channel Router's API endpoint
+2. The Channel Router validates the request structure and authenticates the API key
+3. The Router examines the `channel_method` value in the `request_data` object
+4. Based on this value, the Router creates a context object with all necessary processing information
+5. This context object is then placed in the corresponding channel-specific SQS queue (WhatsApp, SMS, or Email)
+6. The appropriate channel processing engine retrieves the message from its designated queue
+
+The WhatsApp Processing Engine specifically is responsible for consuming messages from the WhatsApp SQS queue (populated by the Channel Router), processing them through the OpenAI API, and delivering responses to end users via the Twilio WhatsApp API. This design enables a modular architecture that separates concerns between routing and processing while providing resilience through asynchronous processing.
 
 ## 2. Architecture Overview
 
