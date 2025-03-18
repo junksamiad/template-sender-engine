@@ -35,7 +35,7 @@ For example:
 **Secret Structure:**
 ```json
 {
-  "api_key": "ak_c7d4e8f9a2b1..."
+  "api_key": "ak_example_api_key_not_real"
 }
 ```
 
@@ -46,10 +46,10 @@ For example:
 **Secret Structure:**
 ```json
 {
-  "account_sid": "AC1234567890abcdef1234567890abcdef",
-  "auth_token": "auth_token_value_here",
+  "account_sid": "AC_EXAMPLE_ACCOUNT_SID_NOT_REAL",
+  "auth_token": "example_auth_token_not_real",
   "phone_number": "+14155238886",
-  "messaging_service_sid": "MG1234567890abcdef1234567890abcdef"
+  "messaging_service_sid": "MG_EXAMPLE_MESSAGING_SID_NOT_REAL"
 }
 ```
 
@@ -60,10 +60,10 @@ For example:
 **Secret Structure:**
 ```json
 {
-  "account_sid": "AC1234567890abcdef1234567890abcdef",
-  "auth_token": "auth_token_value_here",
+  "account_sid": "AC_EXAMPLE_ACCOUNT_SID_NOT_REAL",
+  "auth_token": "example_auth_token_not_real",
   "phone_number": "+14155238886",
-  "messaging_service_sid": "MG1234567890abcdef1234567890abcdef"
+  "messaging_service_sid": "MG_EXAMPLE_MESSAGING_SID_NOT_REAL"
 }
 ```
 
@@ -74,10 +74,10 @@ For example:
 **Secret Structure:**
 ```json
 {
-  "api_key": "SG.1234567890abcdef1234567890abcdef",
+  "api_key": "SG_EXAMPLE_KEY_NOT_REAL",
   "from_email": "notifications@example.com",
   "from_name": "Example Company",
-  "template_id": "d-1234567890abcdef1234567890abcdef"
+  "template_id": "d-example-template-id-not-real"
 }
 ```
 
@@ -88,7 +88,7 @@ For example:
 **Secret Structure:**
 ```json
 {
-  "api_key": "sk-1234567890abcdef1234567890abcdef"
+  "api_key": "sk_example_openai_key_not_real"
 }
 ```
 
