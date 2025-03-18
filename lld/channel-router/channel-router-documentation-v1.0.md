@@ -284,14 +284,14 @@ The resulting context object has the following structure:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/company-123/whatsapp-credentials",
+      "whatsapp_credentials_id": "twilio/company-123/project-456/whatsapp-credentials",
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/company-123/sms-credentials"
+      "sms_credentials_id": "twilio/company-123/project-456/sms-credentials"
     },
     "email": {
-      "email_credentials_id": "sendgrid/company-123/email-credentials"
+      "email_credentials_id": "sendgrid/company-123/project-456/email-credentials"
     }
   },
   "ai_config": {
@@ -540,14 +540,14 @@ We implement a hybrid approach using both DynamoDB and AWS Secrets Manager for A
      "status": "active",
      "channel_config": {
        "whatsapp": {
-         "whatsapp_credentials_id": "twilio/company-123/whatsapp-credentials",
+         "whatsapp_credentials_id": "twilio/company-123/project-456/whatsapp-credentials",
          "company_whatsapp_number": "+14155238886"
        },
        "sms": {
-         "sms_credentials_id": "twilio/company-123/sms-credentials"
+         "sms_credentials_id": "twilio/company-123/project-456/sms-credentials"
        },
        "email": {
-         "email_credentials_id": "sendgrid/company-123/email-credentials"
+         "email_credentials_id": "sendgrid/company-123/project-456/email-credentials"
        }
      },
      "created_at": "2023-06-15T14:30:45.123Z",

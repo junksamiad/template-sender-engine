@@ -58,14 +58,14 @@ The context object has the following structure:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials",
+      "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/sms-credentials"
+      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
     },
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/email-credentials"
+      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
     }
   },
   "ai_config": {
@@ -127,14 +127,14 @@ Contains channel-specific configuration based on the requested channel method:
 ```json
 {
   "whatsapp": {
-    "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials",
+    "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
     "company_whatsapp_number": "+14155238886"
   },
   "sms": {
-    "sms_credentials_id": "twilio/cucumber-recruitment/sms-credentials"
+    "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
   },
   "email": {
-    "email_credentials_id": "sendgrid/cucumber-recruitment/email-credentials"
+    "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
   }
 }
 ```
@@ -212,7 +212,7 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials",
+      "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
       "company_whatsapp_number": "+14155238886"
     }
   },
@@ -273,7 +273,7 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/email-credentials"
+      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
     }
   },
   "ai_config": {
@@ -333,7 +333,7 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/sms-credentials"
+      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
     }
   },
   "ai_config": {

@@ -73,14 +73,14 @@ This key structure allows:
 ```json
 {
   "whatsapp": {
-    "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials",
+    "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
     "company_whatsapp_number": "+14155238886"
   },
   "sms": {
-    "sms_credentials_id": "twilio/cucumber-recruitment/sms-credentials"
+    "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
   },
   "email": {
-    "email_credentials_id": "sendgrid/cucumber-recruitment/email-credentials"
+    "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
   }
 }
 ```
@@ -127,14 +127,14 @@ The `status` field can have the following values:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials",
+      "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/sms-credentials"
+      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
     },
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/email-credentials"
+      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
     }
   },
   "created_at": "2023-06-15T14:30:45.123Z",
