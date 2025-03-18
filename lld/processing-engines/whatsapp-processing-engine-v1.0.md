@@ -7,7 +7,7 @@
 
 ## 1. Introduction
 
-This document provides a detailed description of the WhatsApp Processing Engine component of the WhatsApp AI chatbot system. It is part of a series of low-level design documents, with similar documents existing for each channel processing engine (SMS, Email, etc.). Each processing engine operates independently but follows the same architectural patterns.
+This document provides a detailed description of the WhatsApp Processing Engine component of the WhatsApp AI chatbot system. It is part of a series of low-level design documents, with similar documents existing for each channel processing engine (SMS, Email, Whatsapp). Each processing engine operates independently but follows the similar architectural patterns.
 
 ### 1.1 Channel Routing Process
 
@@ -202,9 +202,50 @@ exports.handler = async (event) => {
    - OpenAI processed but Twilio delivery failed
    - **Handling**: Store the OpenAI response in DynamoDB and retry only the Twilio portion
 
-### 3.6 DynamoDB Schema
+### 3.6 Conversation Status Tracking Lifecycle
 
-#### 3.6.1 Conversation Table
+A core feature of the WhatsApp Processing Engine is the detailed tracking of conversation states throughout the processing lifecycle. This hybrid approach creates and updates conversation records at key milestones, providing complete visibility into the processing pipeline and enabling recovery capabilities.
+
+#### 3.6.1 Conversation Status States
+
+The conversation_status field will track the following states:
+
+1. **received**: Initial state when message is first retrieved from the queue
+2. **processing**: OpenAI processing has begun
+3. **ai_completed**: OpenAI processing completed successfully
+4. **delivery_initiated**: Message sent to Twilio for delivery
+5. **delivered**: Message successfully delivered to recipient
+6. **failed_processing**: Failed during OpenAI processing
+7. **failed_delivery**: Failed during Twilio delivery
+8. **recovery_pending**: Marked for manual review and potential recovery
+9. **completed**: Entire conversation cycle completed successfully
+
+#### 3.6.2 Status Transition Points
+
+| Processing Stage | Status Update | Timing |
+|------------------|---------------|--------|
+| Message Consumption | received | Immediately after retrieving from SQS and before any processing |
+| OpenAI Processing Start | processing | Before making OpenAI API call |
+| OpenAI Processing Complete | ai_completed | After successful OpenAI response |
+| Twilio Delivery Start | delivery_initiated | Before making Twilio API call |
+| Twilio Delivery Complete | delivered | After successful Twilio delivery confirmation |
+| OpenAI Processing Error | failed_processing | When OpenAI processing fails |
+| Twilio Delivery Error | failed_delivery | When Twilio delivery fails |
+| SQS Max Retry Exceeded | recovery_pending | When message is moved to DLQ |
+| Complete Success | completed | After all steps completed successfully |
+
+#### 3.6.3 Recovery Process
+
+For conversations that reach failed states:
+1. DLQ dashboard alerts operations team
+2. Team reviews the conversation record and error details
+3. Based on failure point, conversation can be reprocessed from last successful state
+4. Manual intervention may be required for specific error types
+5. Status is updated to reflect recovery attempt
+
+### 3.7 DynamoDB Schema
+
+#### 3.7.1 Conversation Table
 
 ```json
 {
@@ -216,6 +257,7 @@ exports.handler = async (event) => {
   "company_channel_id": "string",
   "account_sid": "string",
   "thread_id": "string", // OpenAI thread ID
+  "request_id": "string", // Original request_id from frontend
   "user_data": {
     "first_name": "string",
     "last_name": "string",
@@ -236,7 +278,21 @@ exports.handler = async (event) => {
       "status": "string"
     }
   ],
-  "conversation_status": "active|completed|failed",
+  "processing_metadata": {
+    "conversation_status": "received|processing|ai_completed|delivery_initiated|delivered|failed_processing|failed_delivery|recovery_pending|completed",
+    "processing_started_at": "string",
+    "ai_completed_at": "string",
+    "delivery_initiated_at": "string",
+    "delivery_completed_at": "string",
+    "last_status_change": "string",
+    "retry_count": 0,
+    "error_details": {
+      "error_type": "string",
+      "error_message": "string",
+      "error_timestamp": "string",
+      "component": "string" // Which component failed (openai, twilio, etc.)
+    }
+  },
   "last_user_message_at": "string",
   "last_system_message_at": "string",
   "created_at": "string",
@@ -272,32 +328,78 @@ exports.handler = async (event) => {
   const heartbeatInterval = setupHeartbeat(receiptHandle);
   
   try {
-    // 1. Extract necessary data
-    const { company_data, recipient_data, project_data, request_data } = messageBody;
+    // 1. Extract necessary data from context object
+    const { frontend_payload, db_payload, channel_config, ai_config } = messageBody;
+    const { company_data, recipient_data, project_data, request_data } = frontend_payload;
     
-    // 2. Get company configuration
-    const companyConfig = await getCompanyConfig(company_data.company_id, company_data.project_id);
+    // 2. Early write: Create or retrieve conversation record with "received" status
+    let conversation = await createOrGetConversation({
+      phone_number: recipient_data.recipient_tel,
+      company_id: company_data.company_id,
+      project_id: company_data.project_id,
+      recipient_data,
+      request_id: request_data.request_id,
+      initial_status: 'received'
+    });
+    
+    console.log('Conversation record created/retrieved', { 
+      conversation_id: conversation.conversation_id,
+      status: 'received',
+      request_id: request_data.request_id
+    });
     
     // 3. Get API credentials
-    const credentials = await getCredentials(companyConfig);
+    const credentials = await getCredentials(channel_config, ai_config);
     
     // 4. Initialize OpenAI and Twilio clients
     const openai = initializeOpenAI(credentials.openaiApiKey);
     const twilioClient = initializeTwilio(credentials.twilioAccountSid, credentials.twilioAuthToken);
     
-    // 5. Manage conversation
-    const conversation = await manageConversation(recipient_data, company_data, project_data, request_data);
+    // 5. Update status to "processing" before OpenAI processing
+    await updateConversationStatus(conversation, 'processing');
     
     // 6. Process with OpenAI
-    const aiResponse = await processWithOpenAI(openai, conversation, project_data);
+    let aiResponse;
+    try {
+      aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config);
+      // Update status to "ai_completed" after successful OpenAI processing
+      await updateConversationStatus(conversation, 'ai_completed');
+    } catch (error) {
+      // Update status to "failed_processing" if OpenAI processing fails
+      await updateConversationStatus(conversation, 'failed_processing', {
+        error_type: error.name,
+        error_message: error.message,
+        component: 'openai'
+      });
+      throw error; // Rethrow to trigger retry
+    }
     
-    // 7. Send via Twilio
-    const deliveryResult = await sendViaTwilio(twilioClient, recipient_data, aiResponse, companyConfig);
+    // 7. Update status to "delivery_initiated" before Twilio delivery
+    await updateConversationStatus(conversation, 'delivery_initiated');
     
-    // 8. Update conversation with results
-    await updateConversation(conversation, aiResponse, deliveryResult);
+    // 8. Send via Twilio
+    let deliveryResult;
+    try {
+      deliveryResult = await sendViaTwilio(twilioClient, recipient_data, aiResponse, channel_config.whatsapp);
+      // Update status to "delivered" after successful delivery
+      await updateConversationStatus(conversation, 'delivered');
+    } catch (error) {
+      // Update status to "failed_delivery" if Twilio delivery fails
+      await updateConversationStatus(conversation, 'failed_delivery', {
+        error_type: error.name,
+        error_message: error.message,
+        component: 'twilio'
+      });
+      throw error; // Rethrow to trigger retry
+    }
     
-    // 9. Clean up and delete message
+    // 9. Final status update to "completed"
+    await updateConversationStatus(conversation, 'completed');
+    
+    // 10. Update conversation with full results
+    await updateConversationData(conversation, aiResponse, deliveryResult);
+    
+    // 11. Clean up and delete message
     clearInterval(heartbeatInterval);
     await deleteMessage(receiptHandle);
     
@@ -336,38 +438,126 @@ function setupHeartbeat(receiptHandle) {
   }, 300000); // 5 minutes
 }
 
-async function getCompanyConfig(companyId, projectId) {
-  // Query DynamoDB for company configuration
+// Create or retrieve conversation record
+async function createOrGetConversation({ phone_number, company_id, project_id, recipient_data, request_id, initial_status }) {
+  const conversation_id = generateConversationId(phone_number, request_id);
+  
+  // Try to get existing conversation
+  try {
+    const existingConversation = await dynamoDB.get({
+      TableName: process.env.CONVERSATION_TABLE_NAME,
+      Key: { phone_number, conversation_id }
+    }).promise();
+    
+    if (existingConversation.Item) {
+      return existingConversation.Item;
+    }
+  } catch (error) {
+    console.error('Error checking for existing conversation:', error);
+  }
+  
+  // Create new conversation record
+  const now = new Date().toISOString();
+  const newConversation = {
+    phone_number,
+    conversation_id,
+    company_id,
+    project_id,
+    channel_method: 'whatsapp',
+    request_id,
+    user_data: {
+      first_name: recipient_data.recipient_first_name,
+      last_name: recipient_data.recipient_last_name,
+      email: recipient_data.recipient_email
+    },
+    messages: [],
+    processing_metadata: {
+      conversation_status: initial_status,
+      processing_started_at: now,
+      retry_count: 0
+    },
+    created_at: now,
+    updated_at: now
+  };
+  
+  // Save to DynamoDB
+  await dynamoDB.put({
+    TableName: process.env.CONVERSATION_TABLE_NAME,
+    Item: newConversation
+  }).promise();
+  
+  return newConversation;
 }
 
-async function getCredentials(companyConfig) {
+// Update conversation status
+async function updateConversationStatus(conversation, status, errorDetails = null) {
+  const now = new Date().toISOString();
+  const updates = {
+    processing_metadata: {
+      ...conversation.processing_metadata,
+      conversation_status: status,
+      last_status_change: now
+    },
+    updated_at: now
+  };
+  
+  // Add status-specific timestamp
+  switch (status) {
+    case 'processing':
+      updates.processing_metadata.processing_started_at = now;
+      break;
+    case 'ai_completed':
+      updates.processing_metadata.ai_completed_at = now;
+      break;
+    case 'delivery_initiated':
+      updates.processing_metadata.delivery_initiated_at = now;
+      break;
+    case 'delivered':
+      updates.processing_metadata.delivery_completed_at = now;
+      break;
+  }
+  
+  // Add error details if provided
+  if (errorDetails) {
+    updates.processing_metadata.error_details = {
+      ...errorDetails,
+      error_timestamp: now
+    };
+    // Increment retry count for failure states
+    updates.processing_metadata.retry_count = (conversation.processing_metadata.retry_count || 0) + 1;
+  }
+  
+  // Update in DynamoDB
+  await dynamoDB.update({
+    TableName: process.env.CONVERSATION_TABLE_NAME,
+    Key: {
+      phone_number: conversation.phone_number,
+      conversation_id: conversation.conversation_id
+    },
+    UpdateExpression: 'SET processing_metadata = :metadata, updated_at = :updated',
+    ExpressionAttributeValues: {
+      ':metadata': updates.processing_metadata,
+      ':updated': updates.updated_at
+    }
+  }).promise();
+  
+  // Update local conversation object
+  conversation.processing_metadata = updates.processing_metadata;
+  conversation.updated_at = updates.updated_at;
+  
+  console.log(`Conversation status updated to ${status}`, {
+    conversation_id: conversation.conversation_id,
+    status,
+    timestamp: now
+  });
+  
+  return conversation;
+}
+
+async function getCredentials(channelConfig, aiConfig) {
   // Get API keys from Secrets Manager
 }
 
-async function manageConversation(recipientData, companyData, projectData, requestData) {
-  // Create or update conversation in DynamoDB
-}
-
-async function processWithOpenAI(openai, conversation, projectData) {
-  // Process message with OpenAI
-}
-
-async function sendViaTwilio(twilioClient, recipientData, aiResponse, companyConfig) {
-  // Send message via Twilio
-}
-
-async function updateConversation(conversation, aiResponse, deliveryResult) {
-  // Update conversation in DynamoDB
-}
-
-async function deleteMessage(receiptHandle) {
-  // Delete message from SQS queue
-}
-```
-
-### 4.2 OpenAI Integration
-
-```javascript
 async function processWithOpenAI(openai, conversation, projectData) {
   // Get or create thread
   let threadId = conversation.thread_id;
@@ -409,11 +599,7 @@ async function processWithOpenAI(openai, conversation, projectData) {
     content: latestMessage.content[0].text.value
   };
 }
-```
 
-### 4.3 Twilio Integration
-
-```javascript
 async function sendViaTwilio(twilioClient, recipientData, aiResponse, companyConfig) {
   const twilioConfig = companyConfig.twilio_config;
   
@@ -439,7 +625,6 @@ async function sendViaTwilio(twilioClient, recipientData, aiResponse, companyCon
     };
   }
 }
-```
 
 ## 5. Infrastructure as Code
 
