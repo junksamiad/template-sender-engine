@@ -31,132 +31,166 @@ This document outlines the detailed step-by-step flow of the WhatsApp Processing
    - The company WhatsApp number is obtained from the `channel_config.whatsapp.company_whatsapp_number` field
 
 4. **Channel Configuration Access**:
-   - The company's WhatsApp number is stored in the `channel_config.whatsapp.company_whatsapp_number` object in DynamoDB rather than in Secrets Manager
+   - The company's WhatsApp number is stored in the `channel_config.whatsapp.company_whatsapp_number` object in DynamoDB wa_company_data table rather than in Secrets Manager
    - This makes sense as the phone number itself isn't sensitive credentials (unlike API keys)
    - Makes it easier to create the conversation record without additional Secrets Manager calls
    - The actual Twilio credentials are retrieved from AWS Secrets Manager using the reference `channel_config.whatsapp.whatsapp_credentials_id`
 
 5. **Multi-Channel Support in Conversations Table**:
-   - A `channel_method` field differentiates between WhatsApp/SMS/Email records
-   - This allows the same table to store conversations across all channels
-   - Each channel would have its own specific fields:
-     - WhatsApp/SMS: `recipient_tel` as primary key
-     - Email: `recipient_email` as primary key
+   - A `channel_method` field is included in every record to indicate the communication channel (whatsapp, sms, email)
+   - Each channel requires a different approach to key structure and conversation identification:
+   
+   **WhatsApp Channel:**
+   - Primary Key: `recipient_tel` (recipient's phone number)
+   - Sort Key: `conversation_id` with format: `{company_id}#{project_id}#{request_id}#{company_whatsapp_number}`
+   - Reply Identification: Match on recipient phone number and company WhatsApp number
+   
+   **SMS Channel:**
+   - Primary Key: `recipient_tel` (recipient's phone number)
+   - Sort Key: `conversation_id` with format: `{company_id}#{project_id}#{request_id}#{company_sms_number}`
+   - Reply Identification: Match on recipient phone number and company SMS number
+   
+   **Email Channel:**
+   - Primary Key: `recipient_email` (recipient's email address)
+   - Sort Key: `conversation_id` with format: `{company_id}#{project_id}#{request_id}#{message_id}`
+   - Where `message_id` would be a unique identifier for the email thread (e.g., Message-ID header)
+   - Reply Identification: Use of email threading headers (References, In-Reply-To) to match to original message
+   
+   **Implementation Considerations:**
+   - The conversations table will have a sparse index pattern where records contain only relevant fields for their channel
+   - Secondary indexes may be needed for efficient email thread lookup based on email headers
+   - For email, we would store both the email thread ID and the company sender email to enable different query paths
 
 ## Configuration Details
 
-The WhatsApp channel configuration in the `wa_company_data` DynamoDB table would look like:
+The channel configuration in the `wa_company_data` DynamoDB table would vary by channel:
 
 ```json
 "channel_config": {
   "whatsapp": {
-    "phone_number": "+14155238886",  // Company's WhatsApp number for this project
-    "whatsapp_credentials_id": "twilio/company-123/whatsapp-credentials"  // Reference to auth credentials in Secrets Manager
+    "company_whatsapp_number": "+14155238886",  // Company's WhatsApp number for this project
+    "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials"  // Reference to auth credentials
   },
-  "sms": { /* SMS configuration */ },
-  "email": { /* Email configuration */ }
+  "sms": {
+    "company_sms_number": "+14155238887",  // Company's SMS number for this project  
+    "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"  // Reference to auth credentials
+  },
+  "email": {
+    "company_email_address": "jobs@cucumber-recruitment.com",  // Sender email for this project
+    "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"  // Reference to auth credentials
+  }
 }
 ```
 
-## Conversation Record Creation
+## Conversation Record Creation By Channel
 
-When creating the conversation record:
+The conversation record creation would adapt based on the channel:
+
+### WhatsApp Conversation Creation
 
 ```javascript
-// Generate a unique conversation ID that incorporates multiple attributes for tracking and retrieval
-// Format: {company_id}#{project_id}#{request_id}#{company_whatsapp_number}
-// This structure allows for comprehensive data tracking while still enabling efficient reply handling
-const conversation_id = generateConversationId(
+// WhatsApp conversation ID generation
+const whatsapp_conversation_id = generateWhatsAppConversationId(
   company_data.company_id,
   company_data.project_id,
   request_data.request_id,
   channel_config.whatsapp.company_whatsapp_number
 );
 
-// Create conversation record
-const newConversation = {
+// Create WhatsApp conversation record
+const newWhatsAppConversation = {
   recipient_tel: recipient_data.recipient_tel,  // Partition key
-  conversation_id: conversation_id,  // Sort key
+  conversation_id: whatsapp_conversation_id,  // Sort key
   company_id: company_data.company_id,
   project_id: company_data.project_id,
   channel_method: "whatsapp",  // Indicates this is a WhatsApp conversation
-  company_phone_number: channel_config.whatsapp.company_whatsapp_number,  // Store company's WhatsApp number
+  company_phone_number: channel_config.whatsapp.company_whatsapp_number,
   request_id: request_data.request_id,
-  credentials_reference: channel_config.whatsapp.whatsapp_credentials_id, // Store reference to credentials
+  credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
   processing_metadata: {
     conversation_status: "received",
     processing_started_at: new Date().toISOString(),
     retry_count: 0
-  },
-  // ... other fields as in our schema
+  }
+  // ... other fields
 };
 ```
 
-### Conversation ID Generation Logic
+### Email Conversation Creation
 
 ```javascript
-function generateConversationId(companyId, projectId, requestId, companyWhatsAppNumber) {
+// Generate a unique message ID for email threading
+const message_id = generateUniqueMessageId(company_data.company_id, request_data.request_id);
+
+// Email conversation ID generation
+const email_conversation_id = generateEmailConversationId(
+  company_data.company_id,
+  company_data.project_id,
+  request_data.request_id,
+  message_id
+);
+
+// Create Email conversation record
+const newEmailConversation = {
+  recipient_email: recipient_data.recipient_email,  // Partition key
+  conversation_id: email_conversation_id,  // Sort key
+  company_id: company_data.company_id,
+  project_id: company_data.project_id,
+  channel_method: "email",  // Indicates this is an Email conversation
+  company_email: channel_config.email.company_email_address,
+  message_id: message_id,  // Store for email thread tracking
+  request_id: request_data.request_id,
+  credentials_reference: channel_config.email.email_credentials_id,
+  processing_metadata: {
+    conversation_status: "received",
+    processing_started_at: new Date().toISOString(),
+    retry_count: 0
+  }
+  // ... other fields
+};
+```
+
+### Channel-Specific Generation Logic
+
+```javascript
+function generateWhatsAppConversationId(companyId, projectId, requestId, companyWhatsAppNumber) {
   // Sanitize phone number by removing any non-alphanumeric characters
   const sanitizedCompanyNumber = companyWhatsAppNumber.replace(/\D/g, '');
   
   // Combine into a single string with a delimiter
   return `${companyId}#${projectId}#${requestId}#${sanitizedCompanyNumber}`;
 }
-```
 
-### Rationale for this Key Structure
+function generateEmailConversationId(companyId, projectId, requestId, messageId) {
+  // For email, we use the message ID which is already unique
+  return `${companyId}#${projectId}#${requestId}#${messageId}`;
+}
 
-This key structure was chosen for several specific reasons:
-
-1. **Comprehensive data tracking**: The four-attribute structure (company_id, project_id, request_id, company_whatsapp_number) provides complete traceability and context for each conversation.
-
-2. **Project-level segmentation**: Including the `project_id` ensures that conversations for different projects within the same company are properly distinguished.
-
-3. **Hierarchical querying**: Allows for querying conversations at various levels of the hierarchy (by company, by project, by request, by WhatsApp number).
-
-4. **Optimized for the reply flow**: For handling replies, we can efficiently query based on recipient_tel (partition key) and use a begins_with condition on the conversation_id that includes the company WhatsApp number.
-
-5. **Edge case handling**: The inclusion of request_id provides additional uniqueness in the unlikely event of multiple conversations between the same phone numbers.
-
-6. **Follows DynamoDB best practices**: Designs the key structure based on the application's access patterns while maintaining flexibility.
-
-### Querying for Reply Handling
-
-When a reply comes in via Twilio, we receive the recipient's phone number and the company's WhatsApp number. We can efficiently retrieve the conversation with:
-
-```javascript
-// For handling replies
-async function findConversationForReply(recipientTel, companyWhatsAppNumber) {
-  // Sanitize phone number
-  const sanitizedCompanyNumber = companyWhatsAppNumber.replace(/\D/g, '');
-  
-  // Query DynamoDB
-  const params = {
-    TableName: "wa_conversation",
-    KeyConditionExpression: "recipient_tel = :tel AND contains(conversation_id, :companyNumber)",
-    ExpressionAttributeValues: {
-      ":tel": recipientTel,
-      ":companyNumber": sanitizedCompanyNumber
-    }
-  };
-  
-  const result = await dynamoDB.query(params).promise();
-  return result.Items;
+function generateUniqueMessageId(companyId, requestId) {
+  // Generate a unique ID following common email Message-ID format
+  const domain = companyId.includes('-') ? companyId.split('-').join('.') : companyId;
+  const timestamp = Date.now();
+  return `<${requestId}.${timestamp}@${domain}.mail>`;
 }
 ```
 
-Alternatively, since the company WhatsApp number is also stored as a separate attribute:
+### Reply Handling by Channel
+
+Different channels require different approaches to match incoming replies:
+
+#### WhatsApp Reply Handling
 
 ```javascript
-// Alternative approach using a query on the partition key and filter
-async function findConversationForReply(recipientTel, companyWhatsAppNumber) {
+// For handling WhatsApp replies
+async function findWhatsAppConversation(recipientTel, companyWhatsAppNumber) {
   const params = {
     TableName: "wa_conversation",
     KeyConditionExpression: "recipient_tel = :tel",
-    FilterExpression: "company_phone_number = :companyNumber",
+    FilterExpression: "company_phone_number = :companyNumber AND channel_method = :channel",
     ExpressionAttributeValues: {
       ":tel": recipientTel,
-      ":companyNumber": companyWhatsAppNumber
+      ":companyNumber": companyWhatsAppNumber,
+      ":channel": "whatsapp"
     }
   };
   
@@ -165,7 +199,58 @@ async function findConversationForReply(recipientTel, companyWhatsAppNumber) {
 }
 ```
 
-This approach provides both comprehensive data organization and efficient querying for the reply handling flow.
+#### Email Reply Handling
+
+```javascript
+// For handling Email replies - using email headers
+async function findEmailConversation(recipientEmail, emailHeaders) {
+  let messageId = null;
+  
+  // Try to extract the original message ID from email headers
+  if (emailHeaders.references) {
+    // References header contains a list of message IDs in the thread
+    const messageIds = emailHeaders.references.split(' ');
+    // Use the first message ID (the original one)
+    messageId = messageIds[0];
+  } else if (emailHeaders.inReplyTo) {
+    // In-Reply-To header contains the immediate parent message ID
+    messageId = emailHeaders.inReplyTo;
+  }
+  
+  if (messageId) {
+    // Create a secondary index on message_id for efficient lookup
+    const params = {
+      TableName: "wa_conversation",
+      IndexName: "MessageIdIndex",
+      KeyConditionExpression: "message_id = :mid",
+      FilterExpression: "channel_method = :channel",
+      ExpressionAttributeValues: {
+        ":mid": messageId,
+        ":channel": "email"
+      }
+    };
+    
+    const result = await dynamoDB.query(params).promise();
+    return result.Items;
+  }
+  
+  // Fallback to recipient email if no message ID available
+  const params = {
+    TableName: "wa_conversation",
+    KeyConditionExpression: "recipient_email = :email",
+    FilterExpression: "channel_method = :channel",
+    ExpressionAttributeValues: {
+      ":email": recipientEmail,
+      ":channel": "email"
+    }
+  };
+  
+  const result = await dynamoDB.query(params).promise();
+  return result.Items;
+}
+```
+
+This approach provides channel-specific handling while maintaining a consistent overall structure for conversation records. Each channel gets its own optimized identification strategy while sharing the same DynamoDB table.
 
 ## Status Tracking
 
