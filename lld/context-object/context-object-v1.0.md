@@ -58,7 +58,8 @@ The context object has the following structure:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials"
+      "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials",
+      "company_whatsapp_number": "+14155238886"
     },
     "sms": {
       "sms_credentials_id": "twilio/cucumber-recruitment/sms-credentials"
@@ -126,7 +127,8 @@ Contains channel-specific configuration based on the requested channel method:
 ```json
 {
   "whatsapp": {
-    "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials"
+    "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials",
+    "company_whatsapp_number": "+14155238886"
   },
   "sms": {
     "sms_credentials_id": "twilio/cucumber-recruitment/sms-credentials"
@@ -140,6 +142,7 @@ Contains channel-specific configuration based on the requested channel method:
 | Channel | Field | Description |
 |---------|-------|-------------|
 | whatsapp | `whatsapp_credentials_id` | Reference to WhatsApp (Twilio) credentials in Secrets Manager |
+| whatsapp | `company_whatsapp_number` | The WhatsApp phone number assigned to this company/project |
 | sms | `sms_credentials_id` | Reference to SMS (Twilio) credentials in Secrets Manager |
 | email | `email_credentials_id` | Reference to Email (SendGrid) credentials in Secrets Manager |
 
@@ -209,7 +212,8 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials"
+      "whatsapp_credentials_id": "twilio/cucumber-recruitment/whatsapp-credentials",
+      "company_whatsapp_number": "+14155238886"
     }
   },
   "ai_config": {
