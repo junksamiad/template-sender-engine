@@ -492,6 +492,19 @@ classDiagram
         +email
     }
     
+    class WhatsAppConfig {
+        +whatsapp_credentials_id
+        +company_whatsapp_number
+    }
+    
+    class SMSConfig {
+        +sms_credentials_id
+    }
+    
+    class EmailConfig {
+        +email_credentials_id
+    }
+    
     class AIConfig {
         +assistant_id_template_sender
         +assistant_id_replies
@@ -512,6 +525,9 @@ classDiagram
     ContextObject --* ChannelConfig
     ContextObject --* AIConfig
     ContextObject --* Metadata
+    ChannelConfig --* WhatsAppConfig
+    ChannelConfig --* SMSConfig
+    ChannelConfig --* EmailConfig
 ```
 
 > **Note**: The diagrams above have been updated to specifically reflect the Channel Router component as described in the channel_router_documentation-v1.0.md file. Key changes include:

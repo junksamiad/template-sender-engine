@@ -222,7 +222,7 @@ When a request is received, the Channel Router retrieves the following informati
    - Allowed channels (to validate the requested channel is permitted)
 
 2. **Channel-Specific Configuration**:
-   - For WhatsApp: Reference to WhatsApp credentials in Secrets Manager
+   - For WhatsApp: Reference to WhatsApp credentials in Secrets Manager and company WhatsApp phone number
    - For Email: Reference to Email credentials in Secrets Manager
    - For SMS: Reference to SMS credentials in Secrets Manager
 
@@ -284,7 +284,8 @@ The resulting context object has the following structure:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/company-123/whatsapp-credentials"
+      "whatsapp_credentials_id": "twilio/company-123/whatsapp-credentials",
+      "company_whatsapp_number": "+14155238886"
     },
     "sms": {
       "sms_credentials_id": "twilio/company-123/sms-credentials"
@@ -537,6 +538,18 @@ We implement a hybrid approach using both DynamoDB and AWS Secrets Manager for A
        "requests_per_day": 10000
      },
      "status": "active",
+     "channel_config": {
+       "whatsapp": {
+         "whatsapp_credentials_id": "twilio/company-123/whatsapp-credentials",
+         "company_whatsapp_number": "+14155238886"
+       },
+       "sms": {
+         "sms_credentials_id": "twilio/company-123/sms-credentials"
+       },
+       "email": {
+         "email_credentials_id": "sendgrid/company-123/email-credentials"
+       }
+     },
      "created_at": "2023-06-15T14:30:45.123Z",
      "updated_at": "2023-06-15T14:30:45.123Z"
    }
