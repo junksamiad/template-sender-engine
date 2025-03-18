@@ -34,8 +34,8 @@ graph TD
         subgraph "Storage & Security"
             CompanyDB[(DynamoDB<br/>wa_company_data)]
             ConvoDB[(DynamoDB<br/>wa_conversation)]
-            MessageProcDB[(DynamoDB<br/>message_processing)]
-            DLQDB[(DynamoDB<br/>dlq_messages)]
+            MessageProcDB[(DynamoDB<br/>message_processing<br/><i>Future Enhancement</i>)]
+            DLQDB[(DynamoDB<br/>dlq_messages<br/><i>Monitoring Component</i>)]
             SecretsManager[AWS Secrets Manager]
         end
         
@@ -53,7 +53,7 @@ graph TD
         Router -->|Get API Key| SecretsManager
         
         WhatsAppEngine -->|Update Conversation| ConvoDB
-        WhatsAppEngine -->|Update Processing Status| MessageProcDB
+        WhatsAppEngine -.->|Update Processing Status<br/><i>Future Enhancement</i>| MessageProcDB
         WhatsAppEngine -->|Create Thread| OpenAI
         OpenAI -->|Function Call| WhatsAppEngine
         
@@ -86,8 +86,8 @@ graph TD
     style SMSEngine fill:#85C1E9,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
     style CompanyDB fill:#F8C471,stroke:#333,stroke-width:2px
     style ConvoDB fill:#F8C471,stroke:#333,stroke-width:2px
-    style MessageProcDB fill:#F8C471,stroke:#333,stroke-width:2px
-    style DLQDB fill:#F8C471,stroke:#333,stroke-width:2px
+    style MessageProcDB fill:#F8C471,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    style DLQDB fill:#F8C471,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
     style OpenAI fill:#7DCEA0,stroke:#333,stroke-width:2px
     style Twilio fill:#C39BD3,stroke:#333,stroke-width:2px
     style EmailSvc fill:#C39BD3,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
@@ -243,6 +243,7 @@ sequenceDiagram
     APIG->>Router: Forward request
     
     Router->>Router: Validate request structure
+    Note over Router: Timeout: 30s (Router Lambda)
     
     Router->>DDB: Query company/project record
     DDB-->>Router: Return company configuration
@@ -263,7 +264,7 @@ sequenceDiagram
     Note over Client: Frontend flow complete
     
     Queue->>Lambda: Trigger Lambda (batch size: 1)
-    Note over Lambda: Visibility Timeout: 600s
+    Note over Lambda: Timeout: 900s (Processing Lambda)<br/>Visibility Timeout: 600s
     
     Lambda->>Lambda: Extract channel config from context
     
@@ -456,7 +457,7 @@ flowchart TD
         EDLQ["Email DLQ"]
         SDLQ["SMS DLQ"]
         RETAIN["Retention: 14 days"]
-        DLQDB["DLQ Messages DynamoDB Table"]
+        DLQDB["DLQ Messages DynamoDB Table<br/><i>Monitoring Component</i>"]
     end
     
     subgraph "Monitoring & Alerting"
@@ -512,7 +513,7 @@ flowchart TD
     style EDLQ fill:#E74C3C,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
     style SDLQ fill:#E74C3C,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
     style RETAIN fill:#E74C3C,stroke:#333,stroke-width:2px
-    style DLQDB fill:#F8C471,stroke:#333,stroke-width:2px
+    style DLQDB fill:#F8C471,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
     style DASH fill:#AED6F1,stroke:#333,stroke-width:2px
     style METRICS fill:#AED6F1,stroke:#333,stroke-width:2px
     style ALARM fill:#F5B7B1,stroke:#333,stroke-width:2px
@@ -577,7 +578,9 @@ erDiagram
         object concurrent_conversations
         string status
         object openai_config
-        object channel_config
+        object twilio_config
+        object email_config
+        object sms_config
         string created_at
         string updated_at
     }
@@ -633,6 +636,13 @@ erDiagram
     }
     
     COMPANY_DATA ||--o{ CONVERSATIONS : "has"
-    COMPANY_DATA ||--o{ MESSAGE_PROCESSING : "has"
-    COMPANY_DATA ||--o{ DLQ_MESSAGES : "has"
-``` 
+    COMPANY_DATA ||--o{ MESSAGE_PROCESSING : "has (Future)"
+    COMPANY_DATA ||--o{ DLQ_MESSAGES : "has (Monitoring)"
+    
+    %% Marking future enhancements with styling
+    classDef future fill:#F8C471,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    class MESSAGE_PROCESSING future
+    class DLQ_MESSAGES future
+```
+
+> **Note**: Tables marked with `<i>Future Enhancement</i>` or styled with dashed lines indicate components that are planned for future implementation according to the channel router documentation and are not part of the current core implementation. The message_processing table is specifically mentioned in the documentation as a future enhancement for "Enhanced Usage Tracking". 
