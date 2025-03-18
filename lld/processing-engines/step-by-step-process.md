@@ -23,7 +23,7 @@ This document outlines the detailed step-by-step flow of the WhatsApp Processing
 
 3. **Conversation Record Creation**:
    - A composite key structure is used for the conversation table
-   - Primary key would be `phone_number` (recipient's phone number)
+   - Primary key would be `recipient_tel` (recipient's phone number)
    - Sort key would be `conversation_id` (which could incorporate the company's WhatsApp number)
 
 4. **Channel Configuration Access**:
@@ -35,8 +35,8 @@ This document outlines the detailed step-by-step flow of the WhatsApp Processing
    - A `channel_method` field differentiates between WhatsApp/SMS/Email records
    - This allows the same table to store conversations across all channels
    - Each channel would have its own specific fields:
-     - WhatsApp/SMS: `phone_number` as primary key
-     - Email: `email_address` as primary key
+     - WhatsApp/SMS: `recipient_tel` as primary key
+     - Email: `recipient_email` as primary key
 
 ## Configuration Details
 
@@ -67,7 +67,7 @@ const conversation_id = generateConversationId(
 
 // Create conversation record
 const newConversation = {
-  phone_number: recipient_data.recipient_tel,  // Partition key
+  recipient_tel: recipient_data.recipient_tel,  // Partition key
   conversation_id: conversation_id,  // Sort key
   company_id: company_data.company_id,
   project_id: company_data.project_id,
