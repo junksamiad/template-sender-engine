@@ -44,10 +44,17 @@ The WhatsApp Processing Engine is responsible for:
 The WhatsApp Processing Engine sits between:
 - **Upstream**: Channel Router (via WhatsApp SQS queue)
 - **Downstream**: OpenAI API and Twilio WhatsApp API
+- **Persistence**: DynamoDB for conversation records and AWS Secrets Manager for credentials
 
 ```
+                                     ┌─► DynamoDB (Conversations) ─┐
+                                     │                             │
 Channel Router → WhatsApp SQS Queue → WhatsApp Processing Engine → OpenAI API → Twilio API → End User
+                                     │                             │
+                                     └─► AWS Secrets Manager ──────┘
 ```
+
+The engine first creates/updates conversation records in DynamoDB, then retrieves credentials from Secrets Manager, processes the message through OpenAI, and finally delivers responses via Twilio.
 
 ### 2.3 Technical Implementation
 
