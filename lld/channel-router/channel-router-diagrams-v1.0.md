@@ -471,8 +471,6 @@ classDiagram
     }
     
     class DatabasePayload {
-        +company_id
-        +project_id
         +company_name
         +project_name
         +project_status

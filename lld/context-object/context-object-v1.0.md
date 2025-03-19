@@ -43,8 +43,6 @@ The context object has the following structure:
     }
   },
   "wa_company_data_payload": {
-    "company_id": "cucumber-recruitment",
-    "project_id": "cv-analysis",
     "company_name": "Cucumber Recruitment Ltd",
     "project_name": "CV Analysis Bot",
     "project_status": "active",
@@ -104,8 +102,6 @@ Contains essential company and project information retrieved from the DynamoDB d
 
 | Field | Description |
 |-------|-------------|
-| company_id | Unique identifier for the company |
-| project_id | Unique identifier for the project |
 | company_name | Human-readable company name |
 | project_name | Human-readable project name |
 | project_status | Current status of the project (active, inactive, etc.) |
@@ -203,8 +199,6 @@ Contains metadata about the context object itself:
     }
   },
   "wa_company_data_payload": {
-    "company_id": "cucumber-recruitment",
-    "project_id": "cv-analysis",
     "company_name": "Cucumber Recruitment Ltd",
     "project_name": "CV Analysis Bot",
     "project_status": "active",
@@ -264,8 +258,6 @@ Contains metadata about the context object itself:
     }
   },
   "wa_company_data_payload": {
-    "company_id": "cucumber-recruitment",
-    "project_id": "cv-analysis",
     "company_name": "Cucumber Recruitment Ltd",
     "project_name": "CV Analysis Bot",
     "project_status": "active",
@@ -325,8 +317,6 @@ Contains metadata about the context object itself:
     }
   },
   "wa_company_data_payload": {
-    "company_id": "cucumber-recruitment",
-    "project_id": "cv-analysis",
     "company_name": "Cucumber Recruitment Ltd",
     "project_name": "CV Analysis Bot",
     "project_status": "active",

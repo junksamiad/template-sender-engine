@@ -32,7 +32,7 @@ This key structure allows:
 | `api_key_reference` | String | Yes | Reference to API key in Secrets Manager | "secret/api-keys/cucumber-recruitment/cv-analysis" |
 | `allowed_channels` | List(String) | Yes | List of channels this project can use | ["whatsapp", "email"] |
 | `rate_limits` | Map | Yes | Rate limiting configuration | See below |
-| `status` | String | Yes | Current status of the project | "active" |
+| `project_status` | String | Yes | Current status of the project | "active" |
 | `openai_config` | Map | No | OpenAI-specific configuration | See below |
 | `channel_config` | Map | No | Channel-specific configurations | See below |
 | `created_at` | String | Yes | ISO 8601 timestamp of creation | "2023-06-15T14:30:45.123Z" |
@@ -100,7 +100,7 @@ This key structure allows:
 
 ## Status Values
 
-The `status` field can have the following values:
+The `project_status` field can have the following values:
 - `active`: Project is active and can process requests
 - `inactive`: Project is temporarily disabled
 - `pending`: Project is in setup phase
@@ -123,7 +123,7 @@ The `status` field can have the following values:
     "concurrent_conversations": 50,
     "max_message_length": 4096
   },
-  "status": "active",
+  "project_status": "active",
   "openai_config": {
     "assistant_id_template_sender": "asst_Ds59ylP35Pn84pasJQVglC2Q",
     "assistant_id_replies": "asst_Ds59ylP35Pn84pesJQVglC2Q",
@@ -185,7 +185,7 @@ The table is designed to support the following access patterns:
    - Purpose: Allow lookups by human-readable names for admin interfaces
 
 2. **StatusIndex**
-   - Partition Key: `status`
+   - Partition Key: `project_status`
    - Sort Key: `updated_at`
    - Projected Attributes: `company_id`, `project_id`, `company_name`, `project_name`
    - Purpose: Find recently changed projects with a specific status 

@@ -272,8 +272,6 @@ The resulting context object has the following structure:
     "request_data": { ... }
   },
   "wa_company_data_payload": {
-    "company_id": "company-123",
-    "project_id": "project-456",
     "company_name": "Example Corp",
     "project_name": "Recruitment Bot",
     "project_status": "active",
@@ -451,11 +449,9 @@ const contextModule = {
     const context = {
       frontend_payload: sanitizedPayload,
       wa_company_data_payload: {
-        company_id: companyData.company_id,
-        project_id: companyData.project_id,
         company_name: companyData.company_name,
         project_name: companyData.project_name,
-        project_status: companyData.status,
+        project_status: companyData.project_status,
         allowed_channels: companyData.allowed_channels
       },
       project_rate_limits: companyData.rate_limits,
