@@ -62,10 +62,12 @@ The context object has the following structure:
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
+      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+      "company_sms_number": "+14155238887"
     },
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
+      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+      "company_email": "jobs@cucumber-recruitment.com"
     }
   },
   "ai_config": {
@@ -131,10 +133,12 @@ Contains channel-specific configuration based on the requested channel method:
     "company_whatsapp_number": "+14155238886"
   },
   "sms": {
-    "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
+    "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+    "company_sms_number": "+14155238887"
   },
   "email": {
-    "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
+    "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+    "company_email": "jobs@cucumber-recruitment.com"
   }
 }
 ```
