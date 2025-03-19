@@ -575,6 +575,289 @@ sqsDashboard.addWidgets(
 );
 ```
 
+## DLQ Monitoring and Processing Dashboard
+
+```typescript
+const dlqDashboard = new cloudwatch.Dashboard(this, 'DLQDashboard', {
+  dashboardName: 'ChannelRouter-DLQ-Monitoring'
+});
+
+dlqDashboard.addWidgets(
+  // Header
+  new cloudwatch.TextWidget({
+    markdown: '# Dead Letter Queue Monitoring\nMonitoring for DLQs and the DLQ Processor Lambda',
+    width: 24,
+    height: 2
+  }),
+  
+  // DLQ Message Counts
+  new cloudwatch.GraphWidget({
+    title: 'DLQ Message Counts',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'AWS/SQS',
+        metricName: 'ApproximateNumberOfMessagesVisible',
+        dimensionsMap: {
+          QueueName: 'WhatsAppDLQ'
+        },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(1)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'AWS/SQS',
+        metricName: 'ApproximateNumberOfMessagesVisible',
+        dimensionsMap: {
+          QueueName: 'EmailDLQ'
+        },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(1)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'AWS/SQS',
+        metricName: 'ApproximateNumberOfMessagesVisible',
+        dimensionsMap: {
+          QueueName: 'SMSDLQ'
+        },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(1)
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // DLQ Message Age
+  new cloudwatch.GraphWidget({
+    title: 'DLQ Message Age',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'AWS/SQS',
+        metricName: 'ApproximateAgeOfOldestMessage',
+        dimensionsMap: {
+          QueueName: 'WhatsAppDLQ'
+        },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(1)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'AWS/SQS',
+        metricName: 'ApproximateAgeOfOldestMessage',
+        dimensionsMap: {
+          QueueName: 'EmailDLQ'
+        },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(1)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'AWS/SQS',
+        metricName: 'ApproximateAgeOfOldestMessage',
+        dimensionsMap: {
+          QueueName: 'SMSDLQ'
+        },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(1)
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // DLQ Processor Lambda Section
+  new cloudwatch.TextWidget({
+    markdown: '## DLQ Processor Lambda',
+    width: 24,
+    height: 1
+  }),
+  
+  // DLQ Processor Lambda Invocations & Errors
+  new cloudwatch.GraphWidget({
+    title: 'DLQ Processor Lambda Invocations & Errors',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'AWS/Lambda',
+        metricName: 'Invocations',
+        dimensionsMap: {
+          FunctionName: 'DLQProcessorFunction'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(1)
+      })
+    ],
+    right: [
+      new cloudwatch.Metric({
+        namespace: 'AWS/Lambda',
+        metricName: 'Errors',
+        dimensionsMap: {
+          FunctionName: 'DLQProcessorFunction'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(1)
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // DLQ Processor Lambda Duration
+  new cloudwatch.GraphWidget({
+    title: 'DLQ Processor Lambda Duration',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'AWS/Lambda',
+        metricName: 'Duration',
+        dimensionsMap: {
+          FunctionName: 'DLQProcessorFunction'
+        },
+        statistic: 'Average',
+        period: cdk.Duration.minutes(1)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'AWS/Lambda',
+        metricName: 'Duration',
+        dimensionsMap: {
+          FunctionName: 'DLQProcessorFunction'
+        },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(1)
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // Custom Metrics for DLQ Processing
+  new cloudwatch.GraphWidget({
+    title: 'DLQ Processing Results',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'ChannelRouter',
+        metricName: 'DLQMessagesProcessed',
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'ChannelRouter',
+        metricName: 'DLQProcessingErrors',
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // Status Updates by DLQ Processor
+  new cloudwatch.GraphWidget({
+    title: 'Status Updates by DLQ Processor',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'ChannelRouter',
+        metricName: 'StatusUpdatedToFailed',
+        dimensionsMap: {
+          Channel: 'WhatsApp'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'ChannelRouter',
+        metricName: 'StatusUpdatedToFailed',
+        dimensionsMap: {
+          Channel: 'Email'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'ChannelRouter',
+        metricName: 'StatusUpdatedToFailed',
+        dimensionsMap: {
+          Channel: 'SMS'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      })
+    ],
+    width: 12,
+    height: 6
+  })
+);
+```
+
+## DLQ Processor Lambda Implementation
+
+The DLQ Processor Lambda is a dedicated function that processes messages from Dead Letter Queues and updates their status in DynamoDB. To implement custom metrics for this Lambda, add the following code:
+
+```javascript
+// In the DLQ Processor Lambda
+const AWS = require('aws-sdk');
+const cloudwatch = new AWS.CloudWatch();
+
+// After processing a batch of DLQ messages
+await cloudwatch.putMetricData({
+  Namespace: 'ChannelRouter',
+  MetricData: [
+    {
+      MetricName: 'DLQMessagesProcessed',
+      Value: successfullyProcessedCount,
+      Unit: 'Count'
+    },
+    {
+      MetricName: 'DLQProcessingErrors',
+      Value: errorCount,
+      Unit: 'Count'
+    },
+    {
+      MetricName: 'StatusUpdatedToFailed',
+      Value: statusUpdateCount,
+      Unit: 'Count',
+      Dimensions: [
+        {
+          Name: 'Channel',
+          Value: channelMethod // 'WhatsApp', 'Email', or 'SMS'
+        }
+      ]
+    }
+  ]
+}).promise();
+```
+
+## DLQ Processor Lambda Alarms
+
+```typescript
+// Create an alarm for DLQ Processor Lambda errors
+const dlqProcessorErrorAlarm = new cloudwatch.Alarm(this, 'DLQProcessorErrorAlarm', {
+  metric: new cloudwatch.Metric({
+    namespace: 'AWS/Lambda',
+    metricName: 'Errors',
+    dimensionsMap: {
+      FunctionName: 'DLQProcessorFunction'
+    },
+    statistic: 'Sum',
+    period: cdk.Duration.minutes(5)
+  }),
+  threshold: 1,
+  evaluationPeriods: 1,
+  alarmDescription: 'Errors in DLQ Processor Lambda'
+});
+
+// Create an alarm for DLQ Processor Lambda throttling
+const dlqProcessorThrottlingAlarm = new cloudwatch.Alarm(this, 'DLQProcessorThrottlingAlarm', {
+  metric: new cloudwatch.Metric({
+    namespace: 'AWS/Lambda',
+    metricName: 'Throttles',
+    dimensionsMap: {
+      FunctionName: 'DLQProcessorFunction'
+    },
+    statistic: 'Sum',
+    period: cdk.Duration.minutes(5)
+  }),
+  threshold: 1,
+  evaluationPeriods: 1,
+  alarmDescription: 'Throttling in DLQ Processor Lambda'
+});
+```
+
 ## Custom Metrics Implementation
 
 To track custom metrics like OpenAI response times, add code to your Lambda functions:

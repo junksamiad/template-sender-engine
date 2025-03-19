@@ -507,7 +507,124 @@ Response:
 
 This endpoint can be polled by frontend applications to proactively detect service issues before attempting to send messages.
 
-## 9. Conclusion
+## 9. DLQ Processor Lambda Function
+
+While the Channel Router handles immediate errors during request acceptance, many errors can occur during asynchronous processing after the request has already been queued and acknowledged. To complete the error handling lifecycle, a dedicated DLQ Processor Lambda function processes messages that have exhausted their retry attempts.
+
+### 9.1 Purpose and Functionality
+
+The DLQ Processor Lambda function:
+
+1. Consumes messages from each channel's Dead Letter Queue
+2. Parses the original message context
+3. Looks up the associated conversation record in DynamoDB
+4. Updates the conversation status to "failed"
+5. Records detailed error information for troubleshooting
+6. Publishes metrics for monitoring and alerting
+
+This approach ensures that even asynchronous errors are properly tracked and visible to both users and operations staff.
+
+### 9.2 Implementation
+
+```javascript
+// DLQ Processor Lambda
+exports.handleDLQ = async (event) => {
+  for (const record of event.Records) {
+    try {
+      const originalMessage = JSON.parse(record.body);
+      const originalBody = JSON.parse(originalMessage.body);
+      
+      // Extract key information from the original message
+      const { frontend_payload, channel_config } = originalBody;
+      const { company_data, recipient_data, request_data } = frontend_payload;
+      
+      // Generate the same conversation ID 
+      const conversationId = generateConversationId(
+        company_data.company_id,
+        company_data.project_id,
+        request_data.request_id,
+        channel_config[request_data.channel_method].company_phone_number || 
+        channel_config[request_data.channel_method].company_email
+      );
+      
+      // Look up the conversation in DynamoDB
+      const conversation = await getConversationRecord(
+        request_data.channel_method === 'email' ? 
+          recipient_data.recipient_email : 
+          recipient_data.recipient_tel, 
+        conversationId
+      );
+      
+      // Update status to failed
+      await updateConversationStatus(conversation, 'failed', {
+        error_message: "Message processing failed after maximum retry attempts",
+        component: "unknown" // We don't know exactly which component failed from DLQ
+      });
+      
+      console.log('Updated conversation status to failed', {
+        conversation_id: conversationId,
+        request_id: request_data.request_id
+      });
+      
+    } catch (error) {
+      console.error('Error processing DLQ message', error);
+      // Continue with other records even if one fails
+    }
+  }
+};
+```
+
+### 9.3 Frontend Integration
+
+Frontends do not interact directly with the DLQ Processor, but should be designed to handle scenarios where:
+
+1. An initial successful submission (HTTP 200) might result in a failed processing status
+2. Applications with status checking capabilities should check conversation status periodically
+3. UI elements should display appropriate messaging for conversations that failed async processing
+
+Example of frontend status checking:
+
+```javascript
+/**
+ * Polls for message processing status
+ * @param {string} conversationId - The ID of the conversation to check
+ * @param {function} onStatusChange - Callback for status changes
+ */
+function pollMessageStatus(conversationId, onStatusChange) {
+  const CHECK_INTERVAL_MS = 5000; // 5 seconds
+  const MAX_CHECKS = 12; // Check for up to 1 minute
+  
+  let checks = 0;
+  
+  const intervalId = setInterval(async () => {
+    try {
+      const status = await checkMessageStatus(conversationId);
+      
+      // Call the status change handler
+      onStatusChange(status);
+      
+      // Clear interval if we have a terminal status
+      if (status === 'initial_message_sent' || status === 'failed') {
+        clearInterval(intervalId);
+      }
+      
+      // Stop checking after max attempts
+      checks++;
+      if (checks >= MAX_CHECKS) {
+        clearInterval(intervalId);
+        onStatusChange('unknown');
+      }
+    } catch (error) {
+      console.error('Error checking message status', error);
+    }
+  }, CHECK_INTERVAL_MS);
+  
+  // Return a function to cancel polling
+  return () => clearInterval(intervalId);
+}
+```
+
+## 10. Conclusion
 
 Effective error handling between the frontend and Channel Router requires:
 

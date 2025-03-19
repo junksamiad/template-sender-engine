@@ -259,6 +259,126 @@ new cloudwatch.Alarm(this, 'DLQAlarm', {
 });
 ```
 
+### DLQ Processor Lambda
+
+To complete the DLQ error handling flow, a dedicated DLQ Processor Lambda function is implemented:
+
+```typescript
+// Create DLQ Processor Lambda
+const dlqProcessorFunction = new lambda.Function(this, 'DLQProcessorFunction', {
+  runtime: lambda.Runtime.NODEJS_14_X,
+  handler: 'dlq-processor.handler',
+  code: lambda.Code.fromAsset('lambda/dlq-processor'),
+  timeout: cdk.Duration.seconds(60),
+  environment: {
+    CONVERSATION_TABLE_NAME: conversationTable.tableName
+  }
+});
+
+// Add DLQ as event source
+dlqProcessorFunction.addEventSource(new SqsEventSource(whatsappDlq, {
+  batchSize: 10
+}));
+
+// Grant permissions to read from DLQ and write to DynamoDB
+whatsappDlq.grantConsumeMessages(dlqProcessorFunction);
+conversationTable.grantReadWriteData(dlqProcessorFunction);
+```
+
+The DLQ Processor Lambda function handles failed messages by:
+
+1. **Reading messages from the DLQ**: Processes messages that failed processing after multiple retries
+2. **Parsing the original request**: Extracts the original context from the failed message
+3. **Updating conversation status**: Sets the conversation status to "failed" in DynamoDB
+4. **Recording error information**: Stores detailed error context for troubleshooting
+5. **Emitting metrics**: Publishes custom CloudWatch metrics for monitoring failed messages
+
+Example implementation:
+
+```javascript
+// dlq-processor.js
+const AWS = require('aws-sdk');
+const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const cloudwatch = new AWS.CloudWatch();
+
+exports.handler = async (event) => {
+  const processedMessages = [];
+  const errors = [];
+  
+  for (const record of event.Records) {
+    try {
+      // Parse original message from DLQ
+      const originalMessage = JSON.parse(record.body);
+      const originalBody = JSON.parse(originalMessage.body);
+      
+      // Extract key information from the original message
+      const { frontend_payload, channel_config } = originalBody;
+      const { company_data, recipient_data, request_data } = frontend_payload;
+      const channelMethod = request_data.channel_method;
+      
+      // Generate the same conversation ID that was used in the original processing
+      const conversationId = generateConversationId(
+        company_data.company_id,
+        company_data.project_id,
+        request_data.request_id,
+        channel_config[channelMethod].company_phone_number || 
+        channel_config[channelMethod].company_email
+      );
+      
+      // Look up the conversation in DynamoDB
+      const conversation = await getConversationRecord(
+        channelMethod === 'email' ? recipient_data.recipient_email : recipient_data.recipient_tel,
+        conversationId
+      );
+      
+      // Update status to failed
+      await updateConversationStatus(conversation, 'failed', {
+        error_message: "Message processing failed after maximum retry attempts",
+        component: "unknown" // We don't always know which component failed from DLQ
+      });
+      
+      // Emit metrics for monitoring
+      await cloudwatch.putMetricData({
+        Namespace: 'ChannelRouter',
+        MetricData: [
+          {
+            MetricName: 'StatusUpdatedToFailed',
+            Value: 1,
+            Unit: 'Count',
+            Dimensions: [
+              {
+                Name: 'Channel',
+                Value: channelMethod
+              }
+            ]
+          }
+        ]
+      }).promise();
+      
+      processedMessages.push(conversationId);
+    } catch (error) {
+      console.error('Error processing DLQ message', error);
+      errors.push(error.message);
+    }
+  }
+  
+  // Report processing results
+  return {
+    processedCount: processedMessages.length,
+    errorCount: errors.length,
+    processed: processedMessages,
+    errors: errors
+  };
+};
+```
+
+This approach provides several benefits for error handling:
+
+1. **Complete error lifecycle**: Failed messages are properly tracked from initial failure through final status update
+2. **Operational visibility**: Operations team can monitor both DLQ message counts and status updates
+3. **Error recovery**: The detailed error information stored in DynamoDB enables troubleshooting
+4. **Clean separation of concerns**: The processing Lambda focuses on the happy path, while the DLQ processor handles failure cases
+
 ## Implementation Priority
 
 For your phased approach:

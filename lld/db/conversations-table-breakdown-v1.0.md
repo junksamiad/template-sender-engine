@@ -24,7 +24,6 @@ The table uses a composite key structure that varies by channel:
 | `company_id` | `frontend_payload.company_data.company_id` | |
 | `project_id` | `frontend_payload.company_data.project_id` | |
 | `channel_method` | `frontend_payload.request_data.channel_method` | |
-| `company_phone_number` | `channel_config.whatsapp.company_whatsapp_number`<br>or `channel_config.sms.company_sms_number` | Only for WhatsApp/SMS |
 | `company_whatsapp_number` | `channel_config.whatsapp.company_whatsapp_number` | Only for WhatsApp |
 | `company_sms_number` | `channel_config.sms.company_sms_number` | Only for SMS |
 | `company_email` | `channel_config.email.company_email` | Only for Email |
@@ -49,14 +48,7 @@ The table uses a composite key structure that varies by channel:
 
 | Field | Source | Notes |
 |-------|--------|-------|
-| `processing_metadata.conversation_status` | Set by Processing Engine | Initial value is "received" |
-| `processing_metadata.processing_started_at` | Generated timestamp | When processing began |
-| `processing_metadata.ai_completed_at` | Generated timestamp | When OpenAI processing completed |
-| `processing_metadata.delivery_initiated_at` | Generated timestamp | When delivery to user began |
-| `processing_metadata.delivery_completed_at` | Generated timestamp | When delivery completed |
-| `processing_metadata.last_status_change` | Generated timestamp | Most recent status update |
-| `processing_metadata.retry_count` | Incremented by Processing Engine | Counts retry attempts |
-| `processing_metadata.error_details` | Set by Processing Engine | Only populated on errors |
+| `processing_metadata.conversation_status` | Set by Processing Engine | Initial value is "processing" |
 
 ### AI Metadata
 
@@ -111,9 +103,7 @@ const whatsappConversation = {
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
   processing_metadata: {
-    conversation_status: "received",
-    processing_started_at: new Date().toISOString(),
-    retry_count: 0
+    conversation_status: "processing"
   },
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
@@ -140,9 +130,7 @@ const smsConversation = {
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
   processing_metadata: {
-    conversation_status: "received",
-    processing_started_at: new Date().toISOString(),
-    retry_count: 0
+    conversation_status: "processing"
   },
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
@@ -173,9 +161,7 @@ const emailConversation = {
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
   processing_metadata: {
-    conversation_status: "received",
-    processing_started_at: new Date().toISOString(),
-    retry_count: 0
+    conversation_status: "processing"
   },
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
@@ -184,17 +170,69 @@ const emailConversation = {
 
 ## Status Lifecycle
 
-The `conversation_status` field transitions through these states:
+The `conversation_status` field uses a simplified approach with just three essential states:
 
-1. **received**: Initial state when conversation record is created
-2. **processing**: Set before OpenAI processing begins
-3. **ai_completed**: Set after successful OpenAI response
-4. **delivery_initiated**: Set before sending via channel API (Twilio/SendGrid)
-5. **delivered**: Set after successful delivery confirmation
-6. **completed**: Final state for successful conversations
-7. **failed_processing**: Set if OpenAI processing fails
-8. **failed_delivery**: Set if channel delivery fails
-9. **recovery_pending**: Set if message is moved to DLQ for manual intervention
+1. **processing**: Initial state when conversation record is created. Indicates the message is being processed through the AI system and delivery channel.
+
+2. **initial_message_sent**: Set after successful delivery via channel API (Twilio/SendGrid). Indicates the first message has been successfully delivered to the recipient.
+
+3. **failed**: Set if message processing fails after multiple retry attempts and lands in the Dead Letter Queue (DLQ). This indicates a terminal error state.
+
+The status is updated at these key points:
+
+- **Initial Creation**: Set to "processing" when the conversation record is first created
+- **After Successful Delivery**: Updated to "initial_message_sent" after confirmation from Twilio/SendGrid
+- **After Processing Failure**: Updated to "failed" by the DLQ Processor Lambda when a message lands in the DLQ
+
+This streamlined approach minimizes writes to DynamoDB while maintaining visibility into the conversation state.
+
+### DLQ Integration
+
+The conversations table interacts with the Dead Letter Queue (DLQ) system through a dedicated DLQ Processor Lambda function. When a message fails processing after multiple retries:
+
+1. The message is moved to a Dead Letter Queue (after exceeding the `maxReceiveCount` in SQS configuration)
+2. The DLQ Processor Lambda consumes the message from the queue
+3. The Lambda extracts the conversation details from the original request
+4. It updates the conversation status to "failed" in the conversations table
+
+Retry handling is managed entirely by the AWS SQS service, which tracks delivery attempts internally and moves messages to the DLQ after reaching the configured maximum retry count. This approach eliminates the need to track retry counts in the database.
+
+Error details are not stored in the DynamoDB record but are instead logged to CloudWatch with appropriate correlation IDs (conversation_id, request_id), making it easy to trace issues without additional database writes.
+
+```javascript
+// Example of DLQ Processor updating conversation status
+exports.handleDLQ = async (event) => {
+  for (const record of event.Records) {
+    try {
+      // Parse original message from DLQ
+      const originalMessage = JSON.parse(record.body);
+      const originalBody = JSON.parse(originalMessage.body);
+      
+      // Extract key information from the original message
+      const { frontend_payload, channel_config } = originalBody;
+      const { company_data, recipient_data, request_data } = frontend_payload;
+      
+      // Generate the same conversation ID that was used
+      const conversationId = generateConversationId(company_data, request_data, channel_config);
+      
+      // Get the conversation record
+      const conversation = await getConversation(recipient_data, conversationId);
+      
+      // Update status to failed
+      await updateConversationStatus(conversation, 'failed');
+      
+      // Log detailed error information to CloudWatch for troubleshooting
+      console.log('Updated conversation status to failed', {
+        conversation_id: conversationId,
+        request_id: request_data.request_id,
+        original_message: originalBody
+      });
+    } catch (error) {
+      console.error('Error processing DLQ message', error);
+    }
+  }
+};
+```
 
 ## Access Patterns and Indexes
 

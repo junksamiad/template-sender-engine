@@ -267,44 +267,257 @@ exports.handler = async (event) => {
 
 ### 3.6 Conversation Status Tracking Lifecycle
 
-A core feature of the WhatsApp Processing Engine is the detailed tracking of conversation states throughout the processing lifecycle. This hybrid approach creates and updates conversation records at key milestones, providing complete visibility into the processing pipeline and enabling recovery capabilities.
+A core feature of the WhatsApp Processing Engine is the tracking of conversation states throughout the processing lifecycle. This implementation uses a simplified approach that focuses on key status transitions to minimize database writes while maintaining clear visibility into the conversation state.
 
 #### 3.6.1 Conversation Status States
 
-The conversation_status field will track the following states:
+The conversation_status field will track the following essential states:
 
-1. **received**: Initial state when message is first retrieved from the queue
-2. **processing**: OpenAI processing has begun
-3. **ai_completed**: OpenAI processing completed successfully
-4. **delivery_initiated**: Message sent to Twilio for delivery
-5. **delivered**: Message successfully delivered to recipient
-6. **failed_processing**: Failed during OpenAI processing
-7. **failed_delivery**: Failed during Twilio delivery
-8. **recovery_pending**: Marked for manual review and potential recovery
-9. **completed**: Entire conversation cycle completed successfully
+1. **processing**: Initial state when conversation record is created, indicating the message is being processed
+2. **initial_message_sent**: Final success state, set when the message has been successfully delivered through Twilio
+3. **failed**: Error state, set only when message processing has failed after exhausting retry attempts
 
 #### 3.6.2 Status Transition Points
 
 | Processing Stage | Status Update | Timing |
 |------------------|---------------|--------|
-| Message Consumption | received | Immediately after retrieving from SQS and before any processing |
-| OpenAI Processing Start | processing | Before making OpenAI API call |
-| OpenAI Processing Complete | ai_completed | After successful OpenAI response |
-| Twilio Delivery Start | delivery_initiated | Before making Twilio API call |
-| Twilio Delivery Complete | delivered | After successful Twilio delivery confirmation |
-| OpenAI Processing Error | failed_processing | When OpenAI processing fails |
-| Twilio Delivery Error | failed_delivery | When Twilio delivery fails |
-| SQS Max Retry Exceeded | recovery_pending | When message is moved to DLQ |
-| Complete Success | completed | After all steps completed successfully |
+| Record Creation | processing | When conversation record is first created in DynamoDB |
+| Successful Delivery | initial_message_sent | After Twilio confirms successful message delivery |
+| Maximum Retries Exceeded | failed | When message lands on DLQ after exhausting retry attempts |
 
-#### 3.6.3 Recovery Process
+This streamlined approach:
+- Minimizes writes to DynamoDB (only at creation and completion/failure)
+- Provides clear visibility into the current state of each conversation
+- Leverages the SQS retry and DLQ mechanisms for handling transient errors
+- Works alongside CloudWatch logging and monitoring for comprehensive observability
 
-For conversations that reach failed states:
-1. DLQ dashboard alerts operations team
-2. Team reviews the conversation record and error details
-3. Based on failure point, conversation can be reprocessed from last successful state
-4. Manual intervention may be required for specific error types
-5. Status is updated to reflect recovery attempt
+#### 3.6.3 Error Tracking
+
+When a message fails processing after exhausting retry attempts, it will:
+
+1. Land in the WhatsApp DLQ
+2. Trigger a CloudWatch alarm based on DLQ message count
+3. Be processed by a DLQ handler function that updates the conversation status to "failed"
+4. Include detailed error information in the conversation record
+
+The error information stored will include:
+- Error message describing what went wrong
+- Component that failed (OpenAI, Twilio, or processing engine)
+- Timestamp of the failure
+- Retry count that was reached
+
+#### 3.6.4 Implementation Example
+
+```javascript
+// Main WhatsApp Processing Lambda
+exports.handler = async (event) => {
+  // Get the SQS message
+  const message = event.Records[0];
+  const receiptHandle = message.receiptHandle;
+  const messageBody = JSON.parse(message.body);
+  
+  // Set up heartbeat timer
+  const heartbeatInterval = setupHeartbeat(receiptHandle);
+  
+  try {
+    // 1. Extract necessary data from context object
+    const { frontend_payload, channel_config, ai_config } = messageBody;
+    const { company_data, recipient_data, project_data, request_data } = frontend_payload;
+    
+    // 2. Generate conversation ID based on the channel method
+    const conversationId = generateChannelSpecificConversationId(
+      company_data.company_id,
+      company_data.project_id,
+      request_data.request_id,
+      channel_config.whatsapp.company_whatsapp_number
+    );
+    
+    // 3. Create conversation record with initial "processing" status
+    const conversation = await createConversationRecord({
+      recipient_tel: recipient_data.recipient_tel,
+      conversation_id: conversationId,
+      company_id: company_data.company_id,
+      project_id: company_data.project_id,
+      channel_method: 'whatsapp',
+      company_phone_number: channel_config.whatsapp.company_whatsapp_number,
+      request_id: request_data.request_id,
+      credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
+      recipient_data,
+      initial_status: 'processing'
+    });
+    
+    console.log('Conversation record created', { 
+      conversation_id: conversation.conversation_id,
+      status: 'processing',
+      request_id: request_data.request_id
+    });
+    
+    // 4. Get API credentials from Secrets Manager
+    const credentials = await getCredentials(channel_config.whatsapp.whatsapp_credentials_id, ai_config);
+    
+    // 5. Initialize OpenAI and Twilio clients
+    const openai = initializeOpenAI(credentials.openaiApiKey);
+    const twilioClient = initializeTwilio(credentials.twilioAccountSid, credentials.twilioAuthToken);
+    
+    // 6. Process with OpenAI
+    const aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config);
+    
+    // 7. Send via Twilio
+    const deliveryResult = await sendViaTwilio(twilioClient, recipient_data, aiResponse, channel_config.whatsapp);
+    
+    // 8. Update status to "initial_message_sent" after successful delivery
+    await updateConversationStatus(conversation, 'initial_message_sent');
+    
+    // 9. Update conversation with full results
+    await updateConversationData(conversation, aiResponse, deliveryResult);
+    
+    // 10. Clean up and delete message
+    clearInterval(heartbeatInterval);
+    await deleteMessage(receiptHandle);
+    
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: 'Message processed successfully',
+        conversation_id: conversation.conversation_id
+      })
+    };
+  } catch (error) {
+    // Clean up heartbeat timer
+    clearInterval(heartbeatInterval);
+    
+    // Log detailed error information - this will appear in CloudWatch Logs
+    console.error('Processing error:', {
+      error_message: error.message,
+      error_type: error.name,
+      error_stack: error.stack,
+      request_id: messageBody?.frontend_payload?.request_data?.request_id,
+      component: determineFailureComponent(error)
+    });
+    
+    // No status update here - will be handled by DLQ processor if max retries exceeded
+    
+    // Rethrow to trigger SQS retry mechanism
+    throw error;
+  }
+};
+
+// Helper function to determine which component failed
+function determineFailureComponent(error) {
+  if (error.message.includes('OpenAI')) return 'openai';
+  if (error.message.includes('Twilio')) return 'twilio';
+  return 'processing_engine';
+}
+
+// DLQ Handler Lambda (separate function)
+exports.handleDLQ = async (event) => {
+  for (const record of event.Records) {
+    try {
+      const originalMessage = JSON.parse(record.body);
+      const originalBody = JSON.parse(originalMessage.body);
+      
+      // Extract key information from the original message
+      const { frontend_payload, channel_config } = originalBody;
+      const { company_data, recipient_data, request_data } = frontend_payload;
+      
+      // Generate the same conversation ID 
+      const conversationId = generateChannelSpecificConversationId(
+        company_data.company_id,
+        company_data.project_id,
+        request_data.request_id,
+        channel_config.whatsapp.company_whatsapp_number
+      );
+      
+      // Look up the conversation in DynamoDB
+      const conversation = await getConversationRecord(
+        recipient_data.recipient_tel, 
+        conversationId
+      );
+      
+      // Update status to failed
+      await updateConversationStatus(conversation, 'failed', {
+        error_message: "Message processing failed after maximum retry attempts",
+        component: "unknown" // We don't know exactly which component failed from DLQ
+      });
+      
+      console.log('Updated conversation status to failed', {
+        conversation_id: conversationId,
+        request_id: request_data.request_id
+      });
+      
+    } catch (error) {
+      console.error('Error processing DLQ message', error);
+      // Continue with other records even if one fails
+    }
+  }
+};
+
+// Update conversation status with appropriate timestamps
+async function updateConversationStatus(conversation, status, errorDetails = null) {
+  const now = new Date().toISOString();
+  const updates = {
+    processing_metadata: {
+      ...conversation.processing_metadata,
+      conversation_status: status,
+      last_status_change: now
+    },
+    updated_at: now
+  };
+  
+  // Add status-specific timestamp
+  switch (status) {
+    case 'initial_message_sent':
+      updates.processing_metadata.delivery_completed_at = now;
+      break;
+    case 'failed':
+      updates.processing_metadata.failed_at = now;
+      break;
+  }
+  
+  // Add error details if provided
+  if (errorDetails) {
+    updates.processing_metadata.error_details = {
+      error_message: errorDetails.error_message,
+      component: errorDetails.component,
+      error_timestamp: now
+    };
+    // Increment retry count for failure states
+    updates.processing_metadata.retry_count = 3; // Reached maximum retries
+  }
+  
+  // Update in DynamoDB
+  await dynamoDB.update({
+    TableName: process.env.CONVERSATION_TABLE_NAME,
+    Key: {
+      recipient_tel: conversation.recipient_tel,
+      conversation_id: conversation.conversation_id
+    },
+    UpdateExpression: 'SET processing_metadata = :metadata, updated_at = :updated',
+    ExpressionAttributeValues: {
+      ':metadata': updates.processing_metadata,
+      ':updated': updates.updated_at
+    }
+  }).promise();
+  
+  console.log(`Conversation status updated to ${status}`, {
+    conversation_id: conversation.conversation_id,
+    status,
+    timestamp: now
+  });
+  
+  return conversation;
+}
+
+#### 3.6.5 CloudWatch Integration
+
+This status tracking approach works alongside CloudWatch monitoring to provide comprehensive visibility:
+
+1. **CloudWatch Logs**: Detailed error information is logged when exceptions occur
+2. **CloudWatch Metrics**: Lambda and SQS metrics show overall system health
+3. **CloudWatch Alarms**: Alerts triggered when messages land in DLQ
+4. **CloudWatch Dashboard**: Visualization of conversation status counts and error rates
+
+Together, the DynamoDB status tracking and CloudWatch monitoring provide a complete picture of the system's operation with minimal overhead.
 
 ### 3.7 DynamoDB Schema
 
