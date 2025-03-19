@@ -22,8 +22,7 @@ The context object has the following structure:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis",
-      "api_key": "string"
+      "project_id": "cv-analysis"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -184,8 +183,7 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis",
-      "api_key": "api_key_123"
+      "project_id": "cv-analysis"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -246,8 +244,7 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis",
-      "api_key": "api_key_123"
+      "project_id": "cv-analysis"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -308,8 +305,7 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis",
-      "api_key": "api_key_123"
+      "project_id": "cv-analysis"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -372,6 +368,8 @@ The context object contains sensitive information such as API keys and authentic
 3. Lambda functions processing these messages should have appropriate security controls
 4. Logs should be configured to not include sensitive data from the context object
 5. The context object should never be stored in its entirety in persistent storage
+6. **API keys from the frontend payload are not included in the context object. The API key is only used for initial authentication in the Channel Router and then discarded for security best practices**
+7. Only credential references (not actual credentials) are included in the context object, requiring downstream services to retrieve credentials from Secrets Manager as needed
 
 ## Usage by Downstream Services
 

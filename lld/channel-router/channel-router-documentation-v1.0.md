@@ -435,9 +435,18 @@ const contextModule = {
     // Extract channel method to determine which configuration to include
     const channelMethod = payload.request_data.channel_method;
     
+    // Create a deep copy of the payload to avoid mutating the original
+    const sanitizedPayload = JSON.parse(JSON.stringify(payload));
+    
+    // Remove API key from the frontend payload for security reasons
+    // This ensures sensitive credentials aren't passed through the processing pipeline
+    if (sanitizedPayload.company_data && sanitizedPayload.company_data.api_key) {
+      delete sanitizedPayload.company_data.api_key;
+    }
+    
     // Create base context structure
     const context = {
-      frontend_payload: payload,
+      frontend_payload: sanitizedPayload,
       db_payload: {
         company_id: companyData.company_id,
         project_id: companyData.project_id,
