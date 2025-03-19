@@ -42,7 +42,7 @@ The context object has the following structure:
       "initial_request_timestamp": "2023-06-15T14:30:45.123Z"
     }
   },
-  "db_payload": {
+  "wa_company_data_payload": {
     "company_id": "cucumber-recruitment",
     "project_id": "cv-analysis",
     "company_name": "Cucumber Recruitment Ltd",
@@ -98,7 +98,7 @@ Contains the complete, unmodified payload as received from the frontend applicat
 | project_data | Project-specific data that varies by use case |
 | request_data | Request metadata including ID, channel, and timestamp |
 
-### db_payload
+### wa_company_data_payload
 
 Contains essential company and project information retrieved from the DynamoDB database:
 
@@ -202,7 +202,7 @@ Contains metadata about the context object itself:
       "initial_request_timestamp": "2023-06-15T14:30:45.123Z"
     }
   },
-  "db_payload": {
+  "wa_company_data_payload": {
     "company_id": "cucumber-recruitment",
     "project_id": "cv-analysis",
     "company_name": "Cucumber Recruitment Ltd",
@@ -263,7 +263,7 @@ Contains metadata about the context object itself:
       "initial_request_timestamp": "2023-06-15T14:30:45.123Z"
     }
   },
-  "db_payload": {
+  "wa_company_data_payload": {
     "company_id": "cucumber-recruitment",
     "project_id": "cv-analysis",
     "company_name": "Cucumber Recruitment Ltd",
@@ -324,7 +324,7 @@ Contains metadata about the context object itself:
       "initial_request_timestamp": "2023-06-15T14:30:45.123Z"
     }
   },
-  "db_payload": {
+  "wa_company_data_payload": {
     "company_id": "cucumber-recruitment",
     "project_id": "cv-analysis",
     "company_name": "Cucumber Recruitment Ltd",

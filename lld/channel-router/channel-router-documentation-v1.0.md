@@ -268,7 +268,7 @@ The resulting context object has the following structure:
     "project_data": { ... },
     "request_data": { ... }
   },
-  "db_payload": {
+  "wa_company_data_payload": {
     "company_id": "company-123",
     "project_id": "project-456",
     "company_name": "Example Corp",
@@ -447,7 +447,7 @@ const contextModule = {
     // Create base context structure
     const context = {
       frontend_payload: sanitizedPayload,
-      db_payload: {
+      wa_company_data_payload: {
         company_id: companyData.company_id,
         project_id: companyData.project_id,
         company_name: companyData.company_name,

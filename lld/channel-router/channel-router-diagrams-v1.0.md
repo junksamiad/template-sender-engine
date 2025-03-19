@@ -456,7 +456,7 @@ flowchart TD
 classDiagram
     class ContextObject {
         +frontend_payload
-        +db_payload
+        +wa_company_data_payload
         +project_rate_limits
         +channel_config
         +ai_config
