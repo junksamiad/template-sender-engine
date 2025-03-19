@@ -77,10 +77,12 @@ This key structure allows:
     "company_whatsapp_number": "+14155238886"
   },
   "sms": {
-    "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
+    "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+    "company_sms_number": "+14155238887"
   },
   "email": {
-    "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
+    "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+    "company_email": "jobs@cucumber-recruitment.com"
   }
 }
 ```
@@ -90,7 +92,9 @@ This key structure allows:
 | whatsapp | `whatsapp_credentials_id` | Reference to WhatsApp (Twilio) credentials in Secrets Manager |
 | whatsapp | `company_whatsapp_number` | The WhatsApp phone number assigned to this company/project |
 | sms | `sms_credentials_id` | Reference to SMS (Twilio) credentials in Secrets Manager |
+| sms | `company_sms_number` | The SMS phone number assigned to this company/project |
 | email | `email_credentials_id` | Reference to Email (SendGrid) credentials in Secrets Manager |
+| email | `company_email` | The email address assigned to this company/project |
 
 ## Status Values
 
@@ -131,10 +135,12 @@ The `status` field can have the following values:
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
+      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+      "company_sms_number": "+14155238887"
     },
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
+      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+      "company_email": "jobs@cucumber-recruitment.com"
     }
   },
   "created_at": "2023-06-15T14:30:45.123Z",
