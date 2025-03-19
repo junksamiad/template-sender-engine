@@ -33,7 +33,7 @@ This key structure allows:
 | `allowed_channels` | List(String) | Yes | List of channels this project can use | ["whatsapp", "email"] |
 | `rate_limits` | Map | Yes | Rate limiting configuration | See below |
 | `project_status` | String | Yes | Current status of the project | "active" |
-| `openai_config` | Map | No | OpenAI-specific configuration | See below |
+| `ai_config` | Map | No | OpenAI-specific configuration | See below |
 | `channel_config` | Map | No | Channel-specific configurations | See below |
 | `created_at` | String | Yes | ISO 8601 timestamp of creation | "2023-06-15T14:30:45.123Z" |
 | `updated_at` | String | Yes | ISO 8601 timestamp of last update | "2023-06-15T14:30:45.123Z" |
@@ -53,7 +53,7 @@ This key structure allows:
 > **Note: Current Implementation Status**
 > While these rate limits are defined in the schema and included in the context object, they are **not currently enforced** in the Channel Router implementation. The system currently relies only on the API Gateway's global rate limits. Per-client rate limiting is planned for future implementation.
 
-### openai_config
+### ai_config
 ```json
 {
   "assistant_id_template_sender": "asst_Ds59ylP35Pn84pasJQVglC2Q",
@@ -124,7 +124,7 @@ The `project_status` field can have the following values:
     "max_message_length": 4096
   },
   "project_status": "active",
-  "openai_config": {
+  "ai_config": {
     "assistant_id_template_sender": "asst_Ds59ylP35Pn84pasJQVglC2Q",
     "assistant_id_replies": "asst_Ds59ylP35Pn84pesJQVglC2Q",
     "assistant_id_3": "",

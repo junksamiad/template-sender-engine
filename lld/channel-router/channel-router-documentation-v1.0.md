@@ -472,13 +472,13 @@ const contextModule = {
     }
     
     // Add AI configuration (only the assistant IDs, not the API key)
-    if (companyData.openai_config) {
+    if (companyData.ai_config) {
       context.ai_config = {
-        assistant_id_template_sender: companyData.openai_config.assistant_id_template_sender,
-        assistant_id_replies: companyData.openai_config.assistant_id_replies,
-        assistant_id_3: companyData.openai_config.assistant_id_3 || "",
-        assistant_id_4: companyData.openai_config.assistant_id_4 || "",
-        assistant_id_5: companyData.openai_config.assistant_id_5 || ""
+        assistant_id_template_sender: companyData.ai_config.assistant_id_template_sender,
+        assistant_id_replies: companyData.ai_config.assistant_id_replies,
+        assistant_id_3: companyData.ai_config.assistant_id_3 || "",
+        assistant_id_4: companyData.ai_config.assistant_id_4 || "",
+        assistant_id_5: companyData.ai_config.assistant_id_5 || ""
       };
     }
     
