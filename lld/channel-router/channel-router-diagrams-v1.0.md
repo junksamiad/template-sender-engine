@@ -499,10 +499,12 @@ classDiagram
     
     class SMSConfig {
         +sms_credentials_id
+        +company_sms_number
     }
     
     class EmailConfig {
         +email_credentials_id
+        +company_email
     }
     
     class AIConfig {
