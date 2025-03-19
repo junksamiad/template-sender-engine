@@ -220,3 +220,28 @@ The primary access patterns supported:
 5. **Message-ID Lookups** (for Email):
    - Find conversation by email Message-ID for threading
    - Key: `message_id` (partition), no sort key 
+
+### Messages Array Structure
+
+The `messages` array uses a flat structure to store all conversation interactions chronologically:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `entry_id` | String (UUID) | Unique identifier for each message in the conversation |
+| `message_timestamp` | String (ISO datetime) | When the message was sent or received |
+| `role` | String | Who sent the message: "user" or "assistant" |
+| `content` | String | The actual message content |
+| `channel_message_id` | String | ID returned by delivery service (Twilio/SendGrid) |
+
+Example message entry:
+```json
+{
+  "entry_id": "550e8400-e29b-41d4-a716-446655440000",
+  "message_timestamp": "2023-05-01T12:34:56Z",
+  "role": "assistant",
+  "content": "Hello! How can I assist you today?",
+  "channel_message_id": "SM123456789"
+}
+```
+
+When retrieving the conversation history, messages can be ordered by `message_timestamp` to maintain chronological order. The flat array structure simplifies processing for AI context windows and makes it straightforward to append new messages to the conversation. 
