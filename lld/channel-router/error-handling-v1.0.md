@@ -116,7 +116,7 @@ sequenceDiagram
 | Authentication failure | 401 | UNAUTHORIZED | "Invalid or missing API key" | Verify API key with administrator |
 | Project not found | 404 | PROJECT_NOT_FOUND | "Company or project not found" | Verify company_id and project_id values |
 | Channel not allowed | 403 | CHANNEL_NOT_ALLOWED | "Channel '{method}' is not allowed for this project" | Use only allowed channels for the project |
-| Account suspended | 403 | ACCOUNT_SUSPENDED | "Account is suspended" | Contact administrator to resolve account issues |
+| Project inactive | 403 | PROJECT_INACTIVE | "Project is not active. Current status: {status}" | Contact administrator to resolve project status issues |
 
 ### 2.3 Rate Limiting and Resource Errors
 
