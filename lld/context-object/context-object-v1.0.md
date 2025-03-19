@@ -29,7 +29,8 @@ The context object has the following structure:
       "recipient_first_name": "John",
       "recipient_last_name": "Doe",
       "recipient_tel": "+447700900123",
-      "recipient_email": "john.doe@example.com"
+      "recipient_email": "john.doe@example.com",
+      "comms_consent": true
     },
     "project_data": {
       "job_title": "Software Engineer",
@@ -190,7 +191,8 @@ Contains metadata about the context object itself:
       "recipient_first_name": "John",
       "recipient_last_name": "Doe",
       "recipient_tel": "+447700900123",
-      "recipient_email": "john.doe@example.com"
+      "recipient_email": "john.doe@example.com",
+      "comms_consent": true
     },
     "project_data": {
       "job_title": "Software Engineer",
@@ -251,7 +253,8 @@ Contains metadata about the context object itself:
       "recipient_first_name": "John",
       "recipient_last_name": "Doe",
       "recipient_tel": "+447700900123",
-      "recipient_email": "john.doe@example.com"
+      "recipient_email": "john.doe@example.com",
+      "comms_consent": true
     },
     "project_data": {
       "job_title": "Software Engineer",
@@ -312,7 +315,8 @@ Contains metadata about the context object itself:
       "recipient_first_name": "John",
       "recipient_last_name": "Doe",
       "recipient_tel": "+447700900123",
-      "recipient_email": "john.doe@example.com"
+      "recipient_email": "john.doe@example.com",
+      "comms_consent": true
     },
     "project_data": {
       "job_title": "Software Engineer",

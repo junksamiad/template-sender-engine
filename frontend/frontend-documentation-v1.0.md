@@ -31,7 +31,8 @@ All frontends must send a payload with the following structure:
     "recipient_first_name": "string",
     "recipient_last_name": "string",
     "recipient_tel": "string",
-    "recipient_email": "string"
+    "recipient_email": "string",
+    "comms_consent": boolean
   },
   "project_data": {
     // Varies by use case
@@ -57,6 +58,12 @@ All frontends must send a payload with the following structure:
   - Audit trail and compliance
   - Performance monitoring
   - Replay attack prevention
+
+- **comms_consent**: Boolean value indicating whether the recipient has given consent to receive communications. This is used for:
+  - Regulatory compliance (GDPR, CCPA, etc.)
+  - Tracking explicit opt-in status
+  - Ensuring ethical communication practices
+  - Required for all communication channels
 
 ### 2.3 API Communication
 
@@ -254,7 +261,8 @@ The Cucumber CV Analysis frontend is designed for recruitment agencies to facili
     "recipient_first_name": "John",
     "recipient_last_name": "Smith",
     "recipient_tel": "+447700900123",
-    "recipient_email": "john.smith@example.com"
+    "recipient_email": "john.smith@example.com",
+    "comms_consent": true
   },
   "project_data": {
     "analysisEngineID": "analysis_1234567890_abc123def",
