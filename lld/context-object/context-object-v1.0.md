@@ -148,7 +148,9 @@ Contains channel-specific configuration based on the requested channel method:
 | whatsapp | `whatsapp_credentials_id` | Reference to WhatsApp (Twilio) credentials in Secrets Manager |
 | whatsapp | `company_whatsapp_number` | The WhatsApp phone number assigned to this company/project |
 | sms | `sms_credentials_id` | Reference to SMS (Twilio) credentials in Secrets Manager |
+| sms | `company_sms_number` | The SMS phone number assigned to this company/project |
 | email | `email_credentials_id` | Reference to Email (SendGrid) credentials in Secrets Manager |
+| email | `company_email` | The email address assigned to this company/project |
 
 ### ai_config
 
@@ -277,7 +279,8 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
+      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+      "company_email": "jobs@cucumber-recruitment.com"
     }
   },
   "ai_config": {
@@ -337,7 +340,8 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
+      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+      "company_sms_number": "+14155238887"
     }
   },
   "ai_config": {
