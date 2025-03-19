@@ -126,7 +126,7 @@ The router implements the following logic flow:
    - Retrieve the API key reference from DynamoDB
    - Fetch the actual API key from AWS Secrets Manager
    - Compare the provided key with the stored key
-   - Validate additional constraints (allowed channels, rate limits, status)
+   - Validate additional constraints (allowed channels, rate limits, project_status)
 
 3. **Extract Channel Method**: Get the channel_method from request_data
 
@@ -155,6 +155,8 @@ The router implements the following logic flow:
 | Missing recipient_tel for WhatsApp | 400 | MISSING_RECIPIENT_TEL | "WhatsApp channel requires recipient_tel" |
 | Missing recipient_email for Email | 400 | MISSING_RECIPIENT_EMAIL | "Email channel requires recipient_email" |
 | Payload too large | 400 | PAYLOAD_TOO_LARGE | "Payload size exceeds maximum allowed (100KB)" |
+| Project not active | 403 | PROJECT_INACTIVE | "Project is not active. Current status: {status}" |
+| Channel not allowed | 403 | CHANNEL_NOT_ALLOWED | "Channel method '{method}' is not allowed for this project" |
 | Authentication failure | 401 | UNAUTHORIZED | "Invalid or missing API key" |
 | Rate limit exceeded | 429 | RATE_LIMIT_EXCEEDED | "Rate limit exceeded. Try again later." |
 | Queue service unavailable | 503 | QUEUE_UNAVAILABLE | "Message queue service is currently unavailable" |
@@ -527,6 +529,24 @@ function formatSuccessResponse(requestId) {
 function formatErrorResponse(error, requestId) {
   // Error response formatting
   // Map different error types to appropriate status codes and messages
+}
+
+// Function to validate project constraints
+function validateConstraints(companyData, payload) {
+  const channelMethod = payload.request_data.channel_method;
+  
+  // Check if project is active
+  if (companyData.project_status !== 'active') {
+    throw new Error(`Project is not active. Current status: ${companyData.project_status}`);
+  }
+  
+  // Check if requested channel is in allowed channels
+  if (!companyData.allowed_channels.includes(channelMethod)) {
+    throw new Error(`Channel method ${channelMethod} is not allowed for this project`);
+  }
+  
+  // Note: Rate limits from companyData.rate_limits are not currently enforced
+  // They are included in the context object for future implementation
 }
 ```
 

@@ -221,7 +221,7 @@ flowchart TD
         KEY_REF["API Key Reference"]
         CHANNELS["Allowed Channels"]
         RATE["Rate Limits"]
-        STATUS["Account Status"]
+        STATUS["Project Status"]
     end
     
     subgraph "Secrets Manager"
@@ -233,7 +233,7 @@ flowchart TD
     subgraph "Validation Checks"
         CHANNEL_CHECK["Channel Allowed Check"]
         RATE_CHECK["Rate Limit Check"]
-        STATUS_CHECK["Account Status Check"]
+        STATUS_CHECK["Project Status Check"]
     end
     
     subgraph "Result"
