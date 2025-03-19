@@ -44,17 +44,30 @@ The WhatsApp Processing Engine is responsible for:
 The WhatsApp Processing Engine sits between:
 - **Upstream**: Channel Router (via WhatsApp SQS queue)
 - **Downstream**: OpenAI API and Twilio WhatsApp API
-- **Persistence**: DynamoDB for conversation records and AWS Secrets Manager for credentials
+- **Persistence**: DynamoDB for conversation record management
+- **Security**: AWS Secrets Manager for API credentials (accessed as needed)
 
 ```
-                                     ┌─► DynamoDB (Conversations) ─┐
-                                     │                             │
-Channel Router → WhatsApp SQS Queue → WhatsApp Processing Engine → OpenAI API → Twilio API → End User
-                                     │                             │
-                                     └─► AWS Secrets Manager ──────┘
+                                   (1)                 (3)                  (5)
+                                     ┌─► DynamoDB ◄────┐                    │
+                                     │  (Conversations) │                    │
+                                     │                  │                    ▼
+Channel Router → WhatsApp SQS Queue → WhatsApp Processing Engine ────► OpenAI API ────► Twilio API → End User
+                                     │          │        ▲                   ▲
+                                     │          │        │                   │
+                                     │          └───────(2)───────┐          │
+                                     │                            ▼          │
+                                     └─────────────────► AWS Secrets Manager(4)
 ```
 
-The engine first creates/updates conversation records in DynamoDB, then retrieves credentials from Secrets Manager, processes the message through OpenAI, and finally delivers responses via Twilio.
+Process flow:
+1. Create conversation record in DynamoDB with status "received"
+2. Update conversation status to "processing"
+3. Update conversation with OpenAI processing results
+4. Retrieve API credentials from Secrets Manager when needed:
+   - For OpenAI API access before AI processing
+   - For Twilio API access before message delivery
+5. Update conversation with final status after delivery
 
 ### 2.3 Technical Implementation
 
