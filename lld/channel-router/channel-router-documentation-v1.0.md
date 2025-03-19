@@ -288,10 +288,12 @@ The resulting context object has the following structure:
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/company-123/project-456/sms-credentials"
+      "sms_credentials_id": "twilio/company-123/project-456/sms-credentials",
+      "company_sms_number": "+14155238887"
     },
     "email": {
-      "email_credentials_id": "sendgrid/company-123/project-456/email-credentials"
+      "email_credentials_id": "sendgrid/company-123/project-456/email-credentials",
+      "company_email": "jobs@example.com"
     }
   },
   "ai_config": {
