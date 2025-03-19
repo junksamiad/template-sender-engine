@@ -75,12 +75,11 @@ Each item in the `messages` array contains:
 
 | Field | Source | Notes |
 |-------|--------|-------|
-| `message_id` | Generated UUID | Unique ID for each message |
-| `direction` | Set by Processing Engine | "inbound" or "outbound" |
-| `content` | User message or AI response | The actual message content |
-| `timestamp` | Generated timestamp | When message was sent/received |
-| `status` | Set by Processing Engine | Message delivery status |
-| `channel_message_id` | From Twilio/SendGrid response | External service message ID |
+| `entry_id` | String (UUID) | Unique identifier for each message in the conversation |
+| `message_timestamp` | String (ISO datetime) | When the message was sent or received |
+| `role` | String | Who sent the message: "user" or "assistant" |
+| `content` | String | The actual message content |
+| `channel_message_id` | String | ID returned by delivery service (Twilio/SendGrid) |
 | `metadata.channel_specific_fields` | From external service | Channel-specific metadata |
 
 ### Timestamps
@@ -231,7 +230,6 @@ The `messages` array uses a flat structure to store all conversation interaction
 | `message_timestamp` | String (ISO datetime) | When the message was sent or received |
 | `role` | String | Who sent the message: "user" or "assistant" |
 | `content` | String | The actual message content |
-| `channel_message_id` | String | ID returned by delivery service (Twilio/SendGrid) |
 
 Example message entry:
 ```json
@@ -240,7 +238,6 @@ Example message entry:
   "message_timestamp": "2023-05-01T12:34:56Z",
   "role": "assistant",
   "content": "Hello! How can I assist you today?",
-  "channel_message_id": "SM123456789"
 }
 ```
 
