@@ -32,9 +32,9 @@ The WhatsApp Processing Engine is responsible for:
 
 - Consuming messages from the WhatsApp SQS queue
 - Implementing the heartbeat pattern for long-running operations
-- Looking up company configuration from DynamoDB
 - Creating and managing conversations in DynamoDB
-- Interacting with the OpenAI Assistants API
+- Retrieving credentials from AWS Secrets Manager using references provided in the context object
+- Processing messages using the OpenAI Assistants API
 - Delivering messages to end users via Twilio
 - Handling failures and retries appropriately
 - Providing detailed logging and monitoring
@@ -55,7 +55,7 @@ The WhatsApp Processing Engine will be implemented as:
 
 - **Lambda Function**: Triggered by messages in the WhatsApp SQS queue
 - **SQS Event Source**: Configured with batch size 1 for reliable processing
-- **DynamoDB Access**: For company configuration and conversation management
+- **DynamoDB Access**: For conversation record creation and management
 - **OpenAI Integration**: For AI-powered message processing
 - **Twilio Integration**: For WhatsApp message delivery
 - **Heartbeat Pattern**: For extending visibility timeout during long-running operations
@@ -824,8 +824,9 @@ export class WhatsAppEngineStack extends cdk.Stack {
 
 3. **Key Events to Log**:
    - Message received from SQS
-   - Company configuration retrieved
+   - Context object parsed
    - Conversation created/updated
+   - Secrets retrieved from AWS Secrets Manager
    - OpenAI request/response
    - Twilio request/response
    - Visibility timeout extensions
