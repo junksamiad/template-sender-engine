@@ -66,42 +66,85 @@ The WhatsApp Processing Engine will be implemented as:
 
 ### 3.1 Processing Flow
 
-1. **Message Consumption**:
+1. **SQS Message Consumption**:
    - Lambda is triggered by a new message in the WhatsApp SQS queue
    - Message becomes invisible for the configured visibility timeout (600s)
    - Only one message is processed at a time (batch size: 1)
+   - Lambda immediately sets up the heartbeat pattern to extend visibility timeout every 5 minutes
 
-2. **Heartbeat Setup**:
-   - Immediately set up a heartbeat timer to extend visibility timeout
-   - Run every 300 seconds (5 minutes)
-   - Extend visibility by 600 seconds (10 minutes) each time
-   - Ensures message doesn't become visible to other consumers during processing
+2. **Context Object Parsing**:
+   - Lambda parses the context object which contains:
+     - `frontend_payload`: Original request from the frontend
+     - `db_payload`: Company/project data from DynamoDB 
+     - `channel_config`: Channel-specific configurations
+     - `ai_config`: OpenAI assistant configurations
+     - `metadata`: Additional context information including:
+        - `context_creation_timestamp`: When the context object was created
+        - `router_version`: Version of the Channel Router that created the context
+        - `request_id`: Same as the request_id in the frontend_payload (for easy access)
+     - `project_rate_limits`: Rate limiting configuration for the project
 
-3. **Company Configuration Lookup**:
-   - Extract company_id and project_id from the message
-   - Query DynamoDB for company configuration
-   - Retrieve OpenAI and Twilio configuration settings
+3. **Conversation Record Creation**:
+   - A composite key structure is used for the conversation table
+   - Primary key would be `recipient_tel` (recipient's phone number)
+   - Sort key would be `conversation_id` (which incorporates the company's WhatsApp number)
+   - The `conversation_id` follows this format: `{company_id}#{project_id}#{request_id}#{company_whatsapp_number}`
+   - This structure ensures uniqueness across all conversations while facilitating efficient queries
+   - Including the `project_id` in the conversation_id is critical for companies with multiple projects
+   - The company WhatsApp number is obtained from the `channel_config.whatsapp.company_whatsapp_number` field
 
-4. **Conversation Management**:
-   - Check if conversation exists for the recipient
-   - If new conversation, create a new record in DynamoDB
-   - If existing conversation, update with new message details
+4. **Channel Configuration Access**:
+   - The company's WhatsApp number is stored in the `channel_config.whatsapp.company_whatsapp_number` object in DynamoDB wa_company_data table rather than in Secrets Manager
+   - This makes sense as the phone number itself isn't sensitive credentials (unlike API keys)
+   - Makes it easier to create the conversation record without additional Secrets Manager calls
+   - The actual Twilio credentials are retrieved from AWS Secrets Manager using the reference `channel_config.whatsapp.whatsapp_credentials_id`
 
-5. **OpenAI Processing**:
+5. **Multi-Channel Support in Conversations Table**:
+   - A `channel_method` field is included in every record to indicate the communication channel (whatsapp, sms, email)
+   - Each channel requires a different approach to key structure and conversation identification:
+   
+   **WhatsApp Channel:**
+   - Primary Key: `recipient_tel` (recipient's phone number)
+   - Sort Key: `conversation_id` with format: `{company_id}#{project_id}#{request_id}#{company_whatsapp_number}`
+   - Reply Identification: Match on recipient phone number and company WhatsApp number
+   
+   **SMS Channel:**
+   - Primary Key: `recipient_tel` (recipient's phone number)
+   - Sort Key: `conversation_id` with format: `{company_id}#{project_id}#{request_id}#{company_sms_number}`
+   - Reply Identification: Match on recipient phone number and company SMS number
+   
+   **Email Channel:**
+   - Primary Key: `recipient_email` (recipient's email address)
+   - Sort Key: `conversation_id` with format: `{company_id}#{project_id}#{request_id}#{message_id}`
+   - Where `message_id` would be a unique identifier for the email thread (e.g., Message-ID header)
+   - Reply Identification: Use of email threading headers (References, In-Reply-To) to match to original message
+
+6. **Status Tracking**:
+   - Once the conversation record is created, the status is set to "received"
+   - Status is updated to "processing" before initiating the OpenAI API call
+   - Additional status updates occur throughout processing (ai_completed, delivery_initiated, etc.)
+
+7. **API Credentials Retrieval**:
+   - Get OpenAI and Twilio credentials from AWS Secrets Manager using the credential references from the context object
+
+8. **API Client Initialization**:
+   - Create OpenAI and Twilio API client instances with the retrieved credentials
+
+9. **OpenAI Processing**:
    - Create or retrieve OpenAI thread ID
    - Add user message to the thread
    - Run the assistant on the thread
    - Process the assistant's response
 
-6. **Twilio Delivery**:
-   - Format the response for WhatsApp
-   - Send the message via Twilio API
-   - Handle delivery status and errors
+10. **Twilio Delivery**:
+    - Format the response for WhatsApp
+    - Send the message via Twilio API
+    - Handle delivery status and errors
 
-7. **Completion**:
-   - On success: Delete message from SQS queue
-   - On transient failure: Allow retry via SQS visibility timeout
-   - On permanent failure: Move to Dead Letter Queue after max retries
+11. **Completion**:
+    - On success: Delete message from SQS queue, update status to "completed"
+    - On transient failure: Allow retry via SQS visibility timeout
+    - On permanent failure: Move to Dead Letter Queue after max retries
 
 ### 3.2 Lambda Function Configuration
 
@@ -249,33 +292,31 @@ For conversations that reach failed states:
 
 ```json
 {
-  "phone_number": "string", // Partition key
+  "recipient_tel": "string", // Partition key for WhatsApp/SMS
+  "recipient_email": "string", // Partition key for Email (only one of tel/email will be used)
   "conversation_id": "string", // Sort key
   "company_id": "string",
   "project_id": "string",
-  "channel_method": "whatsapp",
-  "company_channel_id": "string",
-  "account_sid": "string",
+  "channel_method": "whatsapp|sms|email",
+  "company_phone_number": "string", // For WhatsApp/SMS channels
+  "company_email": "string", // For Email channel
+  "message_id": "string", // For Email - unique message identifier for threading
+  "credentials_reference": "string", // Reference to credentials in Secrets Manager
   "thread_id": "string", // OpenAI thread ID
   "request_id": "string", // Original request_id from frontend
-  "user_data": {
-    "first_name": "string",
-    "last_name": "string",
-    "email": "string"
-  },
-  "content_data": {
-    // Project-specific content
-  },
-  "company_data": {
-    // Company-specific settings
-  },
+  "recipient_first_name": "string",
+  "recipient_last_name": "string",
   "messages": [
     {
       "message_id": "string",
       "direction": "inbound|outbound",
       "content": "string",
       "timestamp": "string",
-      "status": "string"
+      "status": "string",
+      "channel_message_id": "string", // Twilio/SendGrid message ID
+      "metadata": {
+        // Channel-specific message metadata
+      }
     }
   ],
   "processing_metadata": {
@@ -293,8 +334,14 @@ For conversations that reach failed states:
       "component": "string" // Which component failed (openai, twilio, etc.)
     }
   },
-  "last_user_message_at": "string",
-  "last_system_message_at": "string",
+  "ai_metadata": {
+    "assistant_id": "string",
+    "model": "string",
+    "completion_tokens": 0,
+    "prompt_tokens": 0,
+    "total_tokens": 0,
+    "processing_time_ms": 0
+  },
   "created_at": "string",
   "updated_at": "string"
 }
@@ -329,36 +376,48 @@ exports.handler = async (event) => {
   
   try {
     // 1. Extract necessary data from context object
-    const { frontend_payload, db_payload, channel_config, ai_config } = messageBody;
+    const { frontend_payload, db_payload, channel_config, ai_config, metadata } = messageBody;
     const { company_data, recipient_data, project_data, request_data } = frontend_payload;
     
-    // 2. Early write: Create or retrieve conversation record with "received" status
-    let conversation = await createOrGetConversation({
-      phone_number: recipient_data.recipient_tel,
+    // 2. Generate conversation ID based on the channel method
+    const conversationId = generateChannelSpecificConversationId(
+      company_data.company_id,
+      company_data.project_id,
+      request_data.request_id,
+      channel_config.whatsapp.company_whatsapp_number
+    );
+    
+    // 3. Early write: Create conversation record with "received" status
+    const conversation = await createConversationRecord({
+      recipient_tel: recipient_data.recipient_tel,
+      conversation_id: conversationId,
       company_id: company_data.company_id,
       project_id: company_data.project_id,
-      recipient_data,
+      channel_method: 'whatsapp',
+      company_phone_number: channel_config.whatsapp.company_whatsapp_number,
       request_id: request_data.request_id,
+      credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
+      recipient_data,
       initial_status: 'received'
     });
     
-    console.log('Conversation record created/retrieved', { 
+    console.log('Conversation record created', { 
       conversation_id: conversation.conversation_id,
       status: 'received',
       request_id: request_data.request_id
     });
     
-    // 3. Get API credentials
-    const credentials = await getCredentials(channel_config, ai_config);
+    // 4. Get API credentials from Secrets Manager
+    const credentials = await getCredentials(channel_config.whatsapp.whatsapp_credentials_id, ai_config);
     
-    // 4. Initialize OpenAI and Twilio clients
+    // 5. Initialize OpenAI and Twilio clients
     const openai = initializeOpenAI(credentials.openaiApiKey);
     const twilioClient = initializeTwilio(credentials.twilioAccountSid, credentials.twilioAuthToken);
     
-    // 5. Update status to "processing" before OpenAI processing
+    // 6. Update status to "processing" before OpenAI processing
     await updateConversationStatus(conversation, 'processing');
     
-    // 6. Process with OpenAI
+    // 7. Process with OpenAI
     let aiResponse;
     try {
       aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config);
@@ -374,10 +433,10 @@ exports.handler = async (event) => {
       throw error; // Rethrow to trigger retry
     }
     
-    // 7. Update status to "delivery_initiated" before Twilio delivery
+    // 8. Update status to "delivery_initiated" before Twilio delivery
     await updateConversationStatus(conversation, 'delivery_initiated');
     
-    // 8. Send via Twilio
+    // 9. Send via Twilio
     let deliveryResult;
     try {
       deliveryResult = await sendViaTwilio(twilioClient, recipient_data, aiResponse, channel_config.whatsapp);
@@ -393,13 +452,13 @@ exports.handler = async (event) => {
       throw error; // Rethrow to trigger retry
     }
     
-    // 9. Final status update to "completed"
+    // 10. Final status update to "completed"
     await updateConversationStatus(conversation, 'completed');
     
-    // 10. Update conversation with full results
+    // 11. Update conversation with full results
     await updateConversationData(conversation, aiResponse, deliveryResult);
     
-    // 11. Clean up and delete message
+    // 12. Clean up and delete message
     clearInterval(heartbeatInterval);
     await deleteMessage(receiptHandle);
     
@@ -423,6 +482,8 @@ exports.handler = async (event) => {
 };
 
 // Helper functions
+
+// Set up heartbeat for extending visibility timeout
 function setupHeartbeat(receiptHandle) {
   return setInterval(async () => {
     try {
@@ -438,38 +499,40 @@ function setupHeartbeat(receiptHandle) {
   }, 300000); // 5 minutes
 }
 
-// Create or retrieve conversation record
-async function createOrGetConversation({ phone_number, company_id, project_id, recipient_data, request_id, initial_status }) {
-  const conversation_id = generateConversationId(phone_number, request_id);
+// Generate conversation ID based on channel
+function generateChannelSpecificConversationId(companyId, projectId, requestId, companyWhatsAppNumber) {
+  // Sanitize phone number by removing any non-alphanumeric characters
+  const sanitizedCompanyNumber = companyWhatsAppNumber.replace(/\D/g, '');
   
-  // Try to get existing conversation
-  try {
-    const existingConversation = await dynamoDB.get({
-      TableName: process.env.CONVERSATION_TABLE_NAME,
-      Key: { phone_number, conversation_id }
-    }).promise();
-    
-    if (existingConversation.Item) {
-      return existingConversation.Item;
-    }
-  } catch (error) {
-    console.error('Error checking for existing conversation:', error);
-  }
-  
-  // Create new conversation record
+  // Combine into a single string with a delimiter
+  return `${companyId}#${projectId}#${requestId}#${sanitizedCompanyNumber}`;
+}
+
+// Create new conversation record
+async function createConversationRecord({
+  recipient_tel,
+  conversation_id,
+  company_id,
+  project_id,
+  channel_method,
+  company_phone_number,
+  request_id,
+  credentials_reference,
+  recipient_data,
+  initial_status
+}) {
   const now = new Date().toISOString();
   const newConversation = {
-    phone_number,
+    recipient_tel,
     conversation_id,
     company_id,
     project_id,
-    channel_method: 'whatsapp',
+    channel_method,
+    company_phone_number,
     request_id,
-    user_data: {
-      first_name: recipient_data.recipient_first_name,
-      last_name: recipient_data.recipient_last_name,
-      email: recipient_data.recipient_email
-    },
+    credentials_reference,
+    recipient_first_name: recipient_data.recipient_first_name,
+    recipient_last_name: recipient_data.recipient_last_name,
     messages: [],
     processing_metadata: {
       conversation_status: initial_status,
@@ -489,7 +552,7 @@ async function createOrGetConversation({ phone_number, company_id, project_id, r
   return newConversation;
 }
 
-// Update conversation status
+// Update conversation status with appropriate timestamps
 async function updateConversationStatus(conversation, status, errorDetails = null) {
   const now = new Date().toISOString();
   const updates = {
@@ -531,7 +594,7 @@ async function updateConversationStatus(conversation, status, errorDetails = nul
   await dynamoDB.update({
     TableName: process.env.CONVERSATION_TABLE_NAME,
     Key: {
-      phone_number: conversation.phone_number,
+      recipient_tel: conversation.recipient_tel,
       conversation_id: conversation.conversation_id
     },
     UpdateExpression: 'SET processing_metadata = :metadata, updated_at = :updated',
