@@ -514,9 +514,7 @@ classDiagram
     }
     
     class Metadata {
-        +context_creation_timestamp
         +router_version
-        +request_id
     }
     
     ContextObject --* FrontendPayload

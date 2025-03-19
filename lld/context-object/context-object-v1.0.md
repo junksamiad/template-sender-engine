@@ -76,9 +76,7 @@ The context object has the following structure:
     "assistant_id_5": ""
   },
   "metadata": {
-    "context_creation_timestamp": "2023-06-15T14:30:45.789Z",
-    "router_version": "1.0.0",
-    "request_id": "550e8400-e29b-41d4-a716-446655440000"
+    "router_version": "1.0.0"
   }
 }
 ```
@@ -166,9 +164,7 @@ Contains metadata about the context object itself:
 
 | Field | Description |
 |-------|-------------|
-| context_creation_timestamp | ISO 8601 timestamp when the context was created |
-| router_version | Version of the Channel Router that created the context |
-| request_id | Same as the request_id in the original payload |
+| `router_version` | Version of the Channel Router that created the context |
 
 ## Channel-Specific Examples
 
@@ -224,9 +220,7 @@ Contains metadata about the context object itself:
     "assistant_id_5": ""
   },
   "metadata": {
-    "context_creation_timestamp": "2023-06-15T14:30:45.789Z",
-    "router_version": "1.0.0",
-    "request_id": "550e8400-e29b-41d4-a716-446655440000"
+    "router_version": "1.0.0"
   }
 }
 ```
@@ -283,9 +277,7 @@ Contains metadata about the context object itself:
     "assistant_id_5": ""
   },
   "metadata": {
-    "context_creation_timestamp": "2023-06-15T14:30:45.789Z",
-    "router_version": "1.0.0",
-    "request_id": "550e8400-e29b-41d4-a716-446655440000"
+    "router_version": "1.0.0"
   }
 }
 ```
@@ -342,9 +334,7 @@ Contains metadata about the context object itself:
     "assistant_id_5": ""
   },
   "metadata": {
-    "context_creation_timestamp": "2023-06-15T14:30:45.789Z",
-    "router_version": "1.0.0",
-    "request_id": "550e8400-e29b-41d4-a716-446655440000"
+    "router_version": "1.0.0"
   }
 }
 ```

@@ -307,9 +307,7 @@ The resulting context object has the following structure:
     "assistant_id_5": ""
   },
   "metadata": {
-    "context_creation_timestamp": "2023-06-15T14:30:45.789Z",
-    "router_version": "1.0.0",
-    "request_id": "550e8400-e29b-41d4-a716-446655440000" // Same as in the original payload
+    "router_version": "1.0.0"
   }
 }
 ```
@@ -460,9 +458,7 @@ const contextModule = {
       channel_config: {},
       ai_config: {},
       metadata: {
-        context_creation_timestamp: new Date().toISOString(),
-        router_version: process.env.VERSION || '1.0.0',
-        request_id: payload.request_data.request_id
+        router_version: process.env.VERSION || '1.0.0'
       }
     };
     
