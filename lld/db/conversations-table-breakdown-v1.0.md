@@ -23,6 +23,8 @@ The table uses a composite key structure that varies by channel:
 | `conversation_id` | Generated | Channel-specific format |
 | `company_id` | `frontend_payload.company_data.company_id` | |
 | `project_id` | `frontend_payload.company_data.project_id` | |
+| `company_name` | `wa_company_data_payload.company_name` | |
+| `project_name` | `wa_company_data_payload.project_name` | |
 | `channel_method` | `frontend_payload.request_data.channel_method` | |
 | `company_whatsapp_number` | `channel_config.whatsapp.company_whatsapp_number` | Only for WhatsApp |
 | `company_sms_number` | `channel_config.sms.company_sms_number` | Only for SMS |
@@ -131,6 +133,8 @@ const whatsappConversation = {
   conversation_id: whatsappConversationId,      // Sort key
   company_id: company_data.company_id,
   project_id: company_data.project_id,
+  company_name: wa_company_data_payload.company_name,
+  project_name: wa_company_data_payload.project_name,
   channel_method: "whatsapp",
   company_whatsapp_number: channel_config.whatsapp.company_whatsapp_number,
   request_id: request_data.request_id,
@@ -168,6 +172,8 @@ const smsConversation = {
   conversation_id: smsConversationId,           // Sort key
   company_id: company_data.company_id,
   project_id: company_data.project_id,
+  company_name: wa_company_data_payload.company_name,
+  project_name: wa_company_data_payload.project_name,
   channel_method: "sms",
   company_sms_number: channel_config.sms.company_sms_number,
   request_id: request_data.request_id,
@@ -208,6 +214,8 @@ const emailConversation = {
   conversation_id: emailConversationId,             // Sort key
   company_id: company_data.company_id,
   project_id: company_data.project_id,
+  company_name: wa_company_data_payload.company_name,
+  project_name: wa_company_data_payload.project_name,
   channel_method: "email",
   company_email: channel_config.email.company_email,
   message_id: messageId,  // For email thread tracking

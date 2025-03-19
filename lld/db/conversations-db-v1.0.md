@@ -39,6 +39,8 @@ This key structure enables:
 | `conversation_id` | String | Yes | Sort key constructed for cross-channel support | "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238886" |
 | `company_id` | String | Yes | Company identifier | "cucumber-recruitment" |
 | `project_id` | String | Yes | Project identifier | "cv-analysis" |
+| `company_name` | String | Yes | Human-readable company name | "Cucumber Recruitment Ltd" |
+| `project_name` | String | Yes | Human-readable project name | "CV Analysis Bot" |
 | `channel_method` | String | Yes | Communication channel | "whatsapp", "sms", or "email" |
 | `request_id` | String | Yes | Original request ID from frontend | "550e8400-e29b-41d4-a716-446655440000" |
 | `credentials_reference` | String | Yes | Reference to credentials in Secrets Manager | "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials" |
