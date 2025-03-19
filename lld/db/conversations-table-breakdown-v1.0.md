@@ -33,6 +33,7 @@ The table uses a composite key structure that varies by channel:
 | `processing_time_ms` | Calculated | Total processing duration |
 | `task_complete` | Set by Processing Engine | Boolean, default is false |
 | `comms_consent` | `frontend_payload.recipient_data.comms_consent` | Boolean, consent for communications |
+| `project_data` | `frontend_payload.project_data` | Project-specific data, schema varies by use case |
 
 ### AI Configuration
 
@@ -142,6 +143,7 @@ const whatsappConversation = {
   processing_time_ms: null,  // Will be populated after full processing
   task_complete: false,  // Default is false
   comms_consent: recipient_data.comms_consent || false,  // Default to false if not provided
+  project_data: frontend_payload.project_data,  // Store complete project data object
   ai_config: {
     assistant_id_template_sender: contextObject.ai_config.assistant_id_template_sender,
     assistant_id_replies: contextObject.ai_config.assistant_id_replies,
@@ -178,6 +180,7 @@ const smsConversation = {
   processing_time_ms: null,  // Will be populated after full processing
   task_complete: false,  // Default is false
   comms_consent: recipient_data.comms_consent || false,  // Default to false if not provided
+  project_data: frontend_payload.project_data,  // Store complete project data object
   ai_config: {
     assistant_id_template_sender: contextObject.ai_config.assistant_id_template_sender,
     assistant_id_replies: contextObject.ai_config.assistant_id_replies,
@@ -218,6 +221,7 @@ const emailConversation = {
   processing_time_ms: null,  // Will be populated after full processing
   task_complete: false,  // Default is false
   comms_consent: recipient_data.comms_consent || false,  // Default to false if not provided
+  project_data: frontend_payload.project_data,  // Store complete project data object
   ai_config: {
     assistant_id_template_sender: contextObject.ai_config.assistant_id_template_sender,
     assistant_id_replies: contextObject.ai_config.assistant_id_replies,
