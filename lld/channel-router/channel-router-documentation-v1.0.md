@@ -175,6 +175,9 @@ The Channel Router logs the following information for each request:
 
 ### 3.5 Rate Limiting & Concurrency
 
+> **Note: Current Implementation Status**
+> While per-client rate limits are defined in the `wa_company_data` table and included in the context object, they are **not currently enforced** in the Channel Router implementation. The system currently relies only on the API Gateway rate limits described below. Per-client rate limiting is planned for future implementation as noted in the Future Enhancements section (9.12).
+
 #### 3.5.1 API Gateway Settings
 
 1. **Rate Limit**: 

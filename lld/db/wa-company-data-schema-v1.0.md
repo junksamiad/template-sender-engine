@@ -50,6 +50,9 @@ This key structure allows:
 }
 ```
 
+> **Note: Current Implementation Status**
+> While these rate limits are defined in the schema and included in the context object, they are **not currently enforced** in the Channel Router implementation. The system currently relies only on the API Gateway's global rate limits. Per-client rate limiting is planned for future implementation.
+
 ### openai_config
 ```json
 {
@@ -85,7 +88,6 @@ This key structure allows:
     "company_email": "jobs@cucumber-recruitment.com"
   }
 }
-```
 
 | Channel | Field | Description |
 |---------|-------|-------------|
