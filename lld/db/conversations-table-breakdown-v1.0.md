@@ -78,11 +78,11 @@ Each item in the `messages` array contains:
 | `message_timestamp` | String (ISO datetime) | When the message was sent or received |
 | `role` | String | Who sent the message: "user" or "assistant" |
 | `content` | String | The actual message content |
-| `prompt_tokens` | From OpenAI response | Token usage metrics, only populated for assistant messages |
-| `completion_tokens` | From OpenAI response | Token usage metrics, only populated for assistant messages |
-| `total_tokens` | From OpenAI response | Token usage metrics, only populated for assistant messages |
+| `ai_prompt_tokens` | From OpenAI response | Token usage metrics, only populated for assistant messages |
+| `ai_completion_tokens` | From OpenAI response | Token usage metrics, only populated for assistant messages |
+| `ai_total_tokens` | From OpenAI response | Token usage metrics, only populated for assistant messages |
 
-The token usage fields (`prompt_tokens`, `completion_tokens`, `total_tokens`) will have null values for user messages, but will be populated for assistant messages. These values are stored in the context object during processing and written to the database after the successful Twilio API call.
+The token usage fields (`ai_prompt_tokens`, `ai_completion_tokens`, `ai_total_tokens`) will have null values for user messages, but will be populated for assistant messages. These values are stored in the context object during processing and written to the database after the successful Twilio API call.
 
 The `messages` array uses a flat structure to store all conversation interactions chronologically:
 
@@ -93,9 +93,9 @@ Example message entry for user:
   "message_timestamp": "2023-05-01T12:34:56Z",
   "role": "user",
   "content": "I need help with my account",
-  "prompt_tokens": null,
-  "completion_tokens": null,
-  "total_tokens": null
+  "ai_prompt_tokens": null,
+  "ai_completion_tokens": null,
+  "ai_total_tokens": null
 }
 ```
 
@@ -106,9 +106,9 @@ Example message entry for assistant:
   "message_timestamp": "2023-05-01T12:35:26Z",
   "role": "assistant",
   "content": "Hello! I'd be happy to help with your account. Could you please provide more details about what you need assistance with?",
-  "prompt_tokens": 24,
-  "completion_tokens": 72,
-  "total_tokens": 96
+  "ai_prompt_tokens": 24,
+  "ai_completion_tokens": 72,
+  "ai_total_tokens": 96
 }
 ```
 
