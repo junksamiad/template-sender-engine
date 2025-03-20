@@ -544,7 +544,39 @@ function validateConstraints(companyData, payload) {
   // Note: Rate limits from companyData.rate_limits are not currently enforced
   // They are included in the context object for future implementation
 }
-```
+
+### 3.6.6 Router Version Management
+
+The `router_version` field included in the context object's metadata section serves as a critical tracking mechanism for identifying which version of the Channel Router processed each request. This information is stored in conversation records for debugging, tracing, and deployment verification purposes.
+
+#### Version Format
+The router version follows semantic versioning (MAJOR.MINOR.PATCH):
+- MAJOR: Significant architectural changes or breaking interface modifications
+- MINOR: Feature additions that maintain backward compatibility
+- PATCH: Bug fixes and minor improvements
+
+#### Implementation Details
+1. **Source of Truth**: The router version is set as an environment variable during deployment:
+   ```
+   VERSION=1.0.0
+   ```
+
+2. **Fallback Mechanism**: If the environment variable is not set, the code defaults to "1.0.0":
+   ```javascript
+   router_version: process.env.VERSION || '1.0.0'
+   ```
+
+3. **Automated Updates**: The CI/CD pipeline automatically updates the VERSION environment variable during deployment based on:
+   - Git tags for production releases
+   - Feature branch naming conventions for development/staging environments
+   - Build timestamps for development builds
+
+4. **Version Increment Guidelines**:
+   - PATCH: Increment for bug fixes or minor optimizations that don't change behavior
+   - MINOR: Increment when adding new features or enhanced capabilities
+   - MAJOR: Increment when making breaking changes to the interface or architecture
+
+All router version changes must be documented in the release notes, and version numbers should never be reused. This approach ensures that every conversation in the system can be traced back to the exact version of the router that processed it, supporting effective debugging and system auditing.
 
 ### 4.2 API Key Security Implementation
 
