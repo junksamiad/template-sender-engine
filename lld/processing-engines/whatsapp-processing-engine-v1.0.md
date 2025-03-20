@@ -271,7 +271,7 @@ A core feature of the WhatsApp Processing Engine is the tracking of conversation
 
 #### 3.6.1 Conversation Status States
 
-The conversation_status field will track the following essential states:
+The `conversation_status` field will track the following essential states:
 
 1. **processing**: Initial state when conversation record is created, indicating the message is being processed
 2. **initial_message_sent**: Final success state, set when the message has been successfully delivered through Twilio
@@ -298,13 +298,9 @@ When a message fails processing after exhausting retry attempts, it will:
 1. Land in the WhatsApp DLQ
 2. Trigger a CloudWatch alarm based on DLQ message count
 3. Be processed by a DLQ handler function that updates the conversation status to "failed"
-4. Include detailed error information in the conversation record
+4. Have detailed error information logged to CloudWatch
 
-The error information stored will include:
-- Error message describing what went wrong
-- Component that failed (OpenAI, Twilio, or processing engine)
-- Timestamp of the failure
-- Retry count that was reached
+Error details are not stored in the DynamoDB record but are instead logged to CloudWatch with appropriate correlation IDs (conversation_id, request_id), making it easy to trace issues without additional database writes.
 
 #### 3.6.4 Implementation Example
 
@@ -321,7 +317,7 @@ exports.handler = async (event) => {
   
   try {
     // 1. Extract necessary data from context object
-    const { frontend_payload, channel_config, ai_config } = messageBody;
+    const { frontend_payload, channel_config, ai_config, metadata } = messageBody;
     const { company_data, recipient_data, project_data, request_data } = frontend_payload;
     
     // 2. Generate conversation ID based on the channel method
@@ -334,16 +330,36 @@ exports.handler = async (event) => {
     
     // 3. Create conversation record with initial "processing" status
     const conversation = await createConversationRecord({
-      recipient_tel: recipient_data.recipient_tel,
-      conversation_id: conversationId,
+      recipient_tel: recipient_data.recipient_tel,  // Partition key
+      conversation_id: conversationId,      // Sort key
       company_id: company_data.company_id,
       project_id: company_data.project_id,
-      channel_method: 'whatsapp',
+      company_name: messageBody.db_payload.company_name,
+      project_name: messageBody.db_payload.project_name,
+      channel_method: "whatsapp",
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
       request_id: request_data.request_id,
-      credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
-      recipient_data,
-      initial_status: 'processing'
+      router_version: metadata.router_version,
+      whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
+      sms_credentials_reference: channel_config.sms.sms_credentials_id,
+      email_credentials_reference: channel_config.email.email_credentials_id,
+      recipient_first_name: recipient_data.recipient_first_name,
+      recipient_last_name: recipient_data.recipient_last_name,
+      conversation_status: "processing",
+      thread_id: null,  // Will be populated after OpenAI processing
+      processing_time_ms: null,  // Will be populated after full processing
+      task_complete: false,
+      comms_consent: recipient_data.comms_consent || false,
+      project_data: frontend_payload.project_data,
+      ai_config: {
+        assistant_id_template_sender: ai_config.assistant_id_template_sender,
+        assistant_id_replies: ai_config.assistant_id_replies,
+        assistant_id_3: ai_config.assistant_id_3 || null,
+        assistant_id_4: ai_config.assistant_id_4 || null,
+        assistant_id_5: ai_config.assistant_id_5 || null
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     });
     
     console.log('Conversation record created', { 
@@ -353,7 +369,10 @@ exports.handler = async (event) => {
     });
     
     // 4. Get API credentials from Secrets Manager
-    const credentials = await getCredentials(channel_config.whatsapp.whatsapp_credentials_id, ai_config);
+    const credentials = await getCredentials(
+      channel_config.whatsapp.whatsapp_credentials_id,
+      ai_config
+    );
     
     // 5. Initialize OpenAI and Twilio clients
     const openai = initializeOpenAI(credentials.openaiApiKey);
@@ -435,10 +454,7 @@ exports.handleDLQ = async (event) => {
       );
       
       // Update status to failed
-      await updateConversationStatus(conversation, 'failed', {
-        error_message: "Message processing failed after maximum retry attempts",
-        component: "unknown" // We don't know exactly which component failed from DLQ
-      });
+      await updateConversationStatus(conversation, 'failed');
       
       console.log('Updated conversation status to failed', {
         conversation_id: conversationId,
@@ -452,38 +468,9 @@ exports.handleDLQ = async (event) => {
   }
 };
 
-// Update conversation status with appropriate timestamps
-async function updateConversationStatus(conversation, status, errorDetails = null) {
+// Update conversation status
+async function updateConversationStatus(conversation, status) {
   const now = new Date().toISOString();
-  const updates = {
-    processing_metadata: {
-      ...conversation.processing_metadata,
-      conversation_status: status,
-      last_status_change: now
-    },
-    updated_at: now
-  };
-  
-  // Add status-specific timestamp
-  switch (status) {
-    case 'initial_message_sent':
-      updates.processing_metadata.delivery_completed_at = now;
-      break;
-    case 'failed':
-      updates.processing_metadata.failed_at = now;
-      break;
-  }
-  
-  // Add error details if provided
-  if (errorDetails) {
-    updates.processing_metadata.error_details = {
-      error_message: errorDetails.error_message,
-      component: errorDetails.component,
-      error_timestamp: now
-    };
-    // Increment retry count for failure states
-    updates.processing_metadata.retry_count = 3; // Reached maximum retries
-  }
   
   // Update in DynamoDB
   await dynamoDB.update({
@@ -492,10 +479,10 @@ async function updateConversationStatus(conversation, status, errorDetails = nul
       recipient_tel: conversation.recipient_tel,
       conversation_id: conversation.conversation_id
     },
-    UpdateExpression: 'SET processing_metadata = :metadata, updated_at = :updated',
+    UpdateExpression: 'SET conversation_status = :status, updated_at = :updated',
     ExpressionAttributeValues: {
-      ':metadata': updates.processing_metadata,
-      ':updated': updates.updated_at
+      ':status': status,
+      ':updated': now
     }
   }).promise();
   
@@ -503,6 +490,52 @@ async function updateConversationStatus(conversation, status, errorDetails = nul
     conversation_id: conversation.conversation_id,
     status,
     timestamp: now
+  });
+  
+  return conversation;
+}
+
+// Main function to update conversation with results after processing
+async function updateConversationData(conversation, aiResponse, deliveryResult) {
+  const now = new Date().toISOString();
+  
+  // Create the message entry
+  const messageEntry = {
+    entry_id: uuidv4(),
+    message_timestamp: now,
+    role: "assistant",
+    content: aiResponse.content,
+    ai_prompt_tokens: aiResponse.usage?.prompt_tokens || null,
+    ai_completion_tokens: aiResponse.usage?.completion_tokens || null,
+    ai_total_tokens: aiResponse.usage?.total_tokens || null
+  };
+  
+  // Calculate processing time
+  const processingStartTime = new Date(conversation.created_at).getTime();
+  const processingEndTime = new Date().getTime();
+  const processingTimeMs = processingEndTime - processingStartTime;
+  
+  // Update the conversation record
+  await dynamoDB.update({
+    TableName: process.env.CONVERSATION_TABLE_NAME,
+    Key: {
+      recipient_tel: conversation.recipient_tel,
+      conversation_id: conversation.conversation_id
+    },
+    UpdateExpression: 'SET messages = list_append(if_not_exists(messages, :empty_list), :new_message), thread_id = :thread_id, processing_time_ms = :processing_time, updated_at = :updated',
+    ExpressionAttributeValues: {
+      ':new_message': [messageEntry],
+      ':empty_list': [],
+      ':thread_id': aiResponse.thread_id,
+      ':processing_time': processingTimeMs,
+      ':updated': now
+    }
+  }).promise();
+  
+  console.log('Conversation updated with AI response and delivery result', {
+    conversation_id: conversation.conversation_id,
+    thread_id: aiResponse.thread_id,
+    processing_time_ms: processingTimeMs
   });
   
   return conversation;
@@ -521,62 +554,54 @@ Together, the DynamoDB status tracking and CloudWatch monitoring provide a compl
 
 ### 3.7 DynamoDB Schema
 
-#### 3.7.1 Conversation Table
+#### 3.7.1 Conversation Table Schema
 
-```json
+```javascript
+// Example of WhatsApp conversation record
 {
-  "recipient_tel": "string", // Partition key for WhatsApp/SMS
-  "recipient_email": "string", // Partition key for Email (only one of tel/email will be used)
-  "conversation_id": "string", // Sort key
-  "company_id": "string",
-  "project_id": "string",
-  "channel_method": "whatsapp|sms|email",
-  "company_phone_number": "string", // For WhatsApp/SMS channels
-  "company_email": "string", // For Email channel
-  "message_id": "string", // For Email - unique message identifier for threading
-  "credentials_reference": "string", // Reference to credentials in Secrets Manager
-  "thread_id": "string", // OpenAI thread ID
-  "request_id": "string", // Original request_id from frontend
-  "recipient_first_name": "string",
-  "recipient_last_name": "string",
-  "messages": [
+  recipient_tel: "+447700900123",  // Partition key
+  conversation_id: "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238886",  // Sort key
+  company_id: "cucumber-recruitment",
+  project_id: "cv-analysis",
+  company_name: "Cucumber Recruitment Ltd",
+  project_name: "CV Analysis Bot",
+  channel_method: "whatsapp",
+  company_phone_number: "+14155238886",
+  request_id: "550e8400-e29b-41d4-a716-446655440000",
+  router_version: "1.0.0",
+  whatsapp_credentials_reference: "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
+  sms_credentials_reference: "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+  email_credentials_reference: "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+  recipient_first_name: "John",
+  recipient_last_name: "Doe",
+  conversation_status: "processing",
+  thread_id: null,  // Will be populated after OpenAI processing
+  processing_time_ms: null,  // Will be populated after full processing
+  task_complete: false,
+  comms_consent: true,
+  project_data: {
+    // Project-specific data
+  },
+  ai_config: {
+    assistant_id_template_sender: "asst_Ds59ylP35Pn84pasJQVglC2Q",
+    assistant_id_replies: "asst_Kw59ylP35Pn84pasJQVglXy7",
+    assistant_id_3: null,
+    assistant_id_4: null,
+    assistant_id_5: null
+  },
+  messages: [
     {
-      "message_id": "string",
-      "direction": "inbound|outbound",
-      "content": "string",
-      "timestamp": "string",
-      "status": "string",
-      "channel_message_id": "string", // Twilio/SendGrid message ID
-      "metadata": {
-        // Channel-specific message metadata
-      }
+      entry_id: "550e8400-e29b-41d4-a716-446655440001",
+      message_timestamp: "2023-05-01T12:35:26Z",
+      role: "assistant",
+      content: "Hello! I'd be happy to help with your account. Could you please provide more details about what you need assistance with?",
+      ai_prompt_tokens: 24,
+      ai_completion_tokens: 72,
+      ai_total_tokens: 96
     }
   ],
-  "processing_metadata": {
-    "conversation_status": "received|processing|ai_completed|delivery_initiated|delivered|failed_processing|failed_delivery|recovery_pending|completed",
-    "processing_started_at": "string",
-    "ai_completed_at": "string",
-    "delivery_initiated_at": "string",
-    "delivery_completed_at": "string",
-    "last_status_change": "string",
-    "retry_count": 0,
-    "error_details": {
-      "error_type": "string",
-      "error_message": "string",
-      "error_timestamp": "string",
-      "component": "string" // Which component failed (openai, twilio, etc.)
-    }
-  },
-  "ai_metadata": {
-    "assistant_id": "string",
-    "model": "string",
-    "completion_tokens": 0,
-    "prompt_tokens": 0,
-    "total_tokens": 0,
-    "processing_time_ms": 0
-  },
-  "created_at": "string",
-  "updated_at": "string"
+  created_at: "2023-06-15T14:30:45.123Z",
+  updated_at: "2023-06-15T14:31:25.789Z"
 }
 ```
 
@@ -591,6 +616,7 @@ Together, the DynamoDB status tracking and CloudWatch monitoring provide a compl
 const AWS = require('aws-sdk');
 const { OpenAI } = require('openai');
 const twilio = require('twilio');
+const { v4: uuidv4 } = require('uuid');
 
 // Initialize AWS services
 const sqs = new AWS.SQS();
@@ -620,78 +646,68 @@ exports.handler = async (event) => {
       channel_config.whatsapp.company_whatsapp_number
     );
     
-    // 3. Early write: Create conversation record with "received" status
+    // 3. Create conversation record with "processing" status
     const conversation = await createConversationRecord({
       recipient_tel: recipient_data.recipient_tel,
       conversation_id: conversationId,
       company_id: company_data.company_id,
       project_id: company_data.project_id,
+      company_name: db_payload.company_name,
+      project_name: db_payload.project_name,
       channel_method: 'whatsapp',
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
       request_id: request_data.request_id,
-      credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
-      recipient_data,
-      initial_status: 'received'
+      router_version: metadata.router_version,
+      whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
+      sms_credentials_reference: channel_config.sms.sms_credentials_id,
+      email_credentials_reference: channel_config.email.email_credentials_id,
+      recipient_first_name: recipient_data.recipient_first_name,
+      recipient_last_name: recipient_data.recipient_last_name,
+      conversation_status: "processing",
+      thread_id: null,
+      processing_time_ms: null,
+      task_complete: false,
+      comms_consent: recipient_data.comms_consent || false,
+      project_data: frontend_payload.project_data,
+      ai_config: {
+        assistant_id_template_sender: ai_config.assistant_id_template_sender,
+        assistant_id_replies: ai_config.assistant_id_replies,
+        assistant_id_3: ai_config.assistant_id_3 || null,
+        assistant_id_4: ai_config.assistant_id_4 || null,
+        assistant_id_5: ai_config.assistant_id_5 || null
+      },
+      messages: []
     });
     
     console.log('Conversation record created', { 
       conversation_id: conversation.conversation_id,
-      status: 'received',
+      status: 'processing',
       request_id: request_data.request_id
     });
     
     // 4. Get API credentials from Secrets Manager
-    const credentials = await getCredentials(channel_config.whatsapp.whatsapp_credentials_id, ai_config);
+    const credentials = await getCredentials(
+      channel_config.whatsapp.whatsapp_credentials_id,
+      ai_config
+    );
     
     // 5. Initialize OpenAI and Twilio clients
     const openai = initializeOpenAI(credentials.openaiApiKey);
     const twilioClient = initializeTwilio(credentials.twilioAccountSid, credentials.twilioAuthToken);
     
-    // 6. Update status to "processing" before OpenAI processing
-    await updateConversationStatus(conversation, 'processing');
+    // 6. Process with OpenAI
+    const aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config);
     
-    // 7. Process with OpenAI
-    let aiResponse;
-    try {
-      aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config);
-      // Update status to "ai_completed" after successful OpenAI processing
-      await updateConversationStatus(conversation, 'ai_completed');
-    } catch (error) {
-      // Update status to "failed_processing" if OpenAI processing fails
-      await updateConversationStatus(conversation, 'failed_processing', {
-        error_type: error.name,
-        error_message: error.message,
-        component: 'openai'
-      });
-      throw error; // Rethrow to trigger retry
-    }
+    // 7. Send via Twilio
+    const deliveryResult = await sendViaTwilio(twilioClient, recipient_data, aiResponse, channel_config.whatsapp);
     
-    // 8. Update status to "delivery_initiated" before Twilio delivery
-    await updateConversationStatus(conversation, 'delivery_initiated');
+    // 8. Update status to "initial_message_sent" after successful delivery
+    await updateConversationStatus(conversation, 'initial_message_sent');
     
-    // 9. Send via Twilio
-    let deliveryResult;
-    try {
-      deliveryResult = await sendViaTwilio(twilioClient, recipient_data, aiResponse, channel_config.whatsapp);
-      // Update status to "delivered" after successful delivery
-      await updateConversationStatus(conversation, 'delivered');
-    } catch (error) {
-      // Update status to "failed_delivery" if Twilio delivery fails
-      await updateConversationStatus(conversation, 'failed_delivery', {
-        error_type: error.name,
-        error_message: error.message,
-        component: 'twilio'
-      });
-      throw error; // Rethrow to trigger retry
-    }
-    
-    // 10. Final status update to "completed"
-    await updateConversationStatus(conversation, 'completed');
-    
-    // 11. Update conversation with full results
+    // 9. Update conversation with full results
     await updateConversationData(conversation, aiResponse, deliveryResult);
     
-    // 12. Clean up and delete message
+    // 10. Clean up and delete message
     clearInterval(heartbeatInterval);
     await deleteMessage(receiptHandle);
     
@@ -742,36 +758,12 @@ function generateChannelSpecificConversationId(companyId, projectId, requestId, 
 }
 
 // Create new conversation record
-async function createConversationRecord({
-  recipient_tel,
-  conversation_id,
-  company_id,
-  project_id,
-  channel_method,
-  company_phone_number,
-  request_id,
-  credentials_reference,
-  recipient_data,
-  initial_status
-}) {
+async function createConversationRecord(conversationData) {
   const now = new Date().toISOString();
+  
+  // Add timestamps
   const newConversation = {
-    recipient_tel,
-    conversation_id,
-    company_id,
-    project_id,
-    channel_method,
-    company_phone_number,
-    request_id,
-    credentials_reference,
-    recipient_first_name: recipient_data.recipient_first_name,
-    recipient_last_name: recipient_data.recipient_last_name,
-    messages: [],
-    processing_metadata: {
-      conversation_status: initial_status,
-      processing_started_at: now,
-      retry_count: 0
-    },
+    ...conversationData,
     created_at: now,
     updated_at: now
   };
@@ -783,71 +775,6 @@ async function createConversationRecord({
   }).promise();
   
   return newConversation;
-}
-
-// Update conversation status with appropriate timestamps
-async function updateConversationStatus(conversation, status, errorDetails = null) {
-  const now = new Date().toISOString();
-  const updates = {
-    processing_metadata: {
-      ...conversation.processing_metadata,
-      conversation_status: status,
-      last_status_change: now
-    },
-    updated_at: now
-  };
-  
-  // Add status-specific timestamp
-  switch (status) {
-    case 'processing':
-      updates.processing_metadata.processing_started_at = now;
-      break;
-    case 'ai_completed':
-      updates.processing_metadata.ai_completed_at = now;
-      break;
-    case 'delivery_initiated':
-      updates.processing_metadata.delivery_initiated_at = now;
-      break;
-    case 'delivered':
-      updates.processing_metadata.delivery_completed_at = now;
-      break;
-  }
-  
-  // Add error details if provided
-  if (errorDetails) {
-    updates.processing_metadata.error_details = {
-      ...errorDetails,
-      error_timestamp: now
-    };
-    // Increment retry count for failure states
-    updates.processing_metadata.retry_count = (conversation.processing_metadata.retry_count || 0) + 1;
-  }
-  
-  // Update in DynamoDB
-  await dynamoDB.update({
-    TableName: process.env.CONVERSATION_TABLE_NAME,
-    Key: {
-      recipient_tel: conversation.recipient_tel,
-      conversation_id: conversation.conversation_id
-    },
-    UpdateExpression: 'SET processing_metadata = :metadata, updated_at = :updated',
-    ExpressionAttributeValues: {
-      ':metadata': updates.processing_metadata,
-      ':updated': updates.updated_at
-    }
-  }).promise();
-  
-  // Update local conversation object
-  conversation.processing_metadata = updates.processing_metadata;
-  conversation.updated_at = updates.updated_at;
-  
-  console.log(`Conversation status updated to ${status}`, {
-    conversation_id: conversation.conversation_id,
-    status,
-    timestamp: now
-  });
-  
-  return conversation;
 }
 
 async function getCredentials(channelConfig, aiConfig) {
