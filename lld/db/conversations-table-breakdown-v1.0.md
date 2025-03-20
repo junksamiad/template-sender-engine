@@ -58,7 +58,9 @@ The table uses a composite key structure that varies by channel:
 
 | Field | Source | Notes |
 |-------|--------|-------|
-| `credentials_reference` | `channel_config.whatsapp.whatsapp_credentials_id`<br>or `channel_config.sms.sms_credentials_id`<br>or `channel_config.email.email_credentials_id` | Channel-specific |
+| `whatsapp_credentials_reference` | `channel_config.whatsapp.whatsapp_credentials_id` | Stored for all records regardless of channel |
+| `sms_credentials_reference` | `channel_config.sms.sms_credentials_id` | Stored for all records regardless of channel |
+| `email_credentials_reference` | `channel_config.email.email_credentials_id` | Stored for all records regardless of channel |
 
 ### Status and Processing Metadata
 
@@ -138,7 +140,9 @@ const whatsappConversation = {
   channel_method: "whatsapp",
   company_whatsapp_number: channel_config.whatsapp.company_whatsapp_number,
   request_id: request_data.request_id,
-  credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
+  whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
+  sms_credentials_reference: channel_config.sms.sms_credentials_id,
+  email_credentials_reference: channel_config.email.email_credentials_id,
   recipient_first_name: recipient_data.recipient_first_name,
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
@@ -177,7 +181,9 @@ const smsConversation = {
   channel_method: "sms",
   company_sms_number: channel_config.sms.company_sms_number,
   request_id: request_data.request_id,
-  credentials_reference: channel_config.sms.sms_credentials_id,
+  whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
+  sms_credentials_reference: channel_config.sms.sms_credentials_id,
+  email_credentials_reference: channel_config.email.email_credentials_id,
   recipient_first_name: recipient_data.recipient_first_name,
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
@@ -220,7 +226,9 @@ const emailConversation = {
   company_email: channel_config.email.company_email,
   message_id: messageId,  // For email thread tracking
   request_id: request_data.request_id,
-  credentials_reference: channel_config.email.email_credentials_id,
+  whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
+  sms_credentials_reference: channel_config.sms.sms_credentials_id,
+  email_credentials_reference: channel_config.email.email_credentials_id,
   recipient_first_name: recipient_data.recipient_first_name,
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
