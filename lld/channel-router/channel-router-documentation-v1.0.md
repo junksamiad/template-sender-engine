@@ -547,36 +547,21 @@ function validateConstraints(companyData, payload) {
 
 ### 3.6.6 Router Version Management
 
-The `router_version` field included in the context object's metadata section serves as a critical tracking mechanism for identifying which version of the Channel Router processed each request. This information is stored in conversation records for debugging, tracing, and deployment verification purposes.
+The `router_version` field included in the context object's metadata section identifies which version of the Channel Router processed each request. This information is stored in conversation records for debugging and tracing purposes.
 
-#### Version Format
-The router version follows semantic versioning (MAJOR.MINOR.PATCH):
-- MAJOR: Significant architectural changes or breaking interface modifications
-- MINOR: Feature additions that maintain backward compatibility
-- PATCH: Bug fixes and minor improvements
+The router version should follow the documentation versioning convention, matching the suffix of the Channel Router documentation file (e.g., "1.0" from "channel-router-documentation-v1.0.md").
 
-#### Implementation Details
-1. **Source of Truth**: The router version is set as an environment variable during deployment:
-   ```
-   VERSION=1.0.0
-   ```
+```javascript
+// In the context creation function
+const context = {
+  // ...other context fields
+  metadata: {
+    router_version: process.env.VERSION || '1.0.0'
+  }
+};
+```
 
-2. **Fallback Mechanism**: If the environment variable is not set, the code defaults to "1.0.0":
-   ```javascript
-   router_version: process.env.VERSION || '1.0.0'
-   ```
-
-3. **Automated Updates**: The CI/CD pipeline automatically updates the VERSION environment variable during deployment based on:
-   - Git tags for production releases
-   - Feature branch naming conventions for development/staging environments
-   - Build timestamps for development builds
-
-4. **Version Increment Guidelines**:
-   - PATCH: Increment for bug fixes or minor optimizations that don't change behavior
-   - MINOR: Increment when adding new features or enhanced capabilities
-   - MAJOR: Increment when making breaking changes to the interface or architecture
-
-All router version changes must be documented in the release notes, and version numbers should never be reused. This approach ensures that every conversation in the system can be traced back to the exact version of the router that processed it, supporting effective debugging and system auditing.
+This approach provides a simple, straightforward way to track router versions while minimizing management overhead. The VERSION environment variable should be updated whenever the documentation version changes, with a fallback to "1.0.0" if not specified.
 
 ### 4.2 API Key Security Implementation
 
