@@ -43,6 +43,7 @@ This key structure enables:
 | `project_name` | String | Yes | Human-readable project name | "CV Analysis Bot" |
 | `channel_method` | String | Yes | Communication channel | "whatsapp", "sms", or "email" |
 | `request_id` | String | Yes | Original request ID from frontend | "550e8400-e29b-41d4-a716-446655440000" |
+| `router_version` | String | Yes | Version of Channel Router that processed the request | "1.0.0" |
 | `whatsapp_credentials_reference` | String | Yes | Reference to WhatsApp credentials in Secrets Manager | "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials" |
 | `sms_credentials_reference` | String | Yes | Reference to SMS credentials in Secrets Manager | "twilio/cucumber-recruitment/cv-analysis/sms-credentials" |
 | `email_credentials_reference` | String | Yes | Reference to Email credentials in Secrets Manager | "sendgrid/cucumber-recruitment/cv-analysis/email-credentials" |
