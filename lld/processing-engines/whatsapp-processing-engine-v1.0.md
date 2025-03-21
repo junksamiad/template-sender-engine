@@ -336,6 +336,13 @@ exports.handler = async (event) => {
       project_id: company_data.project_id,
       company_name: messageBody.db_payload.company_name,
       project_name: messageBody.db_payload.project_name,
+      company_rep: {
+        company_rep_1: company_data.company_rep_1 || null,
+        company_rep_2: company_data.company_rep_2 || null,
+        company_rep_3: company_data.company_rep_3 || null,
+        company_rep_4: company_data.company_rep_4 || null,
+        company_rep_5: company_data.company_rep_5 || null
+      },
       channel_method: "whatsapp",
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
       request_id: request_data.request_id,
@@ -565,6 +572,13 @@ Together, the DynamoDB status tracking and CloudWatch monitoring provide a compl
   project_id: "cv-analysis",
   company_name: "Cucumber Recruitment Ltd",
   project_name: "CV Analysis Bot",
+  company_rep: {
+    company_rep_1: "Carol",
+    company_rep_2: null,
+    company_rep_3: null,
+    company_rep_4: null,
+    company_rep_5: null
+  },
   channel_method: "whatsapp",
   company_phone_number: "+14155238886",
   request_id: "550e8400-e29b-41d4-a716-446655440000",
@@ -654,6 +668,13 @@ exports.handler = async (event) => {
       project_id: company_data.project_id,
       company_name: db_payload.company_name,
       project_name: db_payload.project_name,
+      company_rep: {
+        company_rep_1: company_data.company_rep_1 || null,
+        company_rep_2: company_data.company_rep_2 || null,
+        company_rep_3: company_data.company_rep_3 || null,
+        company_rep_4: company_data.company_rep_4 || null,
+        company_rep_5: company_data.company_rep_5 || null
+      },
       channel_method: 'whatsapp',
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
       request_id: request_data.request_id,
@@ -760,6 +781,18 @@ function generateChannelSpecificConversationId(companyId, projectId, requestId, 
 // Create new conversation record
 async function createConversationRecord(conversationData) {
   const now = new Date().toISOString();
+  
+  // Ensure company_rep structure is properly formed
+  if (!conversationData.company_rep) {
+    const companyData = conversationData.company_data || {};
+    conversationData.company_rep = {
+      company_rep_1: companyData.company_rep_1 || null,
+      company_rep_2: companyData.company_rep_2 || null,
+      company_rep_3: companyData.company_rep_3 || null,
+      company_rep_4: companyData.company_rep_4 || null,
+      company_rep_5: companyData.company_rep_5 || null
+    };
+  }
   
   // Add timestamps
   const newConversation = {
