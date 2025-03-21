@@ -317,7 +317,7 @@ exports.handler = async (event) => {
   
   try {
     // 1. Extract necessary data from context object
-    const { frontend_payload, channel_config, ai_config, metadata } = messageBody;
+    const { frontend_payload, db_payload, channel_config, ai_config, metadata } = messageBody;
     const { company_data, recipient_data, project_data, request_data } = frontend_payload;
     
     // 2. Generate conversation ID based on the channel method
@@ -328,14 +328,14 @@ exports.handler = async (event) => {
       channel_config.whatsapp.company_whatsapp_number
     );
     
-    // 3. Create conversation record with initial "processing" status
+    // 3. Create conversation record with "processing" status
     const conversation = await createConversationRecord({
-      recipient_tel: recipient_data.recipient_tel,  // Partition key
-      conversation_id: conversationId,      // Sort key
+      recipient_tel: recipient_data.recipient_tel,
+      conversation_id: conversationId,
       company_id: company_data.company_id,
       project_id: company_data.project_id,
-      company_name: messageBody.db_payload.company_name,
-      project_name: messageBody.db_payload.project_name,
+      company_name: db_payload.company_name,
+      project_name: db_payload.project_name,
       company_rep: {
         company_rep_1: company_data.company_rep_1 || null,
         company_rep_2: company_data.company_rep_2 || null,
@@ -343,7 +343,7 @@ exports.handler = async (event) => {
         company_rep_4: company_data.company_rep_4 || null,
         company_rep_5: company_data.company_rep_5 || null
       },
-      channel_method: "whatsapp",
+      channel_method: 'whatsapp',
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
       request_id: request_data.request_id,
       router_version: metadata.router_version,
@@ -353,8 +353,8 @@ exports.handler = async (event) => {
       recipient_first_name: recipient_data.recipient_first_name,
       recipient_last_name: recipient_data.recipient_last_name,
       conversation_status: "processing",
-      thread_id: null,  // Will be populated after OpenAI processing
-      processing_time_ms: null,  // Will be populated after full processing
+      thread_id: null,
+      processing_time_ms: null,
       task_complete: false,
       comms_consent: recipient_data.comms_consent || false,
       project_data: frontend_payload.project_data,
@@ -365,11 +365,15 @@ exports.handler = async (event) => {
         assistant_id_4: ai_config.assistant_id_4 || null,
         assistant_id_5: ai_config.assistant_id_5 || null
       },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      messages: []
     });
     
-    console.log('Conversation record created', { 
+    // 3.1 Add conversation_id to the context object for downstream processing
+    messageBody.conversation_data = {
+      conversation_id: conversationId
+    };
+    
+    console.log('Conversation record created and added to context object', { 
       conversation_id: conversation.conversation_id,
       status: 'processing',
       request_id: request_data.request_id
@@ -386,7 +390,7 @@ exports.handler = async (event) => {
     const twilioClient = initializeTwilio(credentials.twilioAccountSid, credentials.twilioAuthToken);
     
     // 6. Process with OpenAI
-    const aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config);
+    const aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config, messageBody);
     
     // 7. Send via Twilio
     const deliveryResult = await sendViaTwilio(twilioClient, recipient_data, aiResponse, channel_config.whatsapp);
@@ -412,16 +416,8 @@ exports.handler = async (event) => {
     // Clean up heartbeat timer
     clearInterval(heartbeatInterval);
     
-    // Log detailed error information - this will appear in CloudWatch Logs
-    console.error('Processing error:', {
-      error_message: error.message,
-      error_type: error.name,
-      error_stack: error.stack,
-      request_id: messageBody?.frontend_payload?.request_data?.request_id,
-      component: determineFailureComponent(error)
-    });
-    
-    // No status update here - will be handled by DLQ processor if max retries exceeded
+    // Log error details
+    console.error('Processing error:', error);
     
     // Rethrow to trigger SQS retry mechanism
     throw error;
@@ -700,7 +696,12 @@ exports.handler = async (event) => {
       messages: []
     });
     
-    console.log('Conversation record created', { 
+    // 3.1 Add conversation_id to the context object for downstream processing
+    messageBody.conversation_data = {
+      conversation_id: conversationId
+    };
+    
+    console.log('Conversation record created and added to context object', { 
       conversation_id: conversation.conversation_id,
       status: 'processing',
       request_id: request_data.request_id
@@ -717,7 +718,7 @@ exports.handler = async (event) => {
     const twilioClient = initializeTwilio(credentials.twilioAccountSid, credentials.twilioAuthToken);
     
     // 6. Process with OpenAI
-    const aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config);
+    const aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config, messageBody);
     
     // 7. Send via Twilio
     const deliveryResult = await sendViaTwilio(twilioClient, recipient_data, aiResponse, channel_config.whatsapp);
@@ -814,7 +815,7 @@ async function getCredentials(channelConfig, aiConfig) {
   // Get API keys from Secrets Manager
 }
 
-async function processWithOpenAI(openai, conversation, projectData) {
+async function processWithOpenAI(openai, conversation, projectData, aiConfig, messageBody) {
   // Get or create thread
   let threadId = conversation.thread_id;
   if (!threadId) {

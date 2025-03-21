@@ -10,6 +10,7 @@ The context object serves as a comprehensive package containing:
 3. Channel-specific configuration and credentials
 4. AI service configuration and credentials
 5. Metadata for tracking and debugging
+6. Conversation reference data for downstream processing
 
 This approach eliminates the need for downstream services to query the database again, providing all necessary information in one place.
 
@@ -75,6 +76,9 @@ The context object has the following structure:
     "assistant_id_3": "",
     "assistant_id_4": "",
     "assistant_id_5": ""
+  },
+  "conversation_data": {
+    "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238886"
   },
   "metadata": {
     "router_version": "1.0.0"
@@ -159,6 +163,16 @@ Contains AI service configuration for OpenAI:
 | assistant_id_4 | Additional OpenAI Assistant ID (optional) |
 | assistant_id_5 | Additional OpenAI Assistant ID (optional) |
 
+### conversation_data
+
+Contains reference data for the conversation record created in DynamoDB:
+
+| Field | Description |
+|-------|-------------|
+| conversation_id | The unique identifier for the conversation in DynamoDB |
+
+> **Note**: The `conversation_data` section is not part of the initial context object created by the Channel Router. It is added by the channel processing engine after the conversation record is created in DynamoDB. This ensures the conversation_id is available for all downstream processing steps without needing to regenerate or retrieve the ID separately.
+
 ### metadata
 
 Contains metadata about the context object itself:
@@ -221,6 +235,9 @@ Contains metadata about the context object itself:
     "assistant_id_4": "",
     "assistant_id_5": ""
   },
+  "conversation_data": {
+    "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238886"
+  },
   "metadata": {
     "router_version": "1.0.0"
   }
@@ -278,6 +295,9 @@ Contains metadata about the context object itself:
     "assistant_id_3": "",
     "assistant_id_4": "",
     "assistant_id_5": ""
+  },
+  "conversation_data": {
+    "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#<550e8400.1625097083@cucumber.recruitment.mail>"
   },
   "metadata": {
     "router_version": "1.0.0"
@@ -337,6 +357,9 @@ Contains metadata about the context object itself:
     "assistant_id_4": "",
     "assistant_id_5": ""
   },
+  "conversation_data": {
+    "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238887"
+  },
   "metadata": {
     "router_version": "1.0.0"
   }
@@ -377,21 +400,24 @@ exports.handler = async (event) => {
     // Extract AI configuration
     const aiConfig = contextObject.ai_config;
     
+    // Extract conversation ID for database operations
+    const conversationId = contextObject.conversation_data.conversation_id;
+    
     // Get credentials from Secrets Manager based on channel
     if (channelMethod === 'whatsapp') {
       // Get WhatsApp credentials from Secrets Manager
       const whatsappCredentials = await getSecretValue(channelConfig.whatsapp_credentials_id);
-      await processWhatsAppMessage(payload, whatsappCredentials, aiConfig);
+      await processWhatsAppMessage(payload, whatsappCredentials, aiConfig, conversationId);
     } 
     else if (channelMethod === 'sms') {
       // Get SMS credentials from Secrets Manager
       const smsCredentials = await getSecretValue(channelConfig.sms_credentials_id);
-      await processSMSMessage(payload, smsCredentials, aiConfig);
+      await processSMSMessage(payload, smsCredentials, aiConfig, conversationId);
     }
     else if (channelMethod === 'email') {
       // Get Email credentials from Secrets Manager
       const emailCredentials = await getSecretValue(channelConfig.email_credentials_id);
-      await processEmailMessage(payload, emailCredentials, aiConfig);
+      await processEmailMessage(payload, emailCredentials, aiConfig, conversationId);
     }
   }
 };
