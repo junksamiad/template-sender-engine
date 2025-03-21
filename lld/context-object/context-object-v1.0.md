@@ -22,7 +22,8 @@ The context object has the following structure:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis"
+      "project_id": "cv-analysis",
+      "company_rep_1": "Carol"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -175,7 +176,8 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis"
+      "project_id": "cv-analysis",
+      "company_rep_1": "Carol"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -232,7 +234,8 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis"
+      "project_id": "cv-analysis",
+      "company_rep_1": "Carol"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -289,7 +292,8 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis"
+      "project_id": "cv-analysis",
+      "company_rep_1": "Carol"
     },
     "recipient_data": {
       "recipient_first_name": "John",

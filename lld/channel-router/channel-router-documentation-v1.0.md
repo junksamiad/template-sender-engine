@@ -65,7 +65,8 @@ The router accepts the payload structure as defined in the frontend documentatio
   "company_data": {
     "company_id": "string",
     "project_id": "string",
-    "api_key": "string"
+    "api_key": "string",
+    "company_rep_1": "string"
   },
   "recipient_data": {
     "recipient_first_name": "string",
@@ -757,7 +758,6 @@ The Lambda function will require the following permissions, all of which will be
    - **Purpose**: To query the `wa_company_data` table for API key validation and company/project permissions
    - **Scope**: Read-only access to the company data table
    - **Implementation**: `companyTable.grantReadData(routerFunction)`
-
 3. **Secrets Manager GetSecretValue**
    - **Purpose**: To retrieve API keys referenced in the DynamoDB table
    - **Scope**: Limited to specific secrets used for API key storage
@@ -1097,3 +1097,4 @@ Load tests will ensure:
 - Message Queue Architecture documentation
 - AWS DynamoDB documentation
 - AWS CloudWatch documentation
+
