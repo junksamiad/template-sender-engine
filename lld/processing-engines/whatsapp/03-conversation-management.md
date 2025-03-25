@@ -62,16 +62,16 @@ function generateConversationId(companyId, projectId, requestId, companyWhatsApp
 
 ### 3.2 Creating the Company Representative Structure
 
-The company representative information is structured from the frontend payload:
+The company representative information is structured from the `wa_company_data_payload` in the context object:
 
 ```javascript
-// Map company representatives from frontend payload
-const companyRep = {
-  company_rep_1: company_data.company_rep_1 || null,
-  company_rep_2: company_data.company_rep_2 || null,
-  company_rep_3: company_data.company_rep_3 || null,
-  company_rep_4: company_data.company_rep_4 || null,
-  company_rep_5: company_data.company_rep_5 || null
+// Map company representatives from wa_company_data_payload
+const companyRep = contextObject.wa_company_data_payload.company_rep || {
+  company_rep_1: null,
+  company_rep_2: null,
+  company_rep_3: null,
+  company_rep_4: null,
+  company_rep_5: null
 };
 ```
 
@@ -90,13 +90,13 @@ async function createConversationRecord(contextObject) {
     channel_config.whatsapp.company_whatsapp_number
   );
   
-  // Map company representatives
-  const companyRep = {
-    company_rep_1: company_data.company_rep_1 || null,
-    company_rep_2: company_data.company_rep_2 || null,
-    company_rep_3: company_data.company_rep_3 || null,
-    company_rep_4: company_data.company_rep_4 || null,
-    company_rep_5: company_data.company_rep_5 || null
+  // Map company representatives from wa_company_data_payload, not frontend payload
+  const companyRep = contextObject.wa_company_data_payload.company_rep || {
+    company_rep_1: null,
+    company_rep_2: null,
+    company_rep_3: null,
+    company_rep_4: null,
+    company_rep_5: null
   };
   
   // Create timestamp
