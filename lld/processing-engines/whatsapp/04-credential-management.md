@@ -335,4 +335,4 @@ whatsappLambda.addToRolePolicy(new iam.PolicyStatement({
 - [Overview and Architecture](./01-overview-architecture.md)
 - [AWS Reference Management](../../secrets-manager/aws-referencing-v1.0.md)
 - [OpenAI Integration](./05-openai-integration.md)
-- [Twilio Integration](./07-twilio-integration.md) 
+- [Template Management and Message Sending](./07-template-management.md) 
