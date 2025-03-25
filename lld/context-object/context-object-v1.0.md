@@ -23,8 +23,7 @@ The context object has the following structure:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis",
-      "company_rep_1": "Carol"
+      "project_id": "cv-analysis"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -48,7 +47,14 @@ The context object has the following structure:
     "company_name": "Cucumber Recruitment Ltd",
     "project_name": "CV Analysis Bot",
     "project_status": "active",
-    "allowed_channels": ["whatsapp", "email"]
+    "allowed_channels": ["whatsapp", "email"],
+    "company_rep": {
+      "company_rep_1": "Carol",
+      "company_rep_2": "Mark",
+      "company_rep_3": null,
+      "company_rep_4": null,
+      "company_rep_5": null
+    }
   },
   "project_rate_limits": {
     "requests_per_minute": 100,
@@ -110,6 +116,7 @@ Contains essential company and project information retrieved from the DynamoDB d
 | project_name | Human-readable project name |
 | project_status | Current status of the project (active, inactive, etc.) |
 | allowed_channels | List of communication channels this project can use |
+| company_rep | Company representative information |
 
 ### project_rate_limits
 
@@ -192,8 +199,7 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis",
-      "company_rep_1": "Carol"
+      "project_id": "cv-analysis"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -204,7 +210,8 @@ Contains metadata about the context object itself:
     },
     "project_data": {
       "job_title": "Software Engineer",
-      "job_description": "We are looking for a skilled software engineer..."
+      "job_description": "We are looking for a skilled software engineer...",
+      "application_deadline": "2023-07-30T23:59:59Z"
     },
     "request_data": {
       "request_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -216,7 +223,14 @@ Contains metadata about the context object itself:
     "company_name": "Cucumber Recruitment Ltd",
     "project_name": "CV Analysis Bot",
     "project_status": "active",
-    "allowed_channels": ["whatsapp", "email"]
+    "allowed_channels": ["whatsapp", "email"],
+    "company_rep": {
+      "company_rep_1": "Carol",
+      "company_rep_2": "Mark",
+      "company_rep_3": null,
+      "company_rep_4": null,
+      "company_rep_5": null
+    }
   },
   "project_rate_limits": {
     "requests_per_minute": 100,
@@ -254,8 +268,7 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis",
-      "company_rep_1": "Carol"
+      "project_id": "cv-analysis"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -266,7 +279,8 @@ Contains metadata about the context object itself:
     },
     "project_data": {
       "job_title": "Software Engineer",
-      "job_description": "We are looking for a skilled software engineer..."
+      "job_description": "We are looking for a skilled software engineer...",
+      "application_deadline": "2023-07-30T23:59:59Z"
     },
     "request_data": {
       "request_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -278,7 +292,14 @@ Contains metadata about the context object itself:
     "company_name": "Cucumber Recruitment Ltd",
     "project_name": "CV Analysis Bot",
     "project_status": "active",
-    "allowed_channels": ["whatsapp", "email"]
+    "allowed_channels": ["whatsapp", "email"],
+    "company_rep": {
+      "company_rep_1": "Carol",
+      "company_rep_2": "Mark",
+      "company_rep_3": null,
+      "company_rep_4": null,
+      "company_rep_5": null
+    }
   },
   "project_rate_limits": {
     "requests_per_minute": 100,
@@ -316,8 +337,7 @@ Contains metadata about the context object itself:
   "frontend_payload": {
     "company_data": {
       "company_id": "cucumber-recruitment",
-      "project_id": "cv-analysis",
-      "company_rep_1": "Carol"
+      "project_id": "cv-analysis"
     },
     "recipient_data": {
       "recipient_first_name": "John",
@@ -328,7 +348,8 @@ Contains metadata about the context object itself:
     },
     "project_data": {
       "job_title": "Software Engineer",
-      "job_description": "We are looking for a skilled software engineer..."
+      "job_description": "We are looking for a skilled software engineer...",
+      "application_deadline": "2023-07-30T23:59:59Z"
     },
     "request_data": {
       "request_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -340,7 +361,14 @@ Contains metadata about the context object itself:
     "company_name": "Cucumber Recruitment Ltd",
     "project_name": "CV Analysis Bot",
     "project_status": "active",
-    "allowed_channels": ["whatsapp", "email"]
+    "allowed_channels": ["whatsapp", "email"],
+    "company_rep": {
+      "company_rep_1": "Carol",
+      "company_rep_2": "Mark",
+      "company_rep_3": null,
+      "company_rep_4": null,
+      "company_rep_5": null
+    }
   },
   "project_rate_limits": {
     "requests_per_minute": 100,
@@ -398,6 +426,10 @@ exports.handler = async (event) => {
     // Extract frontend payload
     const payload = contextObject.frontend_payload;
     
+    // Extract company data including company representatives
+    const companyData = contextObject.wa_company_data_payload;
+    const companyRep = companyData.company_rep.company_rep_1 || "Company Representative";
+    
     // Extract channel-specific configuration
     const channelMethod = payload.request_data.channel_method;
     const channelConfig = contextObject.channel_config[channelMethod];
@@ -412,17 +444,17 @@ exports.handler = async (event) => {
     if (channelMethod === 'whatsapp') {
       // Get WhatsApp credentials from Secrets Manager
       const whatsappCredentials = await getSecretValue(channelConfig.whatsapp_credentials_id);
-      await processWhatsAppMessage(payload, whatsappCredentials, aiConfig, conversationId);
+      await processWhatsAppMessage(payload, whatsappCredentials, aiConfig, conversationId, companyRep);
     } 
     else if (channelMethod === 'sms') {
       // Get SMS credentials from Secrets Manager
       const smsCredentials = await getSecretValue(channelConfig.sms_credentials_id);
-      await processSMSMessage(payload, smsCredentials, aiConfig, conversationId);
+      await processSMSMessage(payload, smsCredentials, aiConfig, conversationId, companyRep);
     }
     else if (channelMethod === 'email') {
       // Get Email credentials from Secrets Manager
       const emailCredentials = await getSecretValue(channelConfig.email_credentials_id);
-      await processEmailMessage(payload, emailCredentials, aiConfig, conversationId);
+      await processEmailMessage(payload, emailCredentials, aiConfig, conversationId, companyRep);
     }
   }
 };
