@@ -108,6 +108,7 @@ This structure stores up to 5 company representatives that may be involved in co
     "company_email": "jobs@cucumber-recruitment.com"
   }
 }
+```
 
 | Channel | Field | Description |
 |---------|-------|-------------|
