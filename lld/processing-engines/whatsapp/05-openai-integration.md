@@ -381,15 +381,6 @@ async function processWithOpenAI(openai, contextObject) {
     console.log('Starting OpenAI processing');
     const startTime = Date.now();
     
-    // Ensure processing_stage is set (default to 'initial' if not present)
-    const processingStage = contextObject.processing_stage || 'initial';
-    contextObject.processing_stage = processingStage;
-    
-    console.log('OpenAI processing stage:', { 
-      processing_stage: processingStage,
-      conversation_id: contextObject.conversation_data?.conversation_id 
-    });
-    
     // Create OpenAI thread and add context as message
     const { thread_id } = await createOpenAIThread(openai, contextObject);
     
@@ -402,101 +393,11 @@ async function processWithOpenAI(openai, contextObject) {
     // Create and start the run
     const run = await createAndStartRun(openai, thread_id, assistantId);
     
-    // Poll run status until completion or action required
+    // Poll run status until completion
     const finalRun = await pollRunStatus(openai, thread_id, run.id);
     
-    // Check for potential configuration issues based on processing stage
-    if (processingStage === 'initial' && finalRun.status === 'completed') {
-      // This is a configuration issue - AI didn't call a function when it should have
-      console.warn('Assistant configuration issue detected: AI did not call function on initial run', {
-        conversation_id: contextObject.conversation_data?.conversation_id,
-        thread_id,
-        run_id: run.id,
-        assistant_id: assistantId,
-        processing_stage: 'initial',
-        expected_status: 'requires_action',
-        actual_status: 'completed'
-      });
-      
-      // Emit metric for monitoring
-      await emitConfigurationIssueMetric('MissingFunctionCall', {
-        conversation_id: contextObject.conversation_data?.conversation_id,
-        assistant_id: assistantId,
-        processing_stage: 'initial'
-      });
-      
-      // Throw specific error for this configuration issue
-      const error = new Error(
-        'ASSISTANT_CONFIGURATION_ERROR: AI assistant did not call required function in initial processing. ' +
-        'Please check system prompt configuration in OpenAI dashboard.'
-      );
-      error.code = 'ASSISTANT_CONFIGURATION_ERROR';
-      error.metadata = {
-        error_type: 'configuration_issue',
-        issue: 'missing_function_call',
-        assistant_id: assistantId,
-        conversation_id: contextObject.conversation_data?.conversation_id,
-        thread_id,
-        run_id: run.id,
-        processing_stage: 'initial'
-      };
-      throw error;
-    }
-    
-    if (processingStage === 'final' && finalRun.status === 'requires_action') {
-      // This is a configuration issue - AI called additional functions when it should have completed
-      console.warn('Assistant configuration issue detected: AI called functions after tool outputs', {
-        conversation_id: contextObject.conversation_data?.conversation_id,
-        thread_id,
-        run_id: run.id,
-        assistant_id: assistantId,
-        processing_stage: 'final',
-        expected_status: 'completed',
-        actual_status: 'requires_action'
-      });
-      
-      // Emit metric for monitoring
-      await emitConfigurationIssueMetric('UnexpectedFunctionCall', {
-        conversation_id: contextObject.conversation_data?.conversation_id,
-        assistant_id: assistantId,
-        processing_stage: 'final'
-      });
-      
-      // Throw specific error for this configuration issue
-      const error = new Error(
-        'ASSISTANT_CONFIGURATION_ERROR: AI assistant called additional functions after tool outputs. ' +
-        'Please check system prompt configuration in OpenAI dashboard.'
-      );
-      error.code = 'ASSISTANT_CONFIGURATION_ERROR';
-      error.metadata = {
-        error_type: 'configuration_issue',
-        issue: 'unexpected_function_call',
-        assistant_id: assistantId,
-        conversation_id: contextObject.conversation_data?.conversation_id,
-        thread_id,
-        run_id: run.id,
-        processing_stage: 'final'
-      };
-      throw error;
-    }
-    
-    // Check final run status and handle accordingly
-    if (finalRun.status === 'requires_action') {
-      // Handle function calls - see Function Execution document
-      console.log('Run requires action (function calls)', {
-        thread_id,
-        run_id: run.id
-      });
-      
-      // Return thread_id and run_id for function execution
-      return {
-        thread_id,
-        run_id: run.id,
-        status: 'requires_action',
-        required_action: finalRun.required_action,
-        processing_time_ms: Date.now() - startTime
-      };
-    } else if (finalRun.status === 'completed') {
+    // Process run results
+    if (finalRun.status === 'completed') {
       // Get assistant messages
       const messages = await withExponentialBackoff(
         () => openai.beta.threads.messages.list(thread_id),
@@ -520,13 +421,53 @@ async function processWithOpenAI(openai, contextObject) {
       });
       
       // Extract content from message
-      const content = latestMessage.content[0].text.value;
+      const messageContent = latestMessage.content[0].text.value;
+      
+      // Parse JSON from the message content
+      let variables;
+      try {
+        // Extract JSON content from message (handle potential text before/after JSON)
+        const jsonMatch = messageContent.match(/```json\n([\s\S]*?)\n```/) || 
+                         messageContent.match(/\{[\s\S]*\}/);
+                         
+        const jsonContent = jsonMatch ? jsonMatch[1] || jsonMatch[0] : messageContent;
+        const parsedContent = JSON.parse(jsonContent);
+        
+        // Validate the parsed content has variables
+        if (!parsedContent.variables) {
+          throw new Error('Missing variables in assistant response');
+        }
+        
+        variables = parsedContent.variables;
+        console.log('Successfully parsed variables from assistant response', { 
+          variable_count: Object.keys(variables).length 
+        });
+      } catch (parseError) {
+        console.error('Failed to parse JSON from assistant response', {
+          parse_error: parseError.message,
+          message_content: messageContent
+        });
+        
+        // Emit metric for monitoring
+        await emitConfigurationIssueMetric('InvalidJSONResponse', {
+          conversation_id: contextObject.conversation_data?.conversation_id,
+          assistant_id: assistantId
+        });
+        
+        throw new Error(`Failed to parse assistant response as JSON: ${parseError.message}`);
+      }
+      
+      // Process the variables and send message with Twilio
+      const messageResult = await sendWhatsAppTemplateMessage(
+        contextObject,
+        variables
+      );
       
       return {
         thread_id,
         run_id: run.id,
         message_id: latestMessage.id,
-        content,
+        message_result: messageResult,
         status: 'completed',
         processing_time_ms: Date.now() - startTime
       };
@@ -541,12 +482,11 @@ async function processWithOpenAI(openai, contextObject) {
       throw new Error(`Run ended with status: ${finalRun.status}`);
     }
   } catch (error) {
-    // Add metadata to the error for DLQ processing if not already present
+    // Add metadata to the error for DLQ processing
     if (!error.metadata) {
       error.metadata = {
         thread_id: contextObject.thread_id,
-        conversation_id: contextObject.conversation_data?.conversation_id,
-        processing_stage: contextObject.processing_stage || 'unknown'
+        conversation_id: contextObject.conversation_data?.conversation_id
       };
     }
     
@@ -555,6 +495,88 @@ async function processWithOpenAI(openai, contextObject) {
       error_metadata: error.metadata
     });
     
+    throw error;
+  }
+}
+
+/**
+ * Sends a WhatsApp template message using Twilio API
+ * @param {object} contextObject - Context object with conversation data
+ * @param {object} variables - Template variables (numeric keys with string values)
+ * @returns {Promise<object>} - Result of sending message
+ */
+async function sendWhatsAppTemplateMessage(contextObject, variables) {
+  try {
+    console.log('Sending WhatsApp template message', {
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      recipient_tel: contextObject.frontend_payload.recipient_data.recipient_tel
+    });
+    
+    // Get template name from company configuration
+    // This could be stored in the context object or in a config setting
+    const templateName = contextObject.wa_company_data_payload.template_name || 'default_template';
+    const templateLanguage = contextObject.wa_company_data_payload.template_language || 'en_US';
+    
+    // Get WhatsApp credentials from Secrets Manager
+    const whatsappCredentialsId = contextObject.channel_config.whatsapp.whatsapp_credentials_id;
+    const twilioCredentials = await getSecretValue(whatsappCredentialsId);
+    
+    // Initialize Twilio client
+    const twilioClient = twilio(
+      twilioCredentials.twilio_account_sid,
+      twilioCredentials.twilio_auth_token
+    );
+    
+    // Prepare message options
+    const messageOptions = {
+      from: `whatsapp:${contextObject.channel_config.whatsapp.company_whatsapp_number}`,
+      to: `whatsapp:${contextObject.frontend_payload.recipient_data.recipient_tel}`,
+      contentSid: null,
+      contentVariables: JSON.stringify(variables)
+    };
+    
+    // Find the content SID for the template
+    const templates = await twilioClient.messaging.contentAndTemplates.templates.list();
+    const template = templates.find(t => 
+      t.name === templateName && t.language === templateLanguage
+    );
+    
+    if (!template) {
+      throw new Error(`Template not found: ${templateName} (${templateLanguage})`);
+    }
+    
+    messageOptions.contentSid = template.sid;
+    
+    // Send the message
+    const message = await twilioClient.messages.create(messageOptions);
+    
+    console.log('WhatsApp template message sent', {
+      message_sid: message.sid, 
+      status: message.status,
+      conversation_id: contextObject.conversation_data?.conversation_id
+    });
+    
+    // Add message to conversation history
+    await addMessageToConversation(
+      contextObject.conversation_data,
+      'assistant',
+      `Template: ${templateName}`
+    );
+    
+    // Update conversation status
+    await updateConversationStatus(
+      contextObject.conversation_data,
+      'initial_message_sent'
+    );
+    
+    return {
+      success: true,
+      message_sid: message.sid,
+      status: message.status,
+      sent_at: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Error sending WhatsApp template message:', error);
     throw error;
   }
 }

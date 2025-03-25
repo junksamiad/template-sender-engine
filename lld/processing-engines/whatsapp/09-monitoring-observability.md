@@ -173,6 +173,32 @@ This dashboard aids in diagnosing and resolving errors:
 - **Retry Statistics**: Success rates after retries
 - **Assistant Configuration Issues**: Detailed breakdown with conversation and assistant IDs
 
+#### 5.1.3 Assistant Configuration Metrics
+
+| Metric Name | Description | Dimensions | Statistics |
+|-------------|-------------|------------|------------|
+| `AssistantConfigurationIssue` | Count of assistant configuration issues | AssistantId, IssueType, ConversationId | Sum, Maximum |
+
+The `IssueType` dimension can have the following values:
+- `InvalidJSONResponse`: The assistant did not return valid JSON.
+- `MissingVariables`: The assistant returned JSON without the required variables.
+
+These metrics allow operational teams to quickly identify if there are issues with the AI assistant configuration that need to be addressed.
+
+#### 5.1.4 JSON Parsing Error Metrics
+
+| Metric Name | Description | Dimensions | Statistics |
+|-------------|-------------|------------|------------|
+| `JSONParsingError` | Count of JSON parsing errors | AssistantId, ErrorType, TemplateName | Sum, Maximum |
+| `VariableValidationError` | Count of variable validation errors | AssistantId, TemplateName, VariableName | Sum, Maximum |
+
+The `ErrorType` dimension for JSON parsing errors can have values like:
+- `SyntaxError`: Invalid JSON syntax in the response.
+- `MissingVariables`: JSON parsed but variables object is missing.
+- `MalformedVariables`: Variables don't follow the expected format.
+
+These metrics help track issues with the new JSON-based template variable approach.
+
 ## 6. CloudWatch Alarms
 
 The system includes the following alarms for critical conditions:

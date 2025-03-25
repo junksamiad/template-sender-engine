@@ -62,34 +62,60 @@ The WhatsApp Processing Engine is implemented as:
 - **CloudWatch**: For monitoring and logging operations
 - **AWS Secrets Manager**: For securely accessing API keys
 
-## 5. Processing Flow Overview
+## 5. Processing Flow
 
-1. **SQS Message Consumption**:
-   - Lambda triggered by WhatsApp SQS queue
-   - Message becomes invisible for 600s (visibility timeout)
-   - Heartbeat pattern extends visibility timeout during processing
+The WhatsApp Processing Engine follows a linear, efficient processing flow:
 
-2. **Context Object Parsing**:
-   - Extract frontend payload, channel config, and AI config
+1. **Message Receipt**: A message is received from the Channel Router's SQS queue containing a context object.
 
-3. **Conversation Record Creation**:
-   - Create record in DynamoDB with status "processing"
+2. **Conversation Creation**: The engine creates a conversation record in DynamoDB with status "processing".
 
-4. **Credential Retrieval**:
-   - Get OpenAI and Twilio credentials from AWS Secrets Manager
+3. **OpenAI Processing**: 
+   - The engine creates an OpenAI thread and adds the context as a message.
+   - A run is created with the specified assistant.
+   - The run is polled until completion.
+   - The assistant responds with a structured JSON containing template variables.
 
-5. **OpenAI Processing**:
-   - Create/retrieve thread ID
-   - Process message with OpenAI Assistants API
+4. **Template Message Sending**:
+   - The engine parses the JSON response to extract template variables.
+   - The variables are passed to the Twilio API along with the template reference.
+   - The message is sent to the recipient's WhatsApp number.
 
-6. **Twilio Delivery**:
-   - Send processed message to recipient via Twilio
+5. **Conversation Finalization**:
+   - The conversation record is updated with thread ID and delivery status.
+   - Status is changed to "initial_message_sent".
+   - The processing is complete.
 
-7. **Completion**:
-   - Update conversation status to "initial_message_sent"
-   - Delete message from SQS
+## 6. Error Handling
 
-## 6. Component Documentation Structure
+The WhatsApp Processing Engine implements robust error handling through:
+
+1. **Retry Logic**: Automatic retries with exponential backoff for transient failures.
+
+2. **Dead Letter Queue**: Messages that fail after retries are sent to a DLQ for investigation.
+
+3. **Error Categorization**: Errors are categorized by type (API errors, validation errors, etc.) for monitoring.
+
+4. **Comprehensive Logging**: Detailed logging at each processing step for debugging.
+
+5. **Structured Error Responses**: All errors include error codes, descriptive messages, and relevant metadata.
+
+6. **JSON Validation**: Validation of the assistant's JSON response to ensure it contains the required variables.
+
+## 7. Full Documentation
+
+The WhatsApp Processing Engine is documented in detail across several files:
+
+1. [SQS Integration](02-sqs-integration.md): Details on message queue integration, payload validation, and retry mechanisms.
+2. [Conversation Management](03-conversation-management.md): Description of the DynamoDB conversation schema and operations.
+3. [Credential Management](04-credential-management.md): Details on secure access to credentials for external APIs.
+4. [OpenAI Integration](05-openai-integration.md): Comprehensive documentation on the OpenAI Assistants API integration.
+5. [Template Management](07-template-management.md): Template creation, management, and message sending details.
+6. [Error Handling Strategy](08-error-handling-strategy.md): Complete error handling approach and implementation.
+7. [Monitoring & Observability](09-monitoring-observability.md): Monitoring, alerting, and observability details.
+8. [Operations Playbook](10-operations-playbook.md): Operational procedures, troubleshooting, and maintenance tasks.
+
+## 8. Component Documentation Structure
 
 The WhatsApp Processing Engine documentation is organized into the following sections:
 
@@ -106,7 +132,7 @@ The WhatsApp Processing Engine documentation is organized into the following sec
 
 Each document focuses on a specific aspect of the processing engine, providing a modular approach to understanding the system.
 
-## 7. Related Documentation
+## 9. Related Documentation
 
 - [Context Object Structure](../../context-object/context-object-v1.0.md)
 - [Conversations DB Schema](../../db/conversations-db-schema-v1.0.md)

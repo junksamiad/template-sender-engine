@@ -60,6 +60,25 @@ Failures in integrated third-party services:
 | OpenAI Errors | API errors, rate limits, invalid responses | Categorize, retry with backoff |
 | Twilio Errors | Messaging failures, template rejections | Record in DynamoDB, alert if critical |
 
+### 3.3 OpenAI Integration Errors
+
+| Error Type | Error Code | Description | Retry Strategy | Example |
+|------------|------------|-------------|----------------|---------|
+| Authentication | OPENAI_AUTH_ERROR | API key is invalid or revoked | No retry, send to DLQ | "Invalid API key" |
+| Rate Limiting | OPENAI_RATE_LIMIT | API rate limit exceeded | Retry with backoff | "Rate limit exceeded" |
+| Timeout | OPENAI_TIMEOUT | API request timed out | Retry with backoff | "Request timed out" |
+| Server Error | OPENAI_SERVER_ERROR | 5xx server error from OpenAI | Retry with backoff | "Internal server error" |
+| Invalid Request | OPENAI_INVALID_REQUEST | Invalid request format or parameters | No retry, send to DLQ | "Invalid request parameters" |
+| JSON Parsing Error | OPENAI_JSON_PARSE_ERROR | Failed to parse JSON from assistant response | No retry, send to DLQ | "Failed to parse JSON: Unexpected token at line 2" |
+| Missing Variables | OPENAI_MISSING_VARIABLES | JSON response missing required variables | No retry, send to DLQ | "Missing variables in assistant response" |
+
+In addition to standard API errors, the system tracks and handles specific OpenAI assistant configuration issues:
+
+| Error Code | Description | Handling Strategy |
+|------------|-------------|-------------------|
+| INVALID_JSON_RESPONSE | Assistant did not return valid JSON | 1. Log detailed error with message content<br>2. Emit CloudWatch metric<br>3. Send to DLQ |
+| MISSING_VARIABLES | Assistant returned JSON without variables | 1. Log detailed error with parsed response<br>2. Emit CloudWatch metric<br>3. Send to DLQ |
+
 ## 4. Implementation of Error Handling
 
 ### 4.1 Try-Catch Pattern

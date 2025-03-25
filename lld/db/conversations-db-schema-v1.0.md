@@ -45,6 +45,8 @@ This key structure enables:
 | `whatsapp_credentials_reference` | String | Yes | Reference to WhatsApp credentials in Secrets Manager | "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio" | `channel_config.whatsapp.whatsapp_credentials_id` |
 | `sms_credentials_reference` | String | Yes | Reference to SMS credentials in Secrets Manager | "sms-credentials/cucumber-recruitment/cv-analysis/twilio" | `channel_config.sms.sms_credentials_id` |
 | `email_credentials_reference` | String | Yes | Reference to Email credentials in Secrets Manager | "email-credentials/cucumber-recruitment/cv-analysis/sendgrid" | `channel_config.email.email_credentials_id` |
+| `template_name` | String | Yes | Name of the WhatsApp template used for this conversation | "Welcome Message" | `wa_company_data_payload.template_name` |
+| `template_language` | String | Yes | Language code of the template (e.g., "en_US") | "en_US" | `wa_company_data_payload.template_language` |
 | `company_whatsapp_number` | String | Conditional | For WhatsApp - Company's WhatsApp number | "+14155238886" | `channel_config.whatsapp.company_whatsapp_number` |
 | `company_sms_number` | String | Conditional | For SMS - Company's SMS number | "+14155238887" | `channel_config.sms.company_sms_number` |
 | `company_email` | String | Conditional | For Email - Company's email address | "jobs@cucumber-recruitment.com" | `channel_config.email.company_email` |
