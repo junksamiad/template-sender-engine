@@ -268,17 +268,34 @@ The resulting context object has the following structure:
 ```json
 {
   "frontend_payload": {
-    // The complete original payload as received from the frontend
-    "company_data": { ... },
-    "recipient_data": { ... },
-    "project_data": { ... },
-    "request_data": { ... }
+    "company_data": {
+      "company_id": "cucumber-recruitment",
+      "company_name": "Cucumber Recruitment Ltd"
+    },
+    "recipient_data": {
+      "recipient_tel": "+447123456789",
+      "recipient_email": "candidate@example.com"
+    },
+    "project_data": {
+      "project_id": "cv-analysis",
+      "project_name": "CV Analysis Bot"
+    },
+    "request_data": {
+      "initial_request_timestamp": "2023-06-15T14:30:45.123Z",
+      "request_id": "req_123456789"
+    }
   },
   "wa_company_data_payload": {
-    "company_name": "Example Corp",
-    "project_name": "Recruitment Bot",
+    "company_name": "Cucumber Recruitment Ltd",
+    "project_name": "CV Analysis Bot",
     "project_status": "active",
-    "allowed_channels": ["whatsapp", "email", "sms"]
+    "allowed_channels": ["whatsapp", "email", "sms"],
+    "rate_limits": {
+      "requests_per_minute": 100,
+      "requests_per_day": 10000,
+      "concurrent_conversations": 50,
+      "max_message_length": 4096
+    }
   },
   "project_rate_limits": {
     "requests_per_minute": 100,
@@ -288,16 +305,16 @@ The resulting context object has the following structure:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/company-123/project-456/whatsapp-credentials",
+      "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/company-123/project-456/sms-credentials",
+      "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
       "company_sms_number": "+14155238887"
     },
     "email": {
-      "email_credentials_id": "sendgrid/company-123/project-456/email-credentials",
-      "company_email": "jobs@example.com"
+      "email_credentials_id": "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
+      "company_email": "jobs@cucumber-recruitment.com"
     }
   },
   "ai_config": {
@@ -305,7 +322,8 @@ The resulting context object has the following structure:
     "assistant_id_replies": "asst_Ds59ylP35Pn84pesJQVglC2Q",
     "assistant_id_3": "",
     "assistant_id_4": "",
-    "assistant_id_5": ""
+    "assistant_id_5": "",
+    "ai_api_key_reference": "secret/api-keys/cucumber-recruitment/cv-analysis/openai"
   },
   "metadata": {
     "router_version": "1.0.0"
@@ -475,7 +493,8 @@ const contextModule = {
         assistant_id_replies: companyData.ai_config.assistant_id_replies,
         assistant_id_3: companyData.ai_config.assistant_id_3 || "",
         assistant_id_4: companyData.ai_config.assistant_id_4 || "",
-        assistant_id_5: companyData.ai_config.assistant_id_5 || ""
+        assistant_id_5: companyData.ai_config.assistant_id_5 || "",
+        ai_api_key_reference: companyData.ai_config.ai_api_key_reference
       };
     }
     

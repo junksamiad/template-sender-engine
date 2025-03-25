@@ -58,15 +58,15 @@ The context object has the following structure:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
+      "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+      "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
       "company_sms_number": "+14155238887"
     },
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+      "email_credentials_id": "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
       "company_email": "jobs@cucumber-recruitment.com"
     }
   },
@@ -75,7 +75,8 @@ The context object has the following structure:
     "assistant_id_replies": "asst_Ds59ylP35Pn84pesJQVglC2Q",
     "assistant_id_3": "",
     "assistant_id_4": "",
-    "assistant_id_5": ""
+    "assistant_id_5": "",
+    "ai_api_key_reference": "ai-api-key/global"
   },
   "conversation_data": {
     "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238886"
@@ -128,15 +129,15 @@ Contains channel-specific configuration based on the requested channel method:
 ```json
 {
   "whatsapp": {
-    "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
+    "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
     "company_whatsapp_number": "+14155238886"
   },
   "sms": {
-    "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+    "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
     "company_sms_number": "+14155238887"
   },
   "email": {
-    "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+    "email_credentials_id": "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
     "company_email": "jobs@cucumber-recruitment.com"
   }
 }
@@ -144,11 +145,11 @@ Contains channel-specific configuration based on the requested channel method:
 
 | Channel | Field | Description |
 |---------|-------|-------------|
-| whatsapp | `whatsapp_credentials_id` | Reference to WhatsApp (Twilio) credentials in Secrets Manager |
+| whatsapp | `whatsapp_credentials_id` | Reference to WhatsApp (Twilio) credentials in Secrets Manager using format: whatsapp-credentials/{company_id}/{project_id}/twilio |
 | whatsapp | `company_whatsapp_number` | The WhatsApp phone number assigned to this company/project |
-| sms | `sms_credentials_id` | Reference to SMS (Twilio) credentials in Secrets Manager |
+| sms | `sms_credentials_id` | Reference to SMS (Twilio) credentials in Secrets Manager using format: sms-credentials/{company_id}/{project_id}/twilio |
 | sms | `company_sms_number` | The SMS phone number assigned to this company/project |
-| email | `email_credentials_id` | Reference to Email (SendGrid) credentials in Secrets Manager |
+| email | `email_credentials_id` | Reference to Email (SendGrid) credentials in Secrets Manager using format: email-credentials/{company_id}/{project_id}/sendgrid |
 | email | `company_email` | The email address assigned to this company/project |
 
 ### ai_config
@@ -162,6 +163,7 @@ Contains AI service configuration for OpenAI:
 | assistant_id_3 | Additional OpenAI Assistant ID (optional) |
 | assistant_id_4 | Additional OpenAI Assistant ID (optional) |
 | assistant_id_5 | Additional OpenAI Assistant ID (optional) |
+| ai_api_key_reference | Reference to the AI API key in Secrets Manager that is used across all channels |
 
 ### conversation_data
 
@@ -224,7 +226,7 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
+      "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
       "company_whatsapp_number": "+14155238886"
     }
   },
@@ -233,7 +235,8 @@ Contains metadata about the context object itself:
     "assistant_id_replies": "asst_Ds59ylP35Pn84pesJQVglC2Q",
     "assistant_id_3": "",
     "assistant_id_4": "",
-    "assistant_id_5": ""
+    "assistant_id_5": "",
+    "ai_api_key_reference": "ai-api-key/global"
   },
   "conversation_data": {
     "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238886"
@@ -285,7 +288,7 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+      "email_credentials_id": "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
       "company_email": "jobs@cucumber-recruitment.com"
     }
   },
@@ -294,7 +297,8 @@ Contains metadata about the context object itself:
     "assistant_id_replies": "asst_Ds59ylP35Pn84pesJQVglC2Q",
     "assistant_id_3": "",
     "assistant_id_4": "",
-    "assistant_id_5": ""
+    "assistant_id_5": "",
+    "ai_api_key_reference": "ai-api-key/global"
   },
   "conversation_data": {
     "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#<550e8400.1625097083@cucumber.recruitment.mail>"
@@ -346,7 +350,7 @@ Contains metadata about the context object itself:
   },
   "channel_config": {
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
+      "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
       "company_sms_number": "+14155238887"
     }
   },
@@ -355,7 +359,8 @@ Contains metadata about the context object itself:
     "assistant_id_replies": "asst_Ds59ylP35Pn84pesJQVglC2Q",
     "assistant_id_3": "",
     "assistant_id_4": "",
-    "assistant_id_5": ""
+    "assistant_id_5": "",
+    "ai_api_key_reference": "ai-api-key/global"
   },
   "conversation_data": {
     "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238887"

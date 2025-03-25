@@ -38,7 +38,7 @@ This provides a secure, flexible system with centralized management of sensitive
 References in DynamoDB follow a consistent path format:
 
 ```
-{service}/{company_id}/{project_id}/{type}
+{credential_type}/{company_id}/{project_id}/{provider}
 ```
 
 This format makes it easy to organize and manage permissions at different levels of granularity, while ensuring that credentials are properly scoped to specific projects within a company.
@@ -49,60 +49,58 @@ Each reference points to an object in AWS Secrets Manager with specific fields r
 
 ### WhatsApp Channel (Twilio)
 
-**Reference Path**: `twilio/{company_id}/{project_id}/whatsapp-credentials`
+**Reference Path**: `whatsapp-credentials/{company_id}/{project_id}/twilio`
 
 **Object Structure**:
 ```json
 {
-  "account_sid": "string - Twilio account identifier",
-  "auth_token": "string - Twilio authentication token",
-  "phone_number": "string - WhatsApp enabled phone number",
-  "messaging_service_sid": "string - Twilio messaging service identifier"
+  "twilio_account_sid": "string - Twilio account identifier",
+  "twilio_auth_token": "string - Twilio authentication token",
+  "twilio_template_sid": "string - Twilio template identifier"
 }
 ```
 
 ### SMS Channel (Twilio)
 
-**Reference Path**: `twilio/{company_id}/{project_id}/sms-credentials`
+**Reference Path**: `sms-credentials/{company_id}/{project_id}/twilio`
 
 **Object Structure**:
 ```json
 {
-  "account_sid": "string - Twilio account identifier",
-  "auth_token": "string - Twilio authentication token",
-  "phone_number": "string - SMS enabled phone number",
-  "messaging_service_sid": "string - Twilio messaging service identifier"
+  "twilio_account_sid": "string - Twilio account identifier",
+  "twilio_auth_token": "string - Twilio authentication token",
+  "twilio_template_sid": "string - Twilio template identifier"
 }
 ```
 
 ### Email Channel (SendGrid)
 
-**Reference Path**: `sendgrid/{company_id}/{project_id}/email-credentials`
+**Reference Path**: `email-credentials/{company_id}/{project_id}/sendgrid`
 
 **Object Structure**:
 ```json
 {
-  "auth_value": "string - SendGrid authentication value",
-  "from_email": "string - Sender email address",
-  "from_name": "string - Sender display name",
-  "template_id": "string - SendGrid template identifier"
+  "sendgrid_auth_value": "string - SendGrid authentication value",
+  "sendgrid_from_email": "string - Sender email address",
+  "sendgrid_from_name": "string - Sender display name",
+  "sendgrid_template_id": "string - SendGrid template identifier"
 }
 ```
 
-### AI Processing (OpenAI)
+### AI API Key (Global)
 
-**Reference Path**: `openai/{company_id}/{project_id}/credentials`
+**Reference Path**: `ai-api-key/global`
 
 **Object Structure**:
 ```json
 {
-  "auth_value": "string - OpenAI authentication value"
+  "ai_api_key": "string - AI service API key used across all channels and companies"
 }
 ```
 
 ### Authentication
 
-**Reference Path**: `auth/{company_id}/{project_id}`
+**Reference Path**: `auth/{company_id}/{project_id}/auth`
 
 **Object Structure**:
 ```json
@@ -121,14 +119,14 @@ The `wa_company_data` table stores only references:
 {
   "channel_config": {
     "whatsapp": {
-      "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
+      "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
       "company_whatsapp_number": "+14155238886"
     },
     "sms": {
-      "sms_credentials_id": "twilio/cucumber-recruitment/cv-analysis/sms-credentials"
+      "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio"
     },
     "email": {
-      "email_credentials_id": "sendgrid/cucumber-recruitment/cv-analysis/email-credentials"
+      "email_credentials_id": "email-credentials/cucumber-recruitment/cv-analysis/sendgrid"
     }
   }
 }
@@ -141,7 +139,7 @@ The Channel Router includes these references in the context object:
 ```json
 "channel_config": {
   "whatsapp": {
-    "whatsapp_credentials_id": "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
+    "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
     "company_whatsapp_number": "+14155238886"
   }
 }
@@ -152,7 +150,8 @@ The Channel Router includes these references in the context object:
 The Processing Engine retrieves values using the references only when needed:
 
 ```javascript
-async function getCredentials(channelConfig) {
+// Get channel-specific credentials
+async function getChannelCredentials(channelConfig) {
   const secretsManager = new AWS.SecretsManager();
   
   let whatsappCredentials = null;
@@ -164,9 +163,40 @@ async function getCredentials(channelConfig) {
     whatsappCredentials = JSON.parse(response.SecretString);
   }
   
-  return {
-    whatsapp: whatsappCredentials
-  };
+  return whatsappCredentials;
+}
+
+// Get AI API key separately
+async function getAiCredentials(aiConfig) {
+  const secretsManager = new AWS.SecretsManager();
+  
+  const response = await secretsManager.getSecretValue({
+    SecretId: aiConfig.ai_api_key_reference
+  }).promise();
+  
+  return JSON.parse(response.SecretString);
+}
+
+// Usage example
+async function processMessage(contextObject) {
+  // Get channel credentials based on channel type
+  const channelCredentials = await getChannelCredentials(contextObject.channel_config);
+  
+  // Get AI credentials (global)
+  const aiCredentials = await getAiCredentials(contextObject.ai_config);
+  
+  // Initialize clients
+  const openai = new OpenAI({
+    apiKey: aiCredentials.ai_api_key
+  });
+  
+  const twilioClient = new twilio(
+    channelCredentials.twilio_account_sid,
+    channelCredentials.twilio_auth_token
+  );
+  
+  // Process message using both credential sets
+  // ...
 }
 ```
 
@@ -181,6 +211,30 @@ This reference architecture provides several key security benefits:
 5. **Comprehensive Audit Trail**: All access to values is logged and can be monitored
 6. **IAM Integration**: Fine-grained access control through AWS IAM policies
 
+## Separation of Channel and AI Credentials
+
+The system maintains a clear separation between channel-specific credentials and AI service credentials:
+
+1. **Channel Credentials**: 
+   - Stored in paths like `whatsapp-credentials/{company_id}/{project_id}/twilio`
+   - Contain channel-specific authentication details (account SIDs, tokens, etc.)
+   - Scoped to specific company/project combinations
+   - Used only by the relevant channel processing engines
+
+2. **AI Credentials**: 
+   - Stored in the global path `ai-api-key/global`
+   - Referenced from each company's `ai_config.ai_api_key_reference` field
+   - Used across all channels and companies
+   - Single source of truth for the AI API key
+
+### Benefits of This Separation
+
+- **Clearer Security Boundaries**: Channel and AI credentials have distinct access patterns and permissions
+- **Simplified Key Management**: The AI API key is managed in a single location
+- **Reduced Duplication**: No need to store the same AI key in multiple channel credential objects
+- **Easier Key Rotation**: Rotating the AI API key affects all services simultaneously
+- **Future-Proofing**: If we need to switch AI providers, we only need to update one reference
+
 ## IAM Configuration
 
 Services accessing Secrets Manager require specific IAM permissions:
@@ -193,9 +247,10 @@ Services accessing Secrets Manager require specific IAM permissions:
       "Effect": "Allow",
       "Action": "secretsmanager:GetSecretValue",
       "Resource": [
-        "arn:aws:secretsmanager:region:account-id:secret:twilio/*/*/whatsapp-credentials",
-        "arn:aws:secretsmanager:region:account-id:secret:twilio/*/*/sms-credentials",
-        "arn:aws:secretsmanager:region:account-id:secret:openai/*/*/credentials"
+        "arn:aws:secretsmanager:region:account-id:secret:whatsapp-credentials/*/*/twilio",
+        "arn:aws:secretsmanager:region:account-id:secret:sms-credentials/*/*/twilio",
+        "arn:aws:secretsmanager:region:account-id:secret:email-credentials/*/*/sendgrid",
+        "arn:aws:secretsmanager:region:account-id:secret:ai-api-key/global"
       ]
     }
   ]

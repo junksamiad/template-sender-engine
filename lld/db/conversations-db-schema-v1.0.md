@@ -42,9 +42,9 @@ This key structure enables:
 | `channel_method` | String | Yes | Communication channel | "whatsapp", "sms", or "email" | `frontend_payload.request_data.channel_method` |
 | `request_id` | String | Yes | Original request ID from frontend | "550e8400-e29b-41d4-a716-446655440000" | `frontend_payload.request_data.request_id` |
 | `router_version` | String | Yes | Version of Channel Router that processed the request | "1.0.0" | `metadata.router_version` |
-| `whatsapp_credentials_reference` | String | Yes | Reference to WhatsApp credentials in Secrets Manager | "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials" | `channel_config.whatsapp.whatsapp_credentials_id` |
-| `sms_credentials_reference` | String | Yes | Reference to SMS credentials in Secrets Manager | "twilio/cucumber-recruitment/cv-analysis/sms-credentials" | `channel_config.sms.sms_credentials_id` |
-| `email_credentials_reference` | String | Yes | Reference to Email credentials in Secrets Manager | "sendgrid/cucumber-recruitment/cv-analysis/email-credentials" | `channel_config.email.email_credentials_id` |
+| `whatsapp_credentials_reference` | String | Yes | Reference to WhatsApp credentials in Secrets Manager | "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio" | `channel_config.whatsapp.whatsapp_credentials_id` |
+| `sms_credentials_reference` | String | Yes | Reference to SMS credentials in Secrets Manager | "sms-credentials/cucumber-recruitment/cv-analysis/twilio" | `channel_config.sms.sms_credentials_id` |
+| `email_credentials_reference` | String | Yes | Reference to Email credentials in Secrets Manager | "email-credentials/cucumber-recruitment/cv-analysis/sendgrid" | `channel_config.email.email_credentials_id` |
 | `company_whatsapp_number` | String | Conditional | For WhatsApp - Company's WhatsApp number | "+14155238886" | `channel_config.whatsapp.company_whatsapp_number` |
 | `company_sms_number` | String | Conditional | For SMS - Company's SMS number | "+14155238887" | `channel_config.sms.company_sms_number` |
 | `company_email` | String | Conditional | For Email - Company's email address | "jobs@cucumber-recruitment.com" | `channel_config.email.company_email` |
@@ -70,7 +70,8 @@ This key structure enables:
   "assistant_id_replies": "asst_Kw59ylP35Pn84pasJQVglXy7",
   "assistant_id_3": null,
   "assistant_id_4": null,
-  "assistant_id_5": null
+  "assistant_id_5": null,
+  "ai_api_key_reference": "api_key_reference_value"
 }
 ```
 
@@ -78,6 +79,7 @@ Source: From context object, with OpenAI Assistant IDs for different purposes:
 - `assistant_id_template_sender`: For initial templates
 - `assistant_id_replies`: For handling replies
 - Additional assistant IDs: Optional, for specialized processing
+- `ai_api_key_reference`: Reference to the API key used for the conversation
 
 ### company_rep
 ```json
@@ -168,9 +170,9 @@ const whatsappConversation = {
   company_whatsapp_number: channel_config.whatsapp.company_whatsapp_number,
   request_id: request_data.request_id,
   router_version: metadata.router_version,
-  whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
-  sms_credentials_reference: channel_config.sms.sms_credentials_id,
-  email_credentials_reference: channel_config.email.email_credentials_id,
+  whatsapp_credentials_reference: "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
+  sms_credentials_reference: "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
+  email_credentials_reference: "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
   recipient_first_name: recipient_data.recipient_first_name,
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
@@ -185,7 +187,8 @@ const whatsappConversation = {
     assistant_id_replies: contextObject.ai_config.assistant_id_replies,
     assistant_id_3: contextObject.ai_config.assistant_id_3 || null,
     assistant_id_4: contextObject.ai_config.assistant_id_4 || null,
-    assistant_id_5: contextObject.ai_config.assistant_id_5 || null
+    assistant_id_5: contextObject.ai_config.assistant_id_5 || null,
+    ai_api_key_reference: contextObject.ai_config.ai_api_key_reference
   },
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
@@ -220,9 +223,9 @@ const smsConversation = {
   company_sms_number: channel_config.sms.company_sms_number,
   request_id: request_data.request_id,
   router_version: metadata.router_version,
-  whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
-  sms_credentials_reference: channel_config.sms.sms_credentials_id,
-  email_credentials_reference: channel_config.email.email_credentials_id,
+  whatsapp_credentials_reference: "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
+  sms_credentials_reference: "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
+  email_credentials_reference: "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
   recipient_first_name: recipient_data.recipient_first_name,
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
@@ -237,7 +240,8 @@ const smsConversation = {
     assistant_id_replies: contextObject.ai_config.assistant_id_replies,
     assistant_id_3: contextObject.ai_config.assistant_id_3 || null,
     assistant_id_4: contextObject.ai_config.assistant_id_4 || null,
-    assistant_id_5: contextObject.ai_config.assistant_id_5 || null
+    assistant_id_5: contextObject.ai_config.assistant_id_5 || null,
+    ai_api_key_reference: contextObject.ai_config.ai_api_key_reference
   },
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
@@ -276,9 +280,9 @@ const emailConversation = {
   message_id: messageId,  // For email thread tracking
   request_id: request_data.request_id,
   router_version: metadata.router_version,
-  whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
-  sms_credentials_reference: channel_config.sms.sms_credentials_id,
-  email_credentials_reference: channel_config.email.email_credentials_id,
+  whatsapp_credentials_reference: "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
+  sms_credentials_reference: "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
+  email_credentials_reference: "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
   recipient_first_name: recipient_data.recipient_first_name,
   recipient_last_name: recipient_data.recipient_last_name,
   messages: [],
@@ -293,7 +297,8 @@ const emailConversation = {
     assistant_id_replies: contextObject.ai_config.assistant_id_replies,
     assistant_id_3: contextObject.ai_config.assistant_id_3 || null,
     assistant_id_4: contextObject.ai_config.assistant_id_4 || null,
-    assistant_id_5: contextObject.ai_config.assistant_id_5 || null
+    assistant_id_5: contextObject.ai_config.assistant_id_5 || null,
+    ai_api_key_reference: contextObject.ai_config.ai_api_key_reference
   },
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()
@@ -464,4 +469,4 @@ exports.handleDLQ = async (event) => {
 - **Read Capacity**: On-demand (to handle variable loads)
 - **Write Capacity**: On-demand (for unpredictable write patterns)
 - **Point-in-time Recovery**: Enabled (for disaster recovery)
-- **TTL**: Optional, can be set on `updated_at` with a configurable retention period 
+- **TTL**: Optional, can be set on `updated_at` with a configurable retention period

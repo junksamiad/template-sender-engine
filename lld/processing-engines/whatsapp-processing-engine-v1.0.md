@@ -176,7 +176,7 @@ The WhatsApp Processing Engine will be implemented as:
    ```
    COMPANY_TABLE_NAME=wa_company_data
    CONVERSATION_TABLE_NAME=wa_conversation
-   OPENAI_API_KEY_SECRET_NAME=openai/api-key
+   OPENAI_API_KEY_SECRET_NAME=ai-api-key/global
    TWILIO_ACCOUNT_SID_SECRET_NAME=twilio/account-sid
    TWILIO_AUTH_TOKEN_SECRET_NAME=twilio/auth-token
    WHATSAPP_QUEUE_URL=https://sqs.{region}.amazonaws.com/{account}/WhatsAppQueue
@@ -347,9 +347,9 @@ exports.handler = async (event) => {
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
       request_id: request_data.request_id,
       router_version: metadata.router_version,
-      whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
-      sms_credentials_reference: channel_config.sms.sms_credentials_id,
-      email_credentials_reference: channel_config.email.email_credentials_id,
+      whatsapp_credentials_reference: "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
+      sms_credentials_reference: "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
+      email_credentials_reference: "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
       recipient_first_name: recipient_data.recipient_first_name,
       recipient_last_name: recipient_data.recipient_last_name,
       conversation_status: "processing",
@@ -363,9 +363,11 @@ exports.handler = async (event) => {
         assistant_id_replies: ai_config.assistant_id_replies,
         assistant_id_3: ai_config.assistant_id_3 || null,
         assistant_id_4: ai_config.assistant_id_4 || null,
-        assistant_id_5: ai_config.assistant_id_5 || null
+        assistant_id_5: ai_config.assistant_id_5 || null,
+        ai_api_key_reference: ai_config.ai_api_key_reference
       },
-      messages: []
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     });
     
     // 3.1 Add conversation_id to the context object for downstream processing
@@ -379,15 +381,19 @@ exports.handler = async (event) => {
       request_id: request_data.request_id
     });
     
-    // 4. Get API credentials from Secrets Manager
-    const credentials = await getCredentials(
-      channel_config.whatsapp.whatsapp_credentials_id,
-      ai_config
+    // 4. Get channel credentials from Secrets Manager
+    const channelCredentials = await getCredentials(
+      channel_config.whatsapp.whatsapp_credentials_id
+    );
+    
+    // 4.1 Get AI credentials from Secrets Manager
+    const aiCredentials = await getCredentials(
+      ai_config.ai_api_key_reference
     );
     
     // 5. Initialize OpenAI and Twilio clients
-    const openai = initializeOpenAI(credentials.openaiApiKey);
-    const twilioClient = initializeTwilio(credentials.twilioAccountSid, credentials.twilioAuthToken);
+    const openai = initializeOpenAI(aiCredentials.ai_api_key);
+    const twilioClient = initializeTwilio(channelCredentials.twilio_account_sid, channelCredentials.twilio_auth_token);
     
     // 6. Process with OpenAI
     const aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config, messageBody);
@@ -579,9 +585,9 @@ Together, the DynamoDB status tracking and CloudWatch monitoring provide a compl
   company_phone_number: "+14155238886",
   request_id: "550e8400-e29b-41d4-a716-446655440000",
   router_version: "1.0.0",
-  whatsapp_credentials_reference: "twilio/cucumber-recruitment/cv-analysis/whatsapp-credentials",
-  sms_credentials_reference: "twilio/cucumber-recruitment/cv-analysis/sms-credentials",
-  email_credentials_reference: "sendgrid/cucumber-recruitment/cv-analysis/email-credentials",
+  whatsapp_credentials_reference: "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
+  sms_credentials_reference: "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
+  email_credentials_reference: "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
   recipient_first_name: "John",
   recipient_last_name: "Doe",
   conversation_status: "processing",
@@ -597,7 +603,8 @@ Together, the DynamoDB status tracking and CloudWatch monitoring provide a compl
     assistant_id_replies: "asst_Kw59ylP35Pn84pasJQVglXy7",
     assistant_id_3: null,
     assistant_id_4: null,
-    assistant_id_5: null
+    assistant_id_5: null,
+    ai_api_key_reference: "openai/api-key"
   },
   messages: [
     {
@@ -675,9 +682,9 @@ exports.handler = async (event) => {
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
       request_id: request_data.request_id,
       router_version: metadata.router_version,
-      whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
-      sms_credentials_reference: channel_config.sms.sms_credentials_id,
-      email_credentials_reference: channel_config.email.email_credentials_id,
+      whatsapp_credentials_reference: "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
+      sms_credentials_reference: "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
+      email_credentials_reference: "email-credentials/cucumber-recruitment/cv-analysis/sendgrid",
       recipient_first_name: recipient_data.recipient_first_name,
       recipient_last_name: recipient_data.recipient_last_name,
       conversation_status: "processing",
@@ -691,9 +698,11 @@ exports.handler = async (event) => {
         assistant_id_replies: ai_config.assistant_id_replies,
         assistant_id_3: ai_config.assistant_id_3 || null,
         assistant_id_4: ai_config.assistant_id_4 || null,
-        assistant_id_5: ai_config.assistant_id_5 || null
+        assistant_id_5: ai_config.assistant_id_5 || null,
+        ai_api_key_reference: ai_config.ai_api_key_reference
       },
-      messages: []
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     });
     
     // 3.1 Add conversation_id to the context object for downstream processing
@@ -707,15 +716,19 @@ exports.handler = async (event) => {
       request_id: request_data.request_id
     });
     
-    // 4. Get API credentials from Secrets Manager
-    const credentials = await getCredentials(
-      channel_config.whatsapp.whatsapp_credentials_id,
-      ai_config
+    // 4. Get channel credentials from Secrets Manager
+    const channelCredentials = await getCredentials(
+      channel_config.whatsapp.whatsapp_credentials_id
+    );
+    
+    // 4.1 Get AI credentials from Secrets Manager
+    const aiCredentials = await getCredentials(
+      ai_config.ai_api_key_reference
     );
     
     // 5. Initialize OpenAI and Twilio clients
-    const openai = initializeOpenAI(credentials.openaiApiKey);
-    const twilioClient = initializeTwilio(credentials.twilioAccountSid, credentials.twilioAuthToken);
+    const openai = initializeOpenAI(aiCredentials.ai_api_key);
+    const twilioClient = initializeTwilio(channelCredentials.twilio_account_sid, channelCredentials.twilio_auth_token);
     
     // 6. Process with OpenAI
     const aiResponse = await processWithOpenAI(openai, conversation, project_data, ai_config, messageBody);
@@ -811,8 +824,30 @@ async function createConversationRecord(conversationData) {
   return newConversation;
 }
 
-async function getCredentials(channelConfig, aiConfig) {
-  // Get API keys from Secrets Manager
+async function getCredentials(secretId) {
+  try {
+    // Get credentials from AWS Secrets Manager using the provided secret ID
+    const secretsManager = new AWS.SecretsManager();
+    
+    const secretValue = await secretsManager.getSecretValue({
+      SecretId: secretId
+    }).promise();
+    
+    if (!secretValue.SecretString) {
+      throw new Error(`No secret found for ID: ${secretId}`);
+    }
+    
+    // Parse the secret value
+    const credentials = JSON.parse(secretValue.SecretString);
+    
+    return credentials;
+  } catch (error) {
+    console.error('Error retrieving credentials from Secrets Manager', {
+      secretId,
+      error: error.message
+    });
+    throw new Error(`Failed to retrieve credentials: ${error.message}`);
+  }
 }
 
 async function processWithOpenAI(openai, conversation, projectData, aiConfig, messageBody) {
@@ -928,7 +963,7 @@ export class WhatsAppEngineStack extends cdk.Stack {
       environment: {
         COMPANY_TABLE_NAME: companyTable.tableName,
         CONVERSATION_TABLE_NAME: conversationTable.tableName,
-        OPENAI_API_KEY_SECRET_NAME: 'openai/api-key',
+        OPENAI_API_KEY_SECRET_NAME: 'ai-api-key/global',
         TWILIO_ACCOUNT_SID_SECRET_NAME: 'twilio/account-sid',
         TWILIO_AUTH_TOKEN_SECRET_NAME: 'twilio/auth-token',
         WHATSAPP_QUEUE_URL: whatsappQueue.queueUrl
@@ -952,8 +987,10 @@ export class WhatsAppEngineStack extends cdk.Stack {
     whatsappLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: ['secretsmanager:GetSecretValue'],
       resources: [
-        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:openai/*`,
-        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:twilio/*`
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:ai-api-key/*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:whatsapp-credentials/*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:sms-credentials/*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:email-credentials/*`
       ]
     }));
     
