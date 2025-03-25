@@ -337,11 +337,11 @@ exports.handler = async (event) => {
       company_name: db_payload.company_name,
       project_name: db_payload.project_name,
       company_rep: {
-        company_rep_1: company_data.company_rep_1 || null,
-        company_rep_2: company_data.company_rep_2 || null,
-        company_rep_3: company_data.company_rep_3 || null,
-        company_rep_4: company_data.company_rep_4 || null,
-        company_rep_5: company_data.company_rep_5 || null
+        company_rep_1: db_payload.company_rep?.company_rep_1 || null,
+        company_rep_2: db_payload.company_rep?.company_rep_2 || null,
+        company_rep_3: db_payload.company_rep?.company_rep_3 || null,
+        company_rep_4: db_payload.company_rep?.company_rep_4 || null,
+        company_rep_5: db_payload.company_rep?.company_rep_5 || null
       },
       channel_method: 'whatsapp',
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
@@ -672,11 +672,11 @@ exports.handler = async (event) => {
       company_name: db_payload.company_name,
       project_name: db_payload.project_name,
       company_rep: {
-        company_rep_1: company_data.company_rep_1 || null,
-        company_rep_2: company_data.company_rep_2 || null,
-        company_rep_3: company_data.company_rep_3 || null,
-        company_rep_4: company_data.company_rep_4 || null,
-        company_rep_5: company_data.company_rep_5 || null
+        company_rep_1: db_payload.company_rep?.company_rep_1 || null,
+        company_rep_2: db_payload.company_rep?.company_rep_2 || null,
+        company_rep_3: db_payload.company_rep?.company_rep_3 || null,
+        company_rep_4: db_payload.company_rep?.company_rep_4 || null,
+        company_rep_5: db_payload.company_rep?.company_rep_5 || null
       },
       channel_method: 'whatsapp',
       company_phone_number: channel_config.whatsapp.company_whatsapp_number,
@@ -798,13 +798,12 @@ async function createConversationRecord(conversationData) {
   
   // Ensure company_rep structure is properly formed
   if (!conversationData.company_rep) {
-    const companyData = conversationData.company_data || {};
     conversationData.company_rep = {
-      company_rep_1: companyData.company_rep_1 || null,
-      company_rep_2: companyData.company_rep_2 || null,
-      company_rep_3: companyData.company_rep_3 || null,
-      company_rep_4: companyData.company_rep_4 || null,
-      company_rep_5: companyData.company_rep_5 || null
+      company_rep_1: db_payload.company_rep?.company_rep_1 || null,
+      company_rep_2: db_payload.company_rep?.company_rep_2 || null,
+      company_rep_3: db_payload.company_rep?.company_rep_3 || null,
+      company_rep_4: db_payload.company_rep?.company_rep_4 || null,
+      company_rep_5: db_payload.company_rep?.company_rep_5 || null
     };
   }
   

@@ -33,6 +33,7 @@ This key structure allows:
 | `allowed_channels` | List(String) | Yes | List of channels this project can use | ["whatsapp", "email"] |
 | `rate_limits` | Map | Yes | Rate limiting configuration | See below |
 | `project_status` | String | Yes | Current status of the project | "active" |
+| `company_rep` | Map | No | Company representatives information | See below |
 | `ai_config` | Map | No | OpenAI-specific configuration | See below |
 | `channel_config` | Map | No | Channel-specific configurations | See below |
 | `created_at` | String | Yes | ISO 8601 timestamp of creation | "2023-06-15T14:30:45.123Z" |
@@ -52,6 +53,23 @@ This key structure allows:
 
 > **Note: Current Implementation Status**
 > While these rate limits are defined in the schema and included in the context object, they are **not currently enforced** in the Channel Router implementation. The system currently relies only on the API Gateway's global rate limits. Per-client rate limiting is planned for future implementation.
+
+### company_rep
+```json
+{
+  "company_rep_1": "Carol",
+  "company_rep_2": "Mark",
+  "company_rep_3": null,
+  "company_rep_4": null,
+  "company_rep_5": null
+}
+```
+
+This structure stores up to 5 company representatives that may be involved in conversations:
+- All fields are optional and can be set to null if not needed
+- These values will be transferred to the conversation records during conversation creation
+- When creating new company records, you need not specify all 5 representatives
+- For consistency, always include the structure with null values for unneeded fields
 
 ### ai_config
 ```json
@@ -126,6 +144,13 @@ The `project_status` field can have the following values:
     "max_message_length": 4096
   },
   "project_status": "active",
+  "company_rep": {
+    "company_rep_1": "Carol",
+    "company_rep_2": "Mark",
+    "company_rep_3": null,
+    "company_rep_4": null,
+    "company_rep_5": null
+  },
   "ai_config": {
     "assistant_id_template_sender": "asst_Ds59ylP35Pn84pasJQVglC2Q",
     "assistant_id_replies": "asst_Ds59ylP35Pn84pesJQVglC2Q",

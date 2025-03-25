@@ -25,8 +25,7 @@ All frontends must send a payload with the following structure:
   "company_data": {
     "company_id": "string",
     "project_id": "string",
-    "api_key": "string",
-    "company_rep_1": "string"
+    "api_key": "string"
   },
   "recipient_data": {
     "recipient_first_name": "string",
@@ -256,8 +255,7 @@ The Cucumber CV Analysis frontend is designed for recruitment agencies to facili
   "company_data": {
     "company_id": "cucumber-recruitment",
     "project_id": "cv-analysis",
-    "api_key": "ak_c7d4e8f9a2b1...",
-    "company_rep_1": "Carol"
+    "api_key": "ak_c7d4e8f9a2b1..."
   },
   "recipient_data": {
     "recipient_first_name": "John",

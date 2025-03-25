@@ -38,7 +38,7 @@ This key structure enables:
 | `project_id` | String | Yes | Project identifier | "cv-analysis" | `frontend_payload.company_data.project_id` |
 | `company_name` | String | Yes | Human-readable company name | "Cucumber Recruitment Ltd" | `wa_company_data_payload.company_name` |
 | `project_name` | String | Yes | Human-readable project name | "CV Analysis Bot" | `wa_company_data_payload.project_name` |
-| `company_rep` | Map | No | Company representatives information | Object | Mapped from `frontend_payload.company_data` |
+| `company_rep` | Map | No | Company representatives information | Object | Mapped from `wa_company_data_payload.company_rep` |
 | `channel_method` | String | Yes | Communication channel | "whatsapp", "sms", or "email" | `frontend_payload.request_data.channel_method` |
 | `request_id` | String | Yes | Original request ID from frontend | "550e8400-e29b-41d4-a716-446655440000" | `frontend_payload.request_data.request_id` |
 | `router_version` | String | Yes | Version of Channel Router that processed the request | "1.0.0" | `metadata.router_version` |
@@ -92,12 +92,12 @@ Source: From context object, with OpenAI Assistant IDs for different purposes:
 }
 ```
 
-Source: Mapped from the frontend payload, with these mapping rules:
-- `company_rep_1`: Value from `frontend_payload.company_data.company_rep_1` (null if not present)
-- `company_rep_2`: Value from `frontend_payload.company_data.company_rep_2` (null if not present)
-- `company_rep_3`: Value from `frontend_payload.company_data.company_rep_3` (null if not present)
-- `company_rep_4`: Value from `frontend_payload.company_data.company_rep_4` (null if not present)
-- `company_rep_5`: Value from `frontend_payload.company_data.company_rep_5` (null if not present)
+Source: Mapped from the company data stored in DynamoDB, with these mapping rules:
+- `company_rep_1`: Value from `wa_company_data_payload.company_rep.company_rep_1` (null if not present)
+- `company_rep_2`: Value from `wa_company_data_payload.company_rep.company_rep_2` (null if not present)
+- `company_rep_3`: Value from `wa_company_data_payload.company_rep.company_rep_3` (null if not present)
+- `company_rep_4`: Value from `wa_company_data_payload.company_rep.company_rep_4` (null if not present)
+- `company_rep_5`: Value from `wa_company_data_payload.company_rep.company_rep_5` (null if not present)
 
 This structure allows for storing up to 5 company representatives per conversation, enabling flexible staffing assignments and references to specific personnel handling the conversation.
 
@@ -148,13 +148,13 @@ Example message entry for assistant:
 // Generate WhatsApp conversation ID
 const whatsappConversationId = `${company_data.company_id}#${company_data.project_id}#${request_data.request_id}#${channel_config.whatsapp.company_whatsapp_number.replace(/\D/g, '')}`;
 
-// Map company representatives from frontend payload
+// Map company representatives from wa_company_data_payload
 const companyRep = {
-  company_rep_1: company_data.company_rep_1 || null,
-  company_rep_2: company_data.company_rep_2 || null,
-  company_rep_3: company_data.company_rep_3 || null,
-  company_rep_4: company_data.company_rep_4 || null,
-  company_rep_5: company_data.company_rep_5 || null
+  company_rep_1: wa_company_data_payload.company_rep?.company_rep_1 || null,
+  company_rep_2: wa_company_data_payload.company_rep?.company_rep_2 || null,
+  company_rep_3: wa_company_data_payload.company_rep?.company_rep_3 || null,
+  company_rep_4: wa_company_data_payload.company_rep?.company_rep_4 || null,
+  company_rep_5: wa_company_data_payload.company_rep?.company_rep_5 || null
 };
 
 // Create WhatsApp conversation record
@@ -201,13 +201,13 @@ const whatsappConversation = {
 // Generate SMS conversation ID
 const smsConversationId = `${company_data.company_id}#${company_data.project_id}#${request_data.request_id}#${channel_config.sms.company_sms_number.replace(/\D/g, '')}`;
 
-// Map company representatives from frontend payload
+// Map company representatives from wa_company_data_payload
 const companyRep = {
-  company_rep_1: company_data.company_rep_1 || null,
-  company_rep_2: company_data.company_rep_2 || null,
-  company_rep_3: company_data.company_rep_3 || null,
-  company_rep_4: company_data.company_rep_4 || null,
-  company_rep_5: company_data.company_rep_5 || null
+  company_rep_1: wa_company_data_payload.company_rep?.company_rep_1 || null,
+  company_rep_2: wa_company_data_payload.company_rep?.company_rep_2 || null,
+  company_rep_3: wa_company_data_payload.company_rep?.company_rep_3 || null,
+  company_rep_4: wa_company_data_payload.company_rep?.company_rep_4 || null,
+  company_rep_5: wa_company_data_payload.company_rep?.company_rep_5 || null
 };
 
 // Create SMS conversation record
@@ -257,13 +257,13 @@ const messageId = `<${request_data.request_id}.${Date.now()}@${company_data.comp
 // Generate Email conversation ID
 const emailConversationId = `${company_data.company_id}#${company_data.project_id}#${request_data.request_id}#${messageId}`;
 
-// Map company representatives from frontend payload
+// Map company representatives from wa_company_data_payload
 const companyRep = {
-  company_rep_1: company_data.company_rep_1 || null,
-  company_rep_2: company_data.company_rep_2 || null,
-  company_rep_3: company_data.company_rep_3 || null,
-  company_rep_4: company_data.company_rep_4 || null,
-  company_rep_5: company_data.company_rep_5 || null
+  company_rep_1: wa_company_data_payload.company_rep?.company_rep_1 || null,
+  company_rep_2: wa_company_data_payload.company_rep?.company_rep_2 || null,
+  company_rep_3: wa_company_data_payload.company_rep?.company_rep_3 || null,
+  company_rep_4: wa_company_data_payload.company_rep?.company_rep_4 || null,
+  company_rep_5: wa_company_data_payload.company_rep?.company_rep_5 || null
 };
 
 // Create Email conversation record
@@ -432,6 +432,7 @@ exports.handleDLQ = async (event) => {
       });
     } catch (error) {
       console.error('Error processing DLQ message', error);
+      // Continue with other records even if one fails
     }
   }
 };
