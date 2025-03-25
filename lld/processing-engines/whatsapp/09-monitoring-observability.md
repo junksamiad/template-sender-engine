@@ -173,6 +173,13 @@ This dashboard aids in diagnosing and resolving errors:
 - **Retry Statistics**: Success rates after retries
 - **Assistant Configuration Issues**: Detailed breakdown with conversation and assistant IDs
 
+#### AI Response Analytics Widgets:
+
+- **JSON Parser Performance**: Success rates and timings for parsing JSON from AI responses
+- **Content Variables Validation**: Success rates for content variable validation with breakdowns by assistant
+- **AI Response Structure Issues**: Counts of issues with AI response structure
+- **Variable Types**: Analysis of variable types provided by the AI assistant
+
 #### 5.1.3 Assistant Configuration Metrics
 
 | Metric Name | Description | Dimensions | Statistics |
@@ -181,7 +188,8 @@ This dashboard aids in diagnosing and resolving errors:
 
 The `IssueType` dimension can have the following values:
 - `InvalidJSONResponse`: The assistant did not return valid JSON.
-- `MissingVariables`: The assistant returned JSON without the required variables.
+- `MissingContentVariables`: The assistant returned JSON without the required content_variables field.
+- `EmptyContentVariables`: The assistant returned an empty content_variables object.
 
 These metrics allow operational teams to quickly identify if there are issues with the AI assistant configuration that need to be addressed.
 
@@ -194,10 +202,10 @@ These metrics allow operational teams to quickly identify if there are issues wi
 
 The `ErrorType` dimension for JSON parsing errors can have values like:
 - `SyntaxError`: Invalid JSON syntax in the response.
-- `MissingVariables`: JSON parsed but variables object is missing.
-- `MalformedVariables`: Variables don't follow the expected format.
+- `MissingContentVariables`: JSON parsed but content_variables field is missing.
+- `EmptyContentVariables`: content_variables object is empty.
 
-These metrics help track issues with the new JSON-based template variable approach.
+These metrics help track issues with the JSON-based content variables approach.
 
 ## 6. CloudWatch Alarms
 

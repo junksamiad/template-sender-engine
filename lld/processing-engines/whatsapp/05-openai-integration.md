@@ -13,9 +13,9 @@ The OpenAI integration follows these key architectural principles:
 1. **Thread-Based Processing**: Each conversation uses a dedicated OpenAI thread
 2. **Asynchronous Run Management**: The engine manages asynchronous OpenAI runs
 3. **Resilient Operation**: Handles API rate limits and temporary failures
-4. **Functional Implementation**: Uses OpenAI function calls for structured outputs
+4. **JSON Response Parsing**: Processes structured JSON responses from the assistant
 5. **Context Preservation**: Maintains conversation context between messages
-6. **Processing Stage Tracking**: Tracks whether a run is the initial or final stage of processing
+6. **Processing Stage Tracking**: Tracks the processing status for error handling
 
 The system stores OpenAI thread IDs in the conversation record, enabling conversation continuity across multiple messages.
 
@@ -294,7 +294,7 @@ Since OpenAI runs are asynchronous, the system needs to poll for completion:
 
 ```javascript
 /**
- * Polls the run status until completion or action required
+ * Polls the run status until completion or error
  * @param {object} openai - Initialized OpenAI client
  * @param {string} threadId - OpenAI thread ID
  * @param {string} runId - OpenAI run ID
@@ -340,9 +340,8 @@ async function pollRunStatus(openai, threadId, runId) {
       );
       console.log('Updated run status:', { status: run.status });
       
-      // Return immediately if action is required or in terminal state
-      if (run.status === 'requires_action' || 
-          run.status === 'completed' || 
+      // Return immediately if in terminal state
+      if (run.status === 'completed' || 
           run.status === 'failed' || 
           run.status === 'cancelled' || 
           run.status === 'expired') {
@@ -365,7 +364,85 @@ async function pollRunStatus(openai, threadId, runId) {
 }
 ```
 
-## 6. Main Integration Function
+## 6. Processing the Assistant's Response
+
+After the run completes, the system extracts the JSON response from the assistant's message:
+
+```javascript
+/**
+ * Extracts and parses the JSON response from the assistant's message
+ * @param {object} openai - Initialized OpenAI client
+ * @param {string} threadId - OpenAI thread ID
+ * @returns {Promise<object>} - Parsed JSON variables from assistant response
+ */
+async function getAssistantResponse(openai, threadId) {
+  try {
+    // Get assistant messages
+    const messages = await withExponentialBackoff(
+      () => openai.beta.threads.messages.list(threadId),
+      [],
+      { timeoutMs: 60000 }
+    );
+    
+    // Find the most recent assistant message
+    const assistantMessages = messages.data.filter(msg => msg.role === 'assistant');
+    const latestMessage = assistantMessages[0];
+    
+    if (!latestMessage) {
+      throw new Error('No assistant message found after completed run');
+    }
+    
+    console.log('Retrieved assistant message', {
+      thread_id: threadId,
+      message_id: latestMessage.id
+    });
+    
+    // Extract content from message
+    const messageContent = latestMessage.content[0].text.value;
+    
+    // Parse JSON from the message content
+    let contentVariables;
+    try {
+      // Extract JSON content from message (handle potential text before/after JSON)
+      const jsonMatch = messageContent.match(/```json\n([\s\S]*?)\n```/) || 
+                       messageContent.match(/\{[\s\S]*\}/);
+                       
+      const jsonContent = jsonMatch ? jsonMatch[1] || jsonMatch[0] : messageContent;
+      const parsedContent = JSON.parse(jsonContent);
+      
+      // Validate the parsed content has content_variables field
+      if (!parsedContent.content_variables) {
+        throw new Error('Missing content_variables in assistant response');
+      }
+      
+      contentVariables = parsedContent.content_variables;
+      console.log('Successfully parsed content_variables from assistant response', { 
+        variable_count: Object.keys(contentVariables).length 
+      });
+      
+      return contentVariables;
+    } catch (parseError) {
+      console.error('Failed to parse JSON from assistant response', {
+        parse_error: parseError.message,
+        message_content: messageContent
+      });
+      
+      // Emit metric for monitoring
+      await emitConfigurationIssueMetric('InvalidJSONResponse', {
+        conversation_id: contextObject.conversation_data?.conversation_id,
+        assistant_id: assistantId
+      });
+      
+      throw new Error(`Failed to parse assistant response as JSON: ${parseError.message}`);
+    }
+  } catch (error) {
+    console.error('Error getting assistant response:', error);
+    throw error;
+  }
+}
+```
+
+## 7. Main Integration Function
 
 The complete integration is orchestrated by a main function that handles the entire OpenAI processing flow:
 
@@ -374,7 +451,7 @@ The complete integration is orchestrated by a main function that handles the ent
  * Main function to process a message with OpenAI
  * @param {object} openai - Initialized OpenAI client
  * @param {object} contextObject - Full context object
- * @returns {Promise<object>} - Result of the OpenAI processing
+ * @returns {Promise<object>} - Result of the OpenAI processing with content variables
  */
 async function processWithOpenAI(openai, contextObject) {
   try {
@@ -398,77 +475,25 @@ async function processWithOpenAI(openai, contextObject) {
     
     // Process run results
     if (finalRun.status === 'completed') {
-      // Get assistant messages
-      const messages = await withExponentialBackoff(
-        () => openai.beta.threads.messages.list(thread_id),
-        [],
-        { timeoutMs: 60000 }
-      );
+      // Get content variables from assistant response
+      const contentVariables = await getAssistantResponse(openai, thread_id);
       
-      // Find the most recent assistant message
-      const assistantMessages = messages.data.filter(msg => msg.role === 'assistant');
-      const latestMessage = assistantMessages[0];
-      
-      if (!latestMessage) {
-        throw new Error('No assistant message found after completed run');
-      }
+      // Update context object with content variables
+      contextObject.content_variables = contentVariables;
       
       console.log('Run completed successfully', {
         thread_id,
         run_id: run.id,
-        message_id: latestMessage.id,
-        processing_time_ms: Date.now() - startTime
+        processing_time_ms: Date.now() - startTime,
+        variable_count: Object.keys(contentVariables).length
       });
       
-      // Extract content from message
-      const messageContent = latestMessage.content[0].text.value;
-      
-      // Parse JSON from the message content
-      let variables;
-      try {
-        // Extract JSON content from message (handle potential text before/after JSON)
-        const jsonMatch = messageContent.match(/```json\n([\s\S]*?)\n```/) || 
-                         messageContent.match(/\{[\s\S]*\}/);
-                         
-        const jsonContent = jsonMatch ? jsonMatch[1] || jsonMatch[0] : messageContent;
-        const parsedContent = JSON.parse(jsonContent);
-        
-        // Validate the parsed content has variables
-        if (!parsedContent.variables) {
-          throw new Error('Missing variables in assistant response');
-        }
-        
-        variables = parsedContent.variables;
-        console.log('Successfully parsed variables from assistant response', { 
-          variable_count: Object.keys(variables).length 
-        });
-      } catch (parseError) {
-        console.error('Failed to parse JSON from assistant response', {
-          parse_error: parseError.message,
-          message_content: messageContent
-        });
-        
-        // Emit metric for monitoring
-        await emitConfigurationIssueMetric('InvalidJSONResponse', {
-          conversation_id: contextObject.conversation_data?.conversation_id,
-          assistant_id: assistantId
-        });
-        
-        throw new Error(`Failed to parse assistant response as JSON: ${parseError.message}`);
-      }
-      
-      // Process the variables and send message with Twilio
-      const messageResult = await sendWhatsAppTemplateMessage(
-        contextObject,
-        variables
-      );
-      
+      // Return updated context object and processing results
       return {
         thread_id,
         run_id: run.id,
-        message_id: latestMessage.id,
-        message_result: messageResult,
         status: 'completed',
+        content_variables: contentVariables,
         processing_time_ms: Date.now() - startTime
       };
     } else {
@@ -626,71 +651,88 @@ async function emitConfigurationIssueMetric(issueType, dimensions) {
 }
 ```
 
-## 7. Coordinating with the SQS Heartbeat Pattern
+## 8. Integration with Twilio Message Sending
 
-While the OpenAI processing is running, the system needs to coordinate with the SQS heartbeat pattern to ensure the message remains invisible until processing completes. This is handled by the main Lambda function:
+After processing with OpenAI, the updated context object with content variables is passed to the Twilio message sending function:
 
 ```javascript
-// Excerpt from main Lambda handler
-try {
-  // Set up heartbeat timer
-  const heartbeatInterval = setupHeartbeat(receiptHandle);
-  
-  // Initialize OpenAI client
-  const openai = new OpenAI({
-    apiKey: aiCredentials.ai_api_key
-  });
-  
-  // Process with OpenAI
-  // This can take several minutes, during which the heartbeat will extend the visibility timeout
-  const aiResponse = await processWithOpenAI(openai, contextObject);
-  
-  // Cleanup and complete processing
-  clearInterval(heartbeatInterval);
-  
-  return aiResponse;
-} catch (error) {
-  // Clean up heartbeat timer
-  clearInterval(heartbeatInterval);
-  
-  // Log and rethrow error
-  console.error('OpenAI processing error:', error);
-  throw error;
+/**
+ * Main handler for processing WhatsApp messages
+ * @param {object} event - SQS event trigger
+ * @returns {Promise<object>} - Processing result
+ */
+async function processWhatsAppMessage(event) {
+  try {
+    // Parse context object from SQS message
+    const contextObject = JSON.parse(event.Records[0].body);
+    
+    // Setup OpenAI client with API key from Secrets Manager
+    const openai = await setupOpenAIClient(contextObject.ai_config.ai_api_key_reference);
+    
+    // Process message with OpenAI and get content variables
+    const openAIResult = await processWithOpenAI(openai, contextObject);
+    
+    // Update context object with OpenAI processing results
+    contextObject.thread_id = openAIResult.thread_id;
+    contextObject.content_variables = openAIResult.content_variables;
+    
+    // Pass updated context object to Python function for Twilio API integration
+    const messageResult = await invokeTwilioFunction(contextObject);
+    
+    // Update conversation status
+    await updateConversationStatus(
+      contextObject.conversation_data,
+      'initial_message_sent'
+    );
+    
+    return {
+      success: true,
+      message_result: messageResult,
+      openai_result: openAIResult
+    };
+  } catch (error) {
+    console.error('Error processing WhatsApp message:', error);
+    throw error;
+  }
 }
 ```
 
-## 8. Error Handling Considerations
+## 9. Error Detection for Assistant Configuration Issues
 
-The OpenAI integration implements several error handling strategies:
+The system specifically detects configuration issues related to the assistant's response format:
 
-### 8.1 Error Categories
+```javascript
+/**
+ * Validates the structure of the assistant's response
+ * @param {object} contentVariables - Parsed content variables from assistant
+ * @param {object} contextObject - Context object with conversation data
+ * @returns {boolean} - True if valid, throws error if invalid
+ */
+function validateAssistantResponse(contentVariables, contextObject) {
+  if (!contentVariables || typeof contentVariables !== 'object') {
+    emitConfigurationIssueMetric('InvalidResponseFormat', {
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      assistant_id: contextObject.ai_config.assistant_id_template_sender
+    });
+    throw new Error('Assistant response is not a valid object');
+  }
+  
+  // Check for empty variables object
+  if (Object.keys(contentVariables).length === 0) {
+    emitConfigurationIssueMetric('EmptyVariables', {
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      assistant_id: contextObject.ai_config.assistant_id_template_sender
+    });
+    throw new Error('Assistant returned empty content_variables object');
+  }
+  
+  return true;
+}
+```
 
-Errors are categorized to enable appropriate handling:
+This approach ensures the system can detect and report issues with the assistant's configuration or response format, enabling quick diagnosis and resolution of problems.
 
-| Category | HTTP Status | Description | Handling |
-|----------|-------------|-------------|----------|
-| `timeout` | N/A | API call timeout | Retry with exponential backoff |
-| `rate_limit` | 429 | Rate limit exceeded | Retry with exponential backoff |
-| `authentication` | 401 | Invalid API key | Fail immediately, alert operations team |
-| `authorization` | 403 | Permissions issue | Fail immediately, alert operations team |
-| `not_found` | 404 | Resource not found | Fail immediately, log details |
-| `invalid_request` | 400 | Bad request format | Fail immediately, log details |
-| `server_error` | 5xx | OpenAI server error | Retry with exponential backoff |
-| `network_error` | N/A | Network connectivity | Retry with exponential backoff |
-| `configuration_issue` | N/A | Assistant configuration | Fail immediately, no retry, alert operations team |
-
-### 8.2 Assistant Configuration Issues
-
-A specific category of errors has been added for assistant configuration issues:
-
-| Issue Type | Description | Cause | Handling |
-|------------|-------------|-------|----------|
-| `missing_function_call` | AI didn't call function on initial run | Incorrect system prompt or assistant configuration | Fail immediately, no retry, alert operations team |
-| `unexpected_function_call` | AI called function after tool outputs | Incorrect system prompt or assistant configuration | Fail immediately, no retry, alert operations team |
-
-These issues require human intervention to fix as they relate to how the assistant is configured in the OpenAI dashboard, not runtime issues that might resolve with retries.
-
-## 9. Monitoring and Metrics
+## 10. Monitoring and Metrics
 
 To monitor OpenAI API usage and performance, several metrics are tracked:
 
@@ -718,7 +760,7 @@ await cloudwatch.putMetricData({
 }).promise();
 ```
 
-## 10. Thread Management and Cleanup
+## 11. Thread Management and Cleanup
 
 For the initial WhatsApp implementation, threads are created and retained indefinitely. In future versions, a thread cleanup mechanism may be implemented to handle:
 
@@ -726,7 +768,7 @@ For the initial WhatsApp implementation, threads are created and retained indefi
 2. Thread deletion for completed conversations
 3. Token usage optimization
 
-## 11. Related Documentation
+## 12. Related Documentation
 
 - [Overview and Architecture](./01-overview-architecture.md)
 - [Function Execution](./06-function-execution.md)

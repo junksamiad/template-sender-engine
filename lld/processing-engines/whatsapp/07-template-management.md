@@ -307,83 +307,216 @@ async function updateTemplateStatus(companySid, contentSid, status, whatsappTemp
 }
 ```
 
-## 4. Template Validation
+## 4. Sending WhatsApp Template Messages
 
-Templates are validated against WhatsApp's requirements:
+### 4.1 Sending a Template Message with Variables
+
+The key function for sending WhatsApp template messages integrates with Twilio and uses the variables provided by the OpenAI processing:
 
 ```javascript
 /**
- * Validates a template structure against WhatsApp requirements
- * @param {object} template - Template object
- * @throws {Error} - If validation fails
+ * Sends a WhatsApp template message using Twilio API
+ * @param {object} contextObject - Context object with conversation data and content variables
+ * @returns {Promise<object>} - Result of sending message
  */
-function validateTemplateStructure(template) {
-  // Check required fields
-  if (!template.name) {
-    throw new Error('Template name is required');
-  }
-  
-  if (!/^[a-zA-Z0-9_]+$/.test(template.name)) {
-    throw new Error('Template name must contain only letters, numbers, and underscores');
-  }
-  
-  if (!template.language) {
-    throw new Error('Template language is required');
-  }
-  
-  if (!template.category) {
-    throw new Error('Template category is required');
-  }
-  
-  if (!template.components || !Array.isArray(template.components) || template.components.length === 0) {
-    throw new Error('Template must have at least one component');
-  }
-  
-  // Check for required body component
-  const hasBodyComponent = template.components.some(c => c.type === 'BODY');
-  if (!hasBodyComponent) {
-    throw new Error('Template must have a BODY component');
-  }
-  
-  // Validate each component
-  const componentCounts = {
-    HEADER: 0,
-    BODY: 0,
-    FOOTER: 0,
-    BUTTONS: 0
-  };
-  
-  for (const component of template.components) {
-    if (!component.type) {
-      throw new Error('Each component must have a type');
+async function sendWhatsAppTemplateMessage(contextObject) {
+  try {
+    console.log('Sending WhatsApp template message', {
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      recipient_tel: contextObject.frontend_payload.recipient_data.recipient_tel
+    });
+    
+    // Get WhatsApp credentials from Secrets Manager
+    const whatsappCredentialsId = contextObject.channel_config.whatsapp.whatsapp_credentials_id;
+    const twilioCredentials = await getSecretValue(whatsappCredentialsId);
+    
+    // Get the content/template SID from Twilio credentials in Secrets Manager
+    const contentSid = twilioCredentials.twilio_template_sid;
+    
+    if (!contentSid) {
+      throw new Error('Template SID not found in credentials. Please ensure twilio_template_sid is set in the WhatsApp credentials in Secrets Manager.');
     }
     
-    if (!componentCounts.hasOwnProperty(component.type)) {
-      throw new Error(`Invalid component type: ${component.type}`);
+    // Initialize Twilio client
+    const twilioClient = twilio(
+      twilioCredentials.twilio_account_sid,
+      twilioCredentials.twilio_auth_token
+    );
+    
+    // Get content variables from the context object
+    const contentVariables = contextObject.content_variables;
+    
+    // Validate content variables
+    if (!contentVariables || typeof contentVariables !== 'object') {
+      throw new Error('Invalid content variables in context object');
     }
     
-    componentCounts[component.type]++;
+    // Prepare message options
+    const messageOptions = {
+      from: `whatsapp:${contextObject.channel_config.whatsapp.company_whatsapp_number}`,
+      to: `whatsapp:${contextObject.frontend_payload.recipient_data.recipient_tel}`,
+      contentSid: contentSid,
+      contentVariables: JSON.stringify(contentVariables)
+    };
     
-    // Check for duplicates
-    if (componentCounts[component.type] > 1) {
-      throw new Error(`Only one ${component.type} component is allowed`);
+    // Send the message
+    const message = await twilioClient.messages.create(messageOptions);
+    
+    console.log('WhatsApp template message sent', {
+      message_sid: message.sid, 
+      status: message.status,
+      conversation_id: contextObject.conversation_data?.conversation_id
+    });
+    
+    // Add message to conversation history
+    await addMessageToConversation(
+      contextObject.conversation_data,
+      'assistant',
+      'Template message sent',
+      message.sid
+    );
+    
+    // Update conversation status
+    await updateConversationStatus(
+      contextObject.conversation_data,
+      'initial_message_sent'
+    );
+    
+    return {
+      success: true,
+      message_sid: message.sid,
+      status: message.status,
+      sent_at: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Error sending WhatsApp template message:', error);
+    throw error;
+  }
+}
+```
+
+### 4.2 Error Handling
+
+Template sending has specific error handling logic:
+
+```javascript
+/**
+ * Error handling for template sending
+ * @param {Error} error - Error from Twilio API
+ * @param {object} contextObject - Context object
+ * @returns {Promise<void>} - Resolves when error is handled
+ */
+async function handleTemplateSendingError(error, contextObject) {
+  // Categorize the error
+  let errorCategory = 'unknown';
+  let shouldRetry = false;
+  
+  if (error.code === 20429 || error.status === 429) {
+    errorCategory = 'rate_limit';
+    shouldRetry = true;
+  } else if (error.code === 20003) {
+    errorCategory = 'authentication';
+    shouldRetry = false;
+  } else if (error.code === 21211) {
+    errorCategory = 'invalid_number';
+    shouldRetry = false;
+  } else if (error.code === 21606) {
+    errorCategory = 'template_not_found';
+    shouldRetry = false;
+  } else if (error.code === 21609) {
+    errorCategory = 'template_not_approved';
+    shouldRetry = false;
+  } else if (error.code === 21610) {
+    errorCategory = 'template_parameter_mismatch';
+    shouldRetry = false;
+  } else if (error.status >= 500 && error.status < 600) {
+    errorCategory = 'server_error';
+    shouldRetry = true;
+  }
+  
+  // Log the error with detailed information
+  console.error('Template sending error:', {
+    error_category: errorCategory,
+    error_code: error.code,
+    error_message: error.message,
+    should_retry: shouldRetry,
+    conversation_id: contextObject.conversation_data?.conversation_id,
+    recipient_tel: contextObject.frontend_payload.recipient_data.recipient_tel
+  });
+  
+  // Update conversation record with error information
+  await updateConversationError(
+    contextObject.conversation_data,
+    {
+      error_type: 'template_sending',
+      error_category: errorCategory,
+      error_message: error.message,
+      error_timestamp: new Date().toISOString()
+    }
+  );
+  
+  // Emit CloudWatch metric
+  await emitTemplateErrorMetric(errorCategory, {
+    company_id: contextObject.company_data.company_id,
+    project_id: contextObject.company_data.project_id
+  });
+  
+  // If the error is not retryable, update conversation status to failed
+  if (!shouldRetry) {
+    await updateConversationStatus(
+      contextObject.conversation_data,
+      'failed'
+    );
+  }
+  
+  // Rethrow the error for the Lambda handler to handle
+  throw error;
+}
+```
+
+### 4.3 Integration with OpenAI Processing
+
+The template sending function is integrated with the OpenAI processing flow:
+
+```javascript
+/**
+ * Main handler for processing WhatsApp messages
+ * @param {object} event - SQS event trigger
+ * @returns {Promise<object>} - Processing result
+ */
+async function processWhatsAppMessage(event) {
+  try {
+    // Parse context object from SQS message
+    const contextObject = JSON.parse(event.Records[0].body);
+    
+    // Create conversation record
+    await createConversationRecord(contextObject);
+    
+    // Setup OpenAI client with API key from Secrets Manager
+    const openai = await setupOpenAIClient(contextObject.ai_config.ai_api_key_reference);
+    
+    // Process message with OpenAI and get content variables
+    const openAIResult = await processWithOpenAI(openai, contextObject);
+    
+    // The contextObject now has content_variables from OpenAI processing
+    
+    // Send template message using the updated context object
+    const messageResult = await sendWhatsAppTemplateMessage(contextObject);
+    
+    return {
+      success: true,
+      message_result: messageResult,
+      openai_result: openAIResult
+    };
+  } catch (error) {
+    console.error('Error processing WhatsApp message:', error);
+    
+    // Handle template sending errors if possible
+    if (error.code && error.message && error.message.includes('Twilio')) {
+      await handleTemplateSendingError(error, contextObject);
     }
     
-    // Validate component specific requirements
-    switch (component.type) {
-      case 'HEADER':
-        validateHeaderComponent(component);
-        break;
-      case 'BODY':
-        validateBodyComponent(component);
-        break;
-      case 'FOOTER':
-        validateFooterComponent(component);
-        break;
-      case 'BUTTONS':
-        validateButtonsComponent(component);
-        break;
-    }
+    throw error;
   }
 }
 ```
@@ -803,4 +936,16 @@ async function sendWhatsAppMessage(args) {
 
 - [Overview and Architecture](./01-overview-architecture.md)
 - [Function Execution](./06-function-execution.md)
-- [Error Handling Strategy](./08-error-handling-strategy.md) 
+- [Error Handling Strategy](./08-error-handling-strategy.md)
+
+## 11. Best Practices for Template Management
+
+1. **Template Identifiers**: Store template SIDs in AWS Secrets Manager alongside Twilio credentials for secure access
+
+2. **Error Handling**: Implement specific error handling for template-related issues
+
+3. **Monitoring**: Track template usage and error metrics in CloudWatch
+
+4. **Content Variables**: Ensure the OpenAI assistant is configured to return structured content variables
+
+5. **Fallback Mechanisms**: Implement fallback templates for critical communications 

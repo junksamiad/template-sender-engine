@@ -70,14 +70,15 @@ Failures in integrated third-party services:
 | Server Error | OPENAI_SERVER_ERROR | 5xx server error from OpenAI | Retry with backoff | "Internal server error" |
 | Invalid Request | OPENAI_INVALID_REQUEST | Invalid request format or parameters | No retry, send to DLQ | "Invalid request parameters" |
 | JSON Parsing Error | OPENAI_JSON_PARSE_ERROR | Failed to parse JSON from assistant response | No retry, send to DLQ | "Failed to parse JSON: Unexpected token at line 2" |
-| Missing Variables | OPENAI_MISSING_VARIABLES | JSON response missing required variables | No retry, send to DLQ | "Missing variables in assistant response" |
+| Missing Variables | OPENAI_MISSING_VARIABLES | JSON response missing required content variables | No retry, send to DLQ | "Missing content_variables in assistant response" |
 
 In addition to standard API errors, the system tracks and handles specific OpenAI assistant configuration issues:
 
 | Error Code | Description | Handling Strategy |
 |------------|-------------|-------------------|
 | INVALID_JSON_RESPONSE | Assistant did not return valid JSON | 1. Log detailed error with message content<br>2. Emit CloudWatch metric<br>3. Send to DLQ |
-| MISSING_VARIABLES | Assistant returned JSON without variables | 1. Log detailed error with parsed response<br>2. Emit CloudWatch metric<br>3. Send to DLQ |
+| MISSING_CONTENT_VARIABLES | Assistant returned JSON without content_variables | 1. Log detailed error with parsed response<br>2. Emit CloudWatch metric<br>3. Send to DLQ |
+| EMPTY_CONTENT_VARIABLES | Assistant returned empty content_variables object | 1. Log detailed error<br>2. Emit CloudWatch metric<br>3. Send to DLQ |
 
 ## 4. Implementation of Error Handling
 
@@ -964,4 +965,130 @@ async function reprocessDLQMessage(dlqMessage) {
     return false;
   }
 }
-``` 
+```
+
+### 5.2 OpenAI Assistant Configuration Issues
+
+The OpenAI integration includes specialized handling for assistant configuration issues:
+
+```javascript
+/**
+ * Handles assistant configuration issues by emitting metrics and providing detailed logging
+ * @param {string} issueType - Type of configuration issue (e.g., 'InvalidJSONResponse')
+ * @param {object} contextObject - Context object with conversation data
+ * @param {string} assistantId - OpenAI assistant ID
+ * @param {object} details - Additional details about the issue
+ */
+async function handleAssistantConfigurationIssue(issueType, contextObject, assistantId, details = {}) {
+  try {
+    // Log detailed information about the issue
+    console.error(`Assistant configuration issue: ${issueType}`, {
+      assistant_id: assistantId,
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      company_id: contextObject.company_data?.company_id,
+      thread_id: contextObject.thread_id,
+      ...details
+    });
+    
+    // Emit metric for monitoring
+    await emitConfigurationIssueMetric(issueType, {
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      assistant_id: assistantId,
+      environment: process.env.ENVIRONMENT || 'dev'
+    });
+    
+    // Update conversation record with error information
+    await updateConversationError(
+      contextObject.conversation_data,
+      {
+        error_type: 'assistant_configuration',
+        error_category: issueType,
+        error_message: `Assistant configuration issue: ${issueType}`,
+        error_timestamp: new Date().toISOString(),
+        error_details: JSON.stringify(details)
+      }
+    );
+    
+    // Update conversation status to failed
+    await updateConversationStatus(
+      contextObject.conversation_data,
+      'failed'
+    );
+    
+    // Create a structured error for the DLQ with metadata
+    const error = new Error(`Assistant configuration issue: ${issueType}`);
+    error.name = 'AssistantConfigurationError';
+    error.code = `ASSISTANT_CONFIG_${issueType.toUpperCase()}`;
+    error.metadata = {
+      assistant_id: assistantId,
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      thread_id: contextObject.thread_id,
+      issue_type: issueType,
+      ...details
+    };
+    
+    return error;
+  } catch (metricError) {
+    // If there's an error in the error handling, log but continue with the original error
+    console.error('Error handling assistant configuration issue:', metricError);
+    
+    // Create a basic error if the full handling fails
+    const error = new Error(`Assistant configuration issue: ${issueType}`);
+    error.name = 'AssistantConfigurationError';
+    
+    return error;
+  }
+}
+```
+
+Usage in JSON response processing:
+
+```javascript
+// Extract JSON content from message
+try {
+  const jsonMatch = messageContent.match(/```json\n([\s\S]*?)\n```/) || 
+                    messageContent.match(/\{[\s\S]*\}/);
+                     
+  const jsonContent = jsonMatch ? jsonMatch[1] || jsonMatch[0] : messageContent;
+  const parsedContent = JSON.parse(jsonContent);
+  
+  // Validate the parsed content has content_variables
+  if (!parsedContent.content_variables) {
+    const error = await handleAssistantConfigurationIssue(
+      'MissingContentVariables',
+      contextObject,
+      assistantId,
+      { parsed_content: JSON.stringify(parsedContent) }
+    );
+    throw error;
+  }
+  
+  if (Object.keys(parsedContent.content_variables).length === 0) {
+    const error = await handleAssistantConfigurationIssue(
+      'EmptyContentVariables',
+      contextObject,
+      assistantId,
+      { parsed_content: JSON.stringify(parsedContent) }
+    );
+    throw error;
+  }
+  
+  contentVariables = parsedContent.content_variables;
+} catch (parseError) {
+  if (parseError.name === 'AssistantConfigurationError') {
+    // Already handled, just rethrow
+    throw parseError;
+  }
+  
+  // Handle JSON parsing errors
+  const error = await handleAssistantConfigurationIssue(
+    'InvalidJSONResponse',
+    contextObject,
+    assistantId,
+    { 
+      parse_error: parseError.message,
+      message_content: messageContent.substring(0, 500) // Limit for logging
+    }
+  );
+  throw error;
+} 

@@ -74,11 +74,13 @@ The WhatsApp Processing Engine follows a linear, efficient processing flow:
    - The engine creates an OpenAI thread and adds the context as a message.
    - A run is created with the specified assistant.
    - The run is polled until completion.
-   - The assistant responds with a structured JSON containing template variables.
+   - The assistant responds with a structured JSON containing content variables.
+   - The content variables are added to the context object.
 
 4. **Template Message Sending**:
-   - The engine parses the JSON response to extract template variables.
-   - The variables are passed to the Twilio API along with the template reference.
+   - The updated context object with content variables is passed to the Twilio integration function.
+   - The function retrieves the template SID from the Twilio credentials in AWS Secrets Manager.
+   - The content variables are passed to the Twilio API along with the template SID.
    - The message is sent to the recipient's WhatsApp number.
 
 5. **Conversation Finalization**:
