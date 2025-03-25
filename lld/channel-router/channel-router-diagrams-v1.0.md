@@ -475,6 +475,7 @@ classDiagram
         +project_name
         +project_status
         +allowed_channels
+        +company_rep
     }
     
     class ProjectRateLimits {

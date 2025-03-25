@@ -65,8 +65,7 @@ The router accepts the payload structure as defined in the frontend documentatio
   "company_data": {
     "company_id": "string",
     "project_id": "string",
-    "api_key": "string",
-    "company_rep_1": "string"
+    "api_key": "string"
   },
   "recipient_data": {
     "recipient_first_name": "string",
@@ -290,6 +289,13 @@ The resulting context object has the following structure:
     "project_name": "CV Analysis Bot",
     "project_status": "active",
     "allowed_channels": ["whatsapp", "email", "sms"],
+    "company_rep": {
+      "company_rep_1": "Carol",
+      "company_rep_2": "Mark",
+      "company_rep_3": null,
+      "company_rep_4": null,
+      "company_rep_5": null
+    },
     "rate_limits": {
       "requests_per_minute": 100,
       "requests_per_day": 10000,
@@ -471,7 +477,14 @@ const contextModule = {
         company_name: companyData.company_name,
         project_name: companyData.project_name,
         project_status: companyData.project_status,
-        allowed_channels: companyData.allowed_channels
+        allowed_channels: companyData.allowed_channels,
+        company_rep: companyData.company_rep || {
+          company_rep_1: null,
+          company_rep_2: null,
+          company_rep_3: null,
+          company_rep_4: null,
+          company_rep_5: null
+        }
       },
       project_rate_limits: companyData.rate_limits,
       channel_config: {},

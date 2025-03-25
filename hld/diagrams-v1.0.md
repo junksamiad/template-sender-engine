@@ -404,6 +404,7 @@ classDiagram
         +project_name
         +project_status
         +allowed_channels
+        +company_rep
     }
     
     class ProjectRateLimits {
@@ -578,6 +579,7 @@ erDiagram
         object concurrent_conversations
         string status
         object openai_config
+        object company_rep
         object twilio_config
         object email_config
         object sms_config
