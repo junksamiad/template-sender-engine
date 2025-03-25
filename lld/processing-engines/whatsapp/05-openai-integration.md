@@ -392,9 +392,10 @@ After the run completes, the system extracts the JSON response from the assistan
  * Extracts and parses the JSON response from the assistant's message
  * @param {object} openai - Initialized OpenAI client
  * @param {string} threadId - OpenAI thread ID
+ * @param {object} contextObject - Context object with conversation and configuration data
  * @returns {Promise<object>} - Parsed JSON variables from assistant response
  */
-async function getAssistantResponse(openai, threadId) {
+async function getAssistantResponse(openai, threadId, contextObject) {
   try {
     // Get assistant messages
     const messages = await withExponentialBackoff(
@@ -448,8 +449,8 @@ async function getAssistantResponse(openai, threadId) {
       
       // Emit metric for monitoring
       await emitConfigurationIssueMetric('InvalidJSONResponse', {
-        conversation_id: contextObject.conversation_data?.conversation_id,
-        assistant_id: assistantId
+        conversation_id: contextObject.conversation_data.conversation_id,
+        assistant_id: contextObject.ai_config.assistant_id_template_sender
       });
       
       throw new Error(`Failed to parse assistant response as JSON: ${parseError.message}`);
@@ -496,7 +497,7 @@ async function processWithOpenAI(openai, contextObject) {
     // Process run results
     if (finalRun.status === 'completed') {
       // Get content variables from assistant response
-      const contentVariables = await getAssistantResponse(openai, thread_id);
+      const contentVariables = await getAssistantResponse(openai, thread_id, contextObject);
       
       // Update context object with content variables
       contextObject.content_variables = contentVariables;
@@ -531,7 +532,7 @@ async function processWithOpenAI(openai, contextObject) {
     if (!error.metadata) {
       error.metadata = {
         thread_id: contextObject.thread_id,
-        conversation_id: contextObject.conversation_data?.conversation_id
+        conversation_id: contextObject.conversation_data.conversation_id
       };
     }
     
@@ -553,7 +554,7 @@ async function processWithOpenAI(openai, contextObject) {
 async function sendWhatsAppTemplateMessage(contextObject, variables) {
   try {
     console.log('Sending WhatsApp template message', {
-      conversation_id: contextObject.conversation_data?.conversation_id,
+      conversation_id: contextObject.conversation_data.conversation_id,
       recipient_tel: contextObject.frontend_payload.recipient_data.recipient_tel
     });
     
@@ -598,25 +599,27 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
     console.log('WhatsApp template message sent', {
       message_sid: message.sid, 
       status: message.status,
-      conversation_id: contextObject.conversation_data?.conversation_id
+      conversation_id: contextObject.conversation_data.conversation_id
     });
     
-    // Add message to conversation history
-    await addMessageToConversation(
-      contextObject.conversation_data,
-      'assistant',
-      `Template: ${templateName}`
+    // First retrieve the conversation record from DynamoDB
+    const conversation = await getConversationRecord(
+      contextObject.frontend_payload.recipient_data.recipient_tel,
+      contextObject.conversation_data.conversation_id
     );
     
+    // Add message to conversation history with message details
+    await addMessageToConversation(conversation, {
+      role: 'assistant',
+      content: `Template: ${templateName}`,
+      usage: contextObject.openAIResult?.usage || null
+    });
+    
     // Update conversation status
-    await updateConversationStatus(
-      contextObject.conversation_data,
-      'initial_message_sent'
-    );
+    await updateConversationStatus(conversation, 'initial_message_sent');
     
     return {
       success: true,
-      message_sid: message.sid,
       status: message.status,
       sent_at: new Date().toISOString()
     };
@@ -695,20 +698,19 @@ async function processWhatsAppMessage(event) {
     // Update context object with OpenAI processing results
     contextObject.thread_id = openAIResult.thread_id;
     contextObject.content_variables = openAIResult.content_variables;
+    contextObject.openAIResult = openAIResult;  // Store the full result for usage metrics
     
-    // Pass updated context object to Python function for Twilio API integration
-    const messageResult = await invokeTwilioFunction(contextObject);
+    // Send WhatsApp template message with content variables
+    const messageResult = await sendWhatsAppTemplateMessage(contextObject, openAIResult.content_variables);
     
-    // Update conversation status
-    await updateConversationStatus(
-      contextObject.conversation_data,
-      'initial_message_sent'
-    );
+    // At this point, the conversation status has already been updated in sendWhatsAppTemplateMessage
     
+    // Return success result with key information
     return {
       success: true,
       message_result: messageResult,
-      openai_result: openAIResult
+      processing_time_ms: openAIResult.processing_time_ms,
+      thread_id: openAIResult.thread_id
     };
   } catch (error) {
     console.error('Error processing WhatsApp message:', error);
@@ -731,7 +733,7 @@ The system specifically detects configuration issues related to the assistant's 
 function validateAssistantResponse(contentVariables, contextObject) {
   if (!contentVariables || typeof contentVariables !== 'object') {
     emitConfigurationIssueMetric('InvalidResponseFormat', {
-      conversation_id: contextObject.conversation_data?.conversation_id,
+      conversation_id: contextObject.conversation_data.conversation_id,
       assistant_id: contextObject.ai_config.assistant_id_template_sender
     });
     throw new Error('Assistant response is not a valid object');
@@ -740,7 +742,7 @@ function validateAssistantResponse(contentVariables, contextObject) {
   // Check for empty variables object
   if (Object.keys(contentVariables).length === 0) {
     emitConfigurationIssueMetric('EmptyVariables', {
-      conversation_id: contextObject.conversation_data?.conversation_id,
+      conversation_id: contextObject.conversation_data.conversation_id,
       assistant_id: contextObject.ai_config.assistant_id_template_sender
     });
     throw new Error('Assistant returned empty content_variables object');
@@ -795,4 +797,4 @@ For the initial WhatsApp implementation, threads are created and retained indefi
 - [Template Management](./06-template-management.md)
 - [Error Handling Strategy](./07-error-handling-strategy.md)
 - [Monitoring and Observability](./08-monitoring-observability.md)
-- [Operations Playbook](./09-operations-playbook.md) 
+- [Operations Playbook](./09-operations-playbook.md)
