@@ -507,20 +507,19 @@ async function processWithOpenAI(openai, contextObject) {
       const aiCompletionTokens = finalRun.usage?.completion_tokens || 0;
       const aiTotalTokens = finalRun.usage?.total_tokens || 0;
       
-      // Store token metrics in the context object for the conversation record
-      contextObject.ai_prompt_tokens = aiPromptTokens;
-      contextObject.ai_completion_tokens = aiCompletionTokens;
-      contextObject.ai_total_tokens = aiTotalTokens;
-      contextObject.processing_time_ms = processingTimeMs;
+      // Store content_variables in the conversation_data object
+      contextObject.content_variables = contentVariables;
+      contextObject.conversation_data.content_variables = contentVariables;
       
       // Initialize conversation_data.messages array if it doesn't exist
       if (!contextObject.conversation_data.messages) {
         contextObject.conversation_data.messages = [];
       }
       
-      // Add placeholder for the assistant message - content will be added after Twilio sends the message
-      // We're just preparing the metrics here
-      contextObject.conversation_data.message_metrics = {
+      // Create a new message object in the messages array
+      // This will be the first message in the conversation, with role='assistant'
+      // Note: content will be added after the template is sent via Twilio
+      const assistantMessage = {
         entry_id: uuidv4(), // Generate a unique ID for the message
         message_timestamp: new Date().toISOString(),
         role: 'assistant',
@@ -528,8 +527,11 @@ async function processWithOpenAI(openai, contextObject) {
         ai_completion_tokens: aiCompletionTokens,
         ai_total_tokens: aiTotalTokens,
         processing_time_ms: processingTimeMs
-        // Note: content field will be added after Twilio sends the template
+        // content field will be added after Twilio sends the template
       };
+      
+      // Store this assistant message for later completion
+      contextObject.conversation_data.pending_assistant_message = assistantMessage;
       
       console.log('Run completed successfully', {
         thread_id,
@@ -645,24 +647,24 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
       contextObject.conversation_data.conversation_id
     );
     
-    // Complete the message data with content from template
-    const messageData = {
-      ...contextObject.conversation_data.message_metrics,
+    // Complete the pending assistant message with the template content
+    const completeAssistantMessage = {
+      ...contextObject.conversation_data.pending_assistant_message,
       content: `Template: ${templateName}`
     };
     
     // Add the complete message to conversation history
-    await addMessageToConversation(conversation, messageData);
+    await addMessageToConversation(conversation, completeAssistantMessage);
     
     // Prepare the final conversation update data
     const finalUpdateData = {
       conversation_status: 'initial_message_sent',
       thread_id: contextObject.thread_id,
-      processing_time_ms: contextObject.processing_time_ms,
+      processing_time_ms: completeAssistantMessage.processing_time_ms,
       task_complete: true,
-      ai_prompt_tokens: contextObject.ai_prompt_tokens,
-      ai_completion_tokens: contextObject.ai_completion_tokens,
-      ai_total_tokens: contextObject.ai_total_tokens
+      ai_prompt_tokens: completeAssistantMessage.ai_prompt_tokens,
+      ai_completion_tokens: completeAssistantMessage.ai_completion_tokens,
+      ai_total_tokens: completeAssistantMessage.ai_total_tokens
     };
     
     // Update conversation record with final status and metrics
@@ -743,27 +745,29 @@ async function processWhatsAppMessage(event) {
     const openai = await setupOpenAIClient(contextObject.ai_config.ai_api_key_reference);
     
     // Process message with OpenAI and get content variables
+    // This will:
+    // 1. Create an OpenAI thread and store the thread_id in contextObject
+    // 2. Run the OpenAI assistant to generate content variables
+    // 3. Store the content_variables in contextObject and contextObject.conversation_data
+    // 4. Create a pending_assistant_message with metrics in contextObject.conversation_data
     const openAIResult = await processWithOpenAI(openai, contextObject);
     
-    // contextObject is already updated with all metrics in processWithOpenAI:
-    // - thread_id
-    // - ai_prompt_tokens, ai_completion_tokens, ai_total_tokens
-    // - processing_time_ms
-    // - conversation_data.message_metrics (contains all data except content)
-    
-    // We just need to ensure content_variables are available
-    contextObject.content_variables = openAIResult.content_variables;
-    
     // Send WhatsApp template message with content variables
-    // This will also update the conversation record with all the metrics
+    // This will:
+    // 1. Send the template message using Twilio API
+    // 2. Retrieve the conversation record from DynamoDB
+    // 3. Complete the pending_assistant_message by adding the content
+    // 4. Add the completed message to the conversation's messages array
+    // 5. Update the conversation with final status and metrics
     const messageResult = await sendWhatsAppTemplateMessage(contextObject, openAIResult.content_variables);
     
     // Return success result with key metrics
     return {
       success: true,
       thread_id: contextObject.thread_id,
-      processing_time_ms: contextObject.processing_time_ms,
-      ai_total_tokens: contextObject.ai_total_tokens
+      sent_at: messageResult.sent_at,
+      processing_time_ms: contextObject.conversation_data.pending_assistant_message.processing_time_ms,
+      ai_total_tokens: contextObject.conversation_data.pending_assistant_message.ai_total_tokens
     };
   } catch (error) {
     console.error('Error processing WhatsApp message:', error);
