@@ -499,14 +499,54 @@ async function processWithOpenAI(openai, contextObject) {
       // Get content variables from assistant response
       const contentVariables = await getAssistantResponse(openai, thread_id, contextObject);
       
-      // Update context object with content variables
+      // Calculate total processing time
+      const processingTimeMs = Date.now() - startTime;
+      
+      // Retrieve usage information
+      let usageMetrics = {
+        ai_prompt_tokens: 0,
+        ai_completion_tokens: 0,
+        ai_total_tokens: 0
+      };
+      
+      // Try to get usage metrics from the run object if available
+      if (finalRun.usage) {
+        usageMetrics = {
+          ai_prompt_tokens: finalRun.usage.prompt_tokens || 0,
+          ai_completion_tokens: finalRun.usage.completion_tokens || 0,
+          ai_total_tokens: finalRun.usage.total_tokens || 0
+        };
+      }
+      
+      // Update context object with content variables and all metrics
       contextObject.content_variables = contentVariables;
+      contextObject.processing_time_ms = processingTimeMs;
+      contextObject.conversation_status = 'processed_by_ai'; // Intermediate status before sending message
+      contextObject.ai_usage = usageMetrics;
+      
+      // Initialize messages array if it doesn't exist
+      if (!contextObject.messages) {
+        contextObject.messages = [];
+      }
+      
+      // Add the assistant's response as a message to track in the conversation
+      contextObject.messages.push({
+        role: 'assistant',
+        content: JSON.stringify(contentVariables),
+        ai_prompt_tokens: usageMetrics.ai_prompt_tokens,
+        ai_completion_tokens: usageMetrics.ai_completion_tokens,
+        ai_total_tokens: usageMetrics.ai_total_tokens,
+        message_timestamp: new Date().toISOString()
+      });
       
       console.log('Run completed successfully', {
         thread_id,
         run_id: run.id,
-        processing_time_ms: Date.now() - startTime,
-        variable_count: Object.keys(contentVariables).length
+        processing_time_ms: processingTimeMs,
+        variable_count: Object.keys(contentVariables).length,
+        ai_prompt_tokens: usageMetrics.ai_prompt_tokens,
+        ai_completion_tokens: usageMetrics.ai_completion_tokens,
+        ai_total_tokens: usageMetrics.ai_total_tokens
       });
       
       // Return updated context object and processing results
@@ -515,7 +555,8 @@ async function processWithOpenAI(openai, contextObject) {
         run_id: run.id,
         status: 'completed',
         content_variables: contentVariables,
-        processing_time_ms: Date.now() - startTime
+        processing_time_ms: processingTimeMs,
+        usage: usageMetrics
       };
     } else {
       // Handle failure cases
@@ -608,15 +649,33 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
       contextObject.conversation_data.conversation_id
     );
     
-    // Add message to conversation history with message details
-    await addMessageToConversation(conversation, {
+    // Add template message to conversation history with message details and usage metrics from the context
+    const messageData = {
       role: 'assistant',
       content: `Template: ${templateName}`,
-      usage: contextObject.openAIResult?.usage || null
-    });
+      usage: {
+        prompt_tokens: contextObject.ai_usage?.ai_prompt_tokens || 0,
+        completion_tokens: contextObject.ai_usage?.ai_completion_tokens || 0,
+        total_tokens: contextObject.ai_usage?.ai_total_tokens || 0
+      }
+    };
     
-    // Update conversation status
-    await updateConversationStatus(conversation, 'initial_message_sent');
+    // Add message to conversation record
+    await addMessageToConversation(conversation, messageData);
+    
+    // Prepare the final conversation update data
+    const finalUpdateData = {
+      conversation_status: 'initial_message_sent',
+      thread_id: contextObject.thread_id,
+      processing_time_ms: contextObject.processing_time_ms || (Date.now() - new Date(conversation.created_at).getTime()),
+      task_complete: true,
+      ai_prompt_tokens: contextObject.ai_usage?.ai_prompt_tokens || 0,
+      ai_completion_tokens: contextObject.ai_usage?.ai_completion_tokens || 0,
+      ai_total_tokens: contextObject.ai_usage?.ai_total_tokens || 0
+    };
+    
+    // Update conversation record with final status and metrics
+    await updateConversationRecord(conversation, finalUpdateData);
     
     return {
       success: true,
@@ -696,21 +755,30 @@ async function processWhatsAppMessage(event) {
     const openAIResult = await processWithOpenAI(openai, contextObject);
     
     // Update context object with OpenAI processing results
+    // Note: Most metrics are already added to the contextObject within processWithOpenAI
+    // Here we ensure any additional metrics from the result are also available
     contextObject.thread_id = openAIResult.thread_id;
     contextObject.content_variables = openAIResult.content_variables;
-    contextObject.openAIResult = openAIResult;  // Store the full result for usage metrics
+    contextObject.processing_time_ms = openAIResult.processing_time_ms;
     
-    // Send WhatsApp template message with content variables
+    // Ensure ai_usage is properly set
+    if (openAIResult.usage) {
+      contextObject.ai_usage = {
+        ai_prompt_tokens: openAIResult.usage.ai_prompt_tokens,
+        ai_completion_tokens: openAIResult.usage.ai_completion_tokens,
+        ai_total_tokens: openAIResult.usage.ai_total_tokens
+      };
+    }
+    
+    // Send WhatsApp template message with content variables and all the collected metrics
     const messageResult = await sendWhatsAppTemplateMessage(contextObject, openAIResult.content_variables);
     
-    // At this point, the conversation status has already been updated in sendWhatsAppTemplateMessage
-    
-    // Return success result with key information
+    // Return success result with key metrics
     return {
       success: true,
-      message_result: messageResult,
+      thread_id: openAIResult.thread_id,
       processing_time_ms: openAIResult.processing_time_ms,
-      thread_id: openAIResult.thread_id
+      ai_usage: contextObject.ai_usage
     };
   } catch (error) {
     console.error('Error processing WhatsApp message:', error);
@@ -798,3 +866,63 @@ For the initial WhatsApp implementation, threads are created and retained indefi
 - [Error Handling Strategy](./07-error-handling-strategy.md)
 - [Monitoring and Observability](./08-monitoring-observability.md)
 - [Operations Playbook](./09-operations-playbook.md)
+
+## 13. New Update Conversation Record Function
+
+```
+/**
+ * Updates the conversation record with all metrics and final status
+ * @param {object} conversation - The conversation record from DynamoDB
+ * @param {object} updateData - Data to update in the conversation record
+ * @returns {Promise<object>} - The updated conversation record
+ */
+async function updateConversationRecord(conversation, updateData) {
+  try {
+    console.log('Updating conversation record with metrics and final status', {
+      conversation_id: conversation.conversation_id,
+      status: updateData.conversation_status,
+      processing_time_ms: updateData.processing_time_ms,
+      thread_id: updateData.thread_id
+    });
+    
+    const now = new Date().toISOString();
+    
+    // Build the update expression and attribute values
+    let updateExpression = 'SET updated_at = :updated';
+    const expressionAttributeValues = {
+      ':updated': now
+    };
+    
+    // Add each field from updateData to the expression
+    Object.entries(updateData).forEach(([key, value]) => {
+      updateExpression += `, ${key} = :${key}`;
+      expressionAttributeValues[`:${key}`] = value;
+    });
+    
+    // Update in DynamoDB
+    await dynamoDB.update({
+      TableName: process.env.CONVERSATION_TABLE_NAME,
+      Key: {
+        recipient_tel: conversation.recipient_tel,
+        conversation_id: conversation.conversation_id
+      },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeValues: expressionAttributeValues
+    }).promise();
+    
+    console.log('Conversation record updated successfully', {
+      conversation_id: conversation.conversation_id,
+      status: updateData.conversation_status,
+      ai_total_tokens: updateData.ai_total_tokens || 0
+    });
+    
+    return {
+      ...conversation,
+      ...updateData,
+      updated_at: now
+    };
+  } catch (error) {
+    console.error('Error updating conversation record', error);
+    throw error;
+  }
+}
