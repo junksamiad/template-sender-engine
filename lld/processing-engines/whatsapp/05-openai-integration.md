@@ -507,8 +507,7 @@ async function processWithOpenAI(openai, contextObject) {
       const aiCompletionTokens = finalRun.usage?.completion_tokens || 0;
       const aiTotalTokens = finalRun.usage?.total_tokens || 0;
       
-      // Store content_variables in the conversation_data object
-      contextObject.content_variables = contentVariables;
+      // Store content_variables only in the conversation_data object
       contextObject.conversation_data.content_variables = contentVariables;
       
       // Initialize conversation_data.messages array if it doesn't exist
@@ -748,7 +747,7 @@ async function processWhatsAppMessage(event) {
     // This will:
     // 1. Create an OpenAI thread and store the thread_id in contextObject
     // 2. Run the OpenAI assistant to generate content variables
-    // 3. Store the content_variables in contextObject and contextObject.conversation_data
+    // 3. Store the content_variables in contextObject.conversation_data
     // 4. Create a pending_assistant_message with metrics in contextObject.conversation_data
     const openAIResult = await processWithOpenAI(openai, contextObject);
     
@@ -759,7 +758,10 @@ async function processWhatsAppMessage(event) {
     // 3. Complete the pending_assistant_message by adding the content
     // 4. Add the completed message to the conversation's messages array
     // 5. Update the conversation with final status and metrics
-    const messageResult = await sendWhatsAppTemplateMessage(contextObject, openAIResult.content_variables);
+    const messageResult = await sendWhatsAppTemplateMessage(
+      contextObject, 
+      contextObject.conversation_data.content_variables
+    );
     
     // Return success result with key metrics
     return {
