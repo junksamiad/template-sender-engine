@@ -382,6 +382,8 @@ async function handleFailedConversation(dlqMessage) {
 
 ## 9. Reply Matching Strategy
 
+> **Important Note**: The reply matching functionality described in this section is not implemented within the current WhatsApp Processing Engine build. This strategy will be implemented in a separate external service application that specifically handles incoming user replies. This section serves as a reference for how reply matching should be implemented in that service.
+
 For WhatsApp, reply matching uses the composite key structure:
 
 1. **Primary Lookup**: Using recipient's phone number (partition key) to identify all their conversations
@@ -390,6 +392,7 @@ For WhatsApp, reply matching uses the composite key structure:
 
 ```javascript
 // Example of retrieving a conversation for reply handling
+// Note: This is a reference implementation for the external reply handling service
 async function findExistingConversation(recipientTel, companyWhatsAppNumber) {
   // Query conversations by recipient phone number
   const result = await dynamoDB.query({
