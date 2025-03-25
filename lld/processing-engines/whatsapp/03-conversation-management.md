@@ -6,9 +6,9 @@
 
 This document outlines how the WhatsApp Processing Engine creates, updates, and manages conversation records in DynamoDB. The conversation database serves as the persistent store for message history, processing state, and all relevant metadata for the communication.
 
-## 2. Conversation Record Structure
+## 2. Conversation Record Schema
 
-Conversation records in the `wa_conversation` table follow a specific schema optimized for WhatsApp channel operations. The key structure is designed to support efficient lookups and effective reply matching.
+Conversation records in the `conversations` table follow a specific schema optimized for WhatsApp channel operations. The key structure is designed to support efficient lookups and effective reply matching.
 
 ### 2.1 Key Structure
 

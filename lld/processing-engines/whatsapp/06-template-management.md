@@ -751,7 +751,7 @@ async function updateMessageStatus(conversation, messageSid, status, errorCode =
   
   // Update conversation
   const result = await documentClient.update({
-    TableName: 'wa_conversation',
+    TableName: 'conversations',
     Key: {
       recipient_tel: conversation.recipient_tel,
       conversation_id: conversation.conversation_id

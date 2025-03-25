@@ -1,10 +1,10 @@
 # Conversations DynamoDB Schema
 
-This document defines the schema and implementation details for the `wa_conversation` DynamoDB table, which stores conversation data across multiple channels (WhatsApp, SMS, Email) for the AI messaging system.
+This document defines the schema and implementation details for the `conversations` DynamoDB table, which stores conversation data across multiple channels (WhatsApp, SMS, Email) for the AI messaging system.
 
 ## Table Purpose
 
-The `wa_conversation` table serves as the central repository for:
+The `conversations` table serves as the central repository for:
 - Conversation tracking and management
 - Message history and context
 - Processing status and metadata

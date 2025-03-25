@@ -175,7 +175,7 @@ The WhatsApp Processing Engine will be implemented as:
 5. **Environment Variables**:
    ```
    COMPANY_TABLE_NAME=wa_company_data
-   CONVERSATION_TABLE_NAME=wa_conversation
+   CONVERSATION_TABLE_NAME=conversations
    OPENAI_API_KEY_SECRET_NAME=ai-api-key/global
    TWILIO_ACCOUNT_SID_SECRET_NAME=twilio/account-sid
    TWILIO_AUTH_TOKEN_SECRET_NAME=twilio/auth-token
@@ -946,7 +946,7 @@ export class WhatsAppEngineStack extends cdk.Stack {
     const conversationTable = new dynamodb.Table(this, 'ConversationTable', {
       partitionKey: { name: 'phone_number', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'conversation_id', type: dynamodb.AttributeType.STRING },
-      tableName: 'wa_conversation',
+      tableName: 'conversations',
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true
     });
@@ -1147,3 +1147,36 @@ export class WhatsAppEngineStack extends cdk.Stack {
    - Custom CloudWatch dashboard
    - Cost optimization tracking
    - User engagement metrics 
+
+## Environment Variables
+
+| Variable Name | Description | Example Value |
+|--------------|------------|--------------|
+| AWS_REGION | AWS Region | us-east-1 |
+| SQS_QUEUE_URL | WhatsApp SQS queue URL | https://sqs.us-east-1.amazonaws.com/123456789012/whatsapp-queue |
+| DLQ_URL | Dead Letter Queue URL | https://sqs.us-east-1.amazonaws.com/123456789012/whatsapp-dlq |
+| CONVERSATION_TABLE_NAME | DynamoDB conversations table name | conversations |
+| LOG_LEVEL | Logging level | INFO |
+
+// ... existing code ...
+
+```javascript
+// Update conversation status in DynamoDB
+const params = {
+  TableName: 'conversations',
+  Key: {
+    recipient_tel: data.recipient_tel,
+    conversation_id: data.conversation_id
+  },
+  UpdateExpression: 'SET conversation_status = :status, updated_at = :timestamp',
+  ExpressionAttributeValues: {
+    ':status': 'initial_message_sent',
+    ':timestamp': new Date().toISOString()
+  },
+  ReturnValues: 'UPDATED_NEW'
+};
+
+await documentClient.update(params).promise();
+```
+
+// ... existing code ... 

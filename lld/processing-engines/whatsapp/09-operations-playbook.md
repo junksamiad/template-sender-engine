@@ -311,7 +311,7 @@ Create scheduled backups:
 
 ```javascript
 // AWS CLI command for creating on-demand backup
-aws dynamodb create-backup --table-name wa_conversation --backup-name "daily-backup-$(date +%Y-%m-%d)"
+aws dynamodb create-backup --table-name conversations --backup-name "daily-backup-$(date +%Y-%m-%d)"
 
 // Schedule with EventBridge
 const rule = new events.Rule(this, 'BackupRule', {
@@ -333,8 +333,8 @@ TIME_TO_RESTORE="2023-06-01T13:15:00Z"
 
 # Create restored table
 aws dynamodb restore-table-to-point-in-time \
-  --source-table-name wa_conversation \
-  --target-table-name wa_conversation_restored \
+  --source-table-name conversations \
+  --target-table-name conversations_restored \
   --use-latest-restorable-time \
   --sse-specification-override Enabled=true
 ```
@@ -343,12 +343,12 @@ To restore from backup:
 
 ```bash
 # List available backups
-aws dynamodb list-backups --table-name wa_conversation
+aws dynamodb list-backups --table-name conversations
 
 # Restore from backup
 aws dynamodb restore-table-from-backup \
-  --target-table-name wa_conversation_restored \
-  --backup-arn "arn:aws:dynamodb:us-east-1:123456789012:table/wa_conversation/backup/01234567890123-abcdef"
+  --target-table-name conversations_restored \
+  --backup-arn "arn:aws:dynamodb:us-east-1:123456789012:table/conversations/backup/01234567890123-abcdef"
 ```
 
 #### 7.2.2 Reprocessing Failed Messages
@@ -582,4 +582,39 @@ Data loss tolerance by component:
 
 - [Overview and Architecture](./01-overview-architecture.md)
 - [Monitoring and Observability](./09-monitoring-observability.md)
-- [Error Handling Strategy](./08-error-handling-strategy.md) 
+- [Error Handling Strategy](./08-error-handling-strategy.md)
+
+## 5.3 Backup and Restore Procedures
+
+### 5.3.1 Creating Manual Backups
+
+```bash
+# Create on-demand backup of the conversations table
+aws dynamodb create-backup --table-name conversations --backup-name "daily-backup-$(date +%Y-%m-%d)"
+```
+
+### 5.3.2 Restoring from Backups
+
+```bash
+# Restore from a backup
+aws dynamodb restore-table-from-backup \
+--source-table-name conversations \
+--target-table-name conversations_restored \
+--backup-name "daily-backup-2023-06-15"
+```
+
+### 5.3.3 Listing Backups
+
+```bash
+# List all backups for the conversations table
+aws dynamodb list-backups --table-name conversations
+```
+
+### 5.3.4 Restoring from a Specific Backup ARN
+
+```bash
+# Restore from a specific backup ARN
+aws dynamodb restore-table-from-backup \
+--target-table-name conversations_restored \
+--backup-arn "arn:aws:dynamodb:us-east-1:123456789012:table/conversations/backup/01234567890123-abcdef"
+``` 

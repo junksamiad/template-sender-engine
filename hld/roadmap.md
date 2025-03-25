@@ -175,7 +175,7 @@ For local development, I recommend:
   - Twilio configuration (sender numbers, template SIDs, tokens)
   - Other company-specific settings
 
-**wa_conversations Table:**
+**conversations Table:**
 - Partition Key: `phone_number`
 - Sort Key: `timestamp` or `conversation_id`
 - Attributes:
