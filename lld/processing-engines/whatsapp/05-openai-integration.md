@@ -502,51 +502,43 @@ async function processWithOpenAI(openai, contextObject) {
       // Calculate total processing time
       const processingTimeMs = Date.now() - startTime;
       
-      // Retrieve usage information
-      let usageMetrics = {
-        ai_prompt_tokens: 0,
-        ai_completion_tokens: 0,
-        ai_total_tokens: 0
-      };
+      // Get token usage from the run
+      const aiPromptTokens = finalRun.usage?.prompt_tokens || 0;
+      const aiCompletionTokens = finalRun.usage?.completion_tokens || 0;
+      const aiTotalTokens = finalRun.usage?.total_tokens || 0;
       
-      // Try to get usage metrics from the run object if available
-      if (finalRun.usage) {
-        usageMetrics = {
-          ai_prompt_tokens: finalRun.usage.prompt_tokens || 0,
-          ai_completion_tokens: finalRun.usage.completion_tokens || 0,
-          ai_total_tokens: finalRun.usage.total_tokens || 0
-        };
-      }
-      
-      // Update context object with content variables and all metrics
-      contextObject.content_variables = contentVariables;
+      // Store token metrics in the context object for the conversation record
+      contextObject.ai_prompt_tokens = aiPromptTokens;
+      contextObject.ai_completion_tokens = aiCompletionTokens;
+      contextObject.ai_total_tokens = aiTotalTokens;
       contextObject.processing_time_ms = processingTimeMs;
-      contextObject.conversation_status = 'processed_by_ai'; // Intermediate status before sending message
-      contextObject.ai_usage = usageMetrics;
       
-      // Initialize messages array if it doesn't exist
-      if (!contextObject.messages) {
-        contextObject.messages = [];
+      // Initialize conversation_data.messages array if it doesn't exist
+      if (!contextObject.conversation_data.messages) {
+        contextObject.conversation_data.messages = [];
       }
       
-      // Add the assistant's response as a message to track in the conversation
-      contextObject.messages.push({
+      // Add placeholder for the assistant message - content will be added after Twilio sends the message
+      // We're just preparing the metrics here
+      contextObject.conversation_data.message_metrics = {
+        entry_id: uuidv4(), // Generate a unique ID for the message
+        message_timestamp: new Date().toISOString(),
         role: 'assistant',
-        content: JSON.stringify(contentVariables),
-        ai_prompt_tokens: usageMetrics.ai_prompt_tokens,
-        ai_completion_tokens: usageMetrics.ai_completion_tokens,
-        ai_total_tokens: usageMetrics.ai_total_tokens,
-        message_timestamp: new Date().toISOString()
-      });
+        ai_prompt_tokens: aiPromptTokens,
+        ai_completion_tokens: aiCompletionTokens,
+        ai_total_tokens: aiTotalTokens,
+        processing_time_ms: processingTimeMs
+        // Note: content field will be added after Twilio sends the template
+      };
       
       console.log('Run completed successfully', {
         thread_id,
         run_id: run.id,
         processing_time_ms: processingTimeMs,
         variable_count: Object.keys(contentVariables).length,
-        ai_prompt_tokens: usageMetrics.ai_prompt_tokens,
-        ai_completion_tokens: usageMetrics.ai_completion_tokens,
-        ai_total_tokens: usageMetrics.ai_total_tokens
+        ai_prompt_tokens: aiPromptTokens,
+        ai_completion_tokens: aiCompletionTokens,
+        ai_total_tokens: aiTotalTokens
       });
       
       // Return updated context object and processing results
@@ -556,7 +548,11 @@ async function processWithOpenAI(openai, contextObject) {
         status: 'completed',
         content_variables: contentVariables,
         processing_time_ms: processingTimeMs,
-        usage: usageMetrics
+        usage: {
+          prompt_tokens: aiPromptTokens,
+          completion_tokens: aiCompletionTokens,
+          total_tokens: aiTotalTokens
+        }
       };
     } else {
       // Handle failure cases
@@ -649,29 +645,24 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
       contextObject.conversation_data.conversation_id
     );
     
-    // Add template message to conversation history with message details and usage metrics from the context
+    // Complete the message data with content from template
     const messageData = {
-      role: 'assistant',
-      content: `Template: ${templateName}`,
-      usage: {
-        prompt_tokens: contextObject.ai_usage?.ai_prompt_tokens || 0,
-        completion_tokens: contextObject.ai_usage?.ai_completion_tokens || 0,
-        total_tokens: contextObject.ai_usage?.ai_total_tokens || 0
-      }
+      ...contextObject.conversation_data.message_metrics,
+      content: `Template: ${templateName}`
     };
     
-    // Add message to conversation record
+    // Add the complete message to conversation history
     await addMessageToConversation(conversation, messageData);
     
     // Prepare the final conversation update data
     const finalUpdateData = {
       conversation_status: 'initial_message_sent',
       thread_id: contextObject.thread_id,
-      processing_time_ms: contextObject.processing_time_ms || (Date.now() - new Date(conversation.created_at).getTime()),
+      processing_time_ms: contextObject.processing_time_ms,
       task_complete: true,
-      ai_prompt_tokens: contextObject.ai_usage?.ai_prompt_tokens || 0,
-      ai_completion_tokens: contextObject.ai_usage?.ai_completion_tokens || 0,
-      ai_total_tokens: contextObject.ai_usage?.ai_total_tokens || 0
+      ai_prompt_tokens: contextObject.ai_prompt_tokens,
+      ai_completion_tokens: contextObject.ai_completion_tokens,
+      ai_total_tokens: contextObject.ai_total_tokens
     };
     
     // Update conversation record with final status and metrics
@@ -754,31 +745,25 @@ async function processWhatsAppMessage(event) {
     // Process message with OpenAI and get content variables
     const openAIResult = await processWithOpenAI(openai, contextObject);
     
-    // Update context object with OpenAI processing results
-    // Note: Most metrics are already added to the contextObject within processWithOpenAI
-    // Here we ensure any additional metrics from the result are also available
-    contextObject.thread_id = openAIResult.thread_id;
+    // contextObject is already updated with all metrics in processWithOpenAI:
+    // - thread_id
+    // - ai_prompt_tokens, ai_completion_tokens, ai_total_tokens
+    // - processing_time_ms
+    // - conversation_data.message_metrics (contains all data except content)
+    
+    // We just need to ensure content_variables are available
     contextObject.content_variables = openAIResult.content_variables;
-    contextObject.processing_time_ms = openAIResult.processing_time_ms;
     
-    // Ensure ai_usage is properly set
-    if (openAIResult.usage) {
-      contextObject.ai_usage = {
-        ai_prompt_tokens: openAIResult.usage.ai_prompt_tokens,
-        ai_completion_tokens: openAIResult.usage.ai_completion_tokens,
-        ai_total_tokens: openAIResult.usage.ai_total_tokens
-      };
-    }
-    
-    // Send WhatsApp template message with content variables and all the collected metrics
+    // Send WhatsApp template message with content variables
+    // This will also update the conversation record with all the metrics
     const messageResult = await sendWhatsAppTemplateMessage(contextObject, openAIResult.content_variables);
     
     // Return success result with key metrics
     return {
       success: true,
-      thread_id: openAIResult.thread_id,
-      processing_time_ms: openAIResult.processing_time_ms,
-      ai_usage: contextObject.ai_usage
+      thread_id: contextObject.thread_id,
+      processing_time_ms: contextObject.processing_time_ms,
+      ai_total_tokens: contextObject.ai_total_tokens
     };
   } catch (error) {
     console.error('Error processing WhatsApp message:', error);
@@ -923,6 +908,103 @@ async function updateConversationRecord(conversation, updateData) {
     };
   } catch (error) {
     console.error('Error updating conversation record', error);
+    throw error;
+  }
+}
+
+/**
+ * Adds a message to the conversation record's messages array
+ * @param {object} conversation - The conversation record from DynamoDB
+ * @param {object} messageData - Message data including metrics and content
+ * @returns {Promise<object>} - The updated conversation record
+ */
+async function addMessageToConversation(conversation, messageData) {
+  try {
+    console.log('Adding message to conversation history', {
+      conversation_id: conversation.conversation_id,
+      message_role: messageData.role,
+      entry_id: messageData.entry_id
+    });
+    
+    const now = new Date().toISOString();
+    
+    // Prepare the message entry with all required fields
+    const messageEntry = {
+      entry_id: messageData.entry_id,
+      message_timestamp: messageData.message_timestamp || now,
+      role: messageData.role,
+      content: messageData.content,
+      ai_prompt_tokens: messageData.ai_prompt_tokens || 0,
+      ai_completion_tokens: messageData.ai_completion_tokens || 0,
+      ai_total_tokens: messageData.ai_total_tokens || 0,
+      processing_time_ms: messageData.processing_time_ms || 0
+    };
+    
+    // Update the conversation record in DynamoDB
+    await dynamoDB.update({
+      TableName: process.env.CONVERSATION_TABLE_NAME,
+      Key: {
+        recipient_tel: conversation.recipient_tel,
+        conversation_id: conversation.conversation_id
+      },
+      UpdateExpression: 'SET messages = list_append(if_not_exists(messages, :empty_list), :new_message), updated_at = :updated',
+      ExpressionAttributeValues: {
+        ':new_message': [messageEntry],
+        ':empty_list': [],
+        ':updated': now
+      }
+    }).promise();
+    
+    console.log('Message added to conversation', {
+      conversation_id: conversation.conversation_id,
+      message_role: messageEntry.role,
+      entry_id: messageEntry.entry_id
+    });
+    
+    return {
+      ...conversation,
+      messages: [...(conversation.messages || []), messageEntry],
+      updated_at: now
+    };
+  } catch (error) {
+    console.error('Error adding message to conversation', error);
+    throw error;
+  }
+}
+
+/**
+ * Retrieves a conversation record from DynamoDB
+ * @param {string} recipientTel - The recipient's phone number (partition key)
+ * @param {string} conversationId - The conversation ID (sort key)
+ * @returns {Promise<object>} - The conversation record
+ */
+async function getConversationRecord(recipientTel, conversationId) {
+  try {
+    console.log('Retrieving conversation record', {
+      recipient_tel: recipientTel,
+      conversation_id: conversationId
+    });
+    
+    const result = await dynamoDB.get({
+      TableName: process.env.CONVERSATION_TABLE_NAME,
+      Key: {
+        recipient_tel: recipientTel,
+        conversation_id: conversationId
+      }
+    }).promise();
+    
+    if (!result.Item) {
+      throw new Error(`Conversation not found: ${conversationId}`);
+    }
+    
+    console.log('Retrieved conversation record', {
+      conversation_id: conversationId,
+      status: result.Item.conversation_status
+    });
+    
+    return result.Item;
+  } catch (error) {
+    console.error('Error retrieving conversation record', error);
     throw error;
   }
 }
