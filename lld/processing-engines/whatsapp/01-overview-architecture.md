@@ -1,6 +1,6 @@
 # WhatsApp Processing Engine - Overview and Architecture
 
-> **Part 1 of 10 in the WhatsApp Processing Engine documentation series**
+> **Part 1 of 9 in the WhatsApp Processing Engine documentation series**
 
 ## 1. Introduction
 
@@ -112,10 +112,10 @@ The WhatsApp Processing Engine is documented in detail across several files:
 2. [Conversation Management](03-conversation-management.md): Description of the DynamoDB conversation schema and operations.
 3. [Credential Management](04-credential-management.md): Details on secure access to credentials for external APIs.
 4. [OpenAI Integration](05-openai-integration.md): Comprehensive documentation on the OpenAI Assistants API integration.
-5. [Template Management](07-template-management.md): Template creation, management, and message sending details.
-6. [Error Handling Strategy](08-error-handling-strategy.md): Complete error handling approach and implementation.
-7. [Monitoring & Observability](09-monitoring-observability.md): Monitoring, alerting, and observability details.
-8. [Operations Playbook](10-operations-playbook.md): Operational procedures, troubleshooting, and maintenance tasks.
+5. [Template Management](06-template-management.md): Template creation, management, and message sending details.
+6. [Error Handling Strategy](07-error-handling-strategy.md): Complete error handling approach and implementation.
+7. [Monitoring & Observability](08-monitoring-observability.md): Monitoring, alerting, and observability details.
+8. [Operations Playbook](09-operations-playbook.md): Operational procedures, troubleshooting, and maintenance tasks.
 
 ## 8. Component Documentation Structure
 
@@ -125,12 +125,11 @@ The WhatsApp Processing Engine documentation is organized into the following sec
 2. **SQS Integration** - Queue consumption and the heartbeat pattern
 3. **Conversation Management** - DynamoDB record creation and updates
 4. **Credential Management** - AWS Secrets Manager integration
-5. **OpenAI Integration** - Thread creation and management
-6. **Function Execution** - Handling OpenAI function calls
-7. **Twilio Integration** - Message delivery
-8. **Error Handling Strategy** - Approach to failures and retries
-9. **Monitoring and Observability** - CloudWatch integration
-10. **CDK Implementation** - Infrastructure deployment
+5. **OpenAI Integration** - Thread creation and message processing
+6. **Template Management** - Template handling and message delivery
+7. **Error Handling Strategy** - Approach to failures and retries
+8. **Monitoring and Observability** - CloudWatch integration
+9. **Operations Playbook** - Day-to-day operations and troubleshooting
 
 Each document focuses on a specific aspect of the processing engine, providing a modular approach to understanding the system.
 

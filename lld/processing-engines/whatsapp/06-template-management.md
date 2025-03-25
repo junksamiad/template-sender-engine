@@ -1,6 +1,6 @@
 # WhatsApp Processing Engine - Template Management and Message Sending
 
-> **Part 7 of 10 in the WhatsApp Processing Engine documentation series**
+> **Part 6 of 9 in the WhatsApp Processing Engine documentation series**
 
 ## 1. Introduction
 
@@ -935,8 +935,9 @@ async function sendWhatsAppMessage(args) {
 ## 10. Related Documentation
 
 - [Overview and Architecture](./01-overview-architecture.md)
-- [Function Execution](./06-function-execution.md)
-- [Error Handling Strategy](./08-error-handling-strategy.md)
+- [OpenAI Integration](./05-openai-integration.md)
+- [Error Handling Strategy](./07-error-handling-strategy.md)
+- [Monitoring and Observability](./08-monitoring-observability.md)
 
 ## 11. Best Practices for Template Management
 

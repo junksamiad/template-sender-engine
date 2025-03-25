@@ -1,6 +1,6 @@
 # WhatsApp Processing Engine - Error Handling Strategy
 
-> **Part 8 of 10 in the WhatsApp Processing Engine documentation series**
+> **Part 7 of 9 in the WhatsApp Processing Engine documentation series**
 
 ## 1. Introduction
 

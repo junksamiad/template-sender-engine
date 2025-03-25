@@ -1,6 +1,6 @@
 # WhatsApp Processing Engine - Monitoring and Observability
 
-> **Part 9 of 10 in the WhatsApp Processing Engine documentation series**
+> **Part 8 of 9 in the WhatsApp Processing Engine documentation series**
 
 ## 1. Introduction
 

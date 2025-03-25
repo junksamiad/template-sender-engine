@@ -1,6 +1,6 @@
 # WhatsApp Processing Engine - OpenAI Integration
 
-> **Part 5 of 10 in the WhatsApp Processing Engine documentation series**
+> **Part 5 of 9 in the WhatsApp Processing Engine documentation series**
 
 ## 1. Introduction
 
@@ -771,5 +771,8 @@ For the initial WhatsApp implementation, threads are created and retained indefi
 ## 12. Related Documentation
 
 - [Overview and Architecture](./01-overview-architecture.md)
-- [Function Execution](./06-function-execution.md)
-- [Error Handling Strategy](./08-error-handling-strategy.md) 
+- [Conversation Management](./03-conversation-management.md)
+- [Template Management](./06-template-management.md)
+- [Error Handling Strategy](./07-error-handling-strategy.md)
+- [Monitoring and Observability](./08-monitoring-observability.md)
+- [Operations Playbook](./09-operations-playbook.md) 
