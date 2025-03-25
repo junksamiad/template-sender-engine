@@ -19,6 +19,25 @@ The OpenAI integration follows these key architectural principles:
 
 The system stores OpenAI thread IDs in the conversation record, enabling conversation continuity across multiple messages.
 
+### 2.1 Assistant ID Selection
+
+The WhatsApp Processing Engine uses a specific OpenAI assistant configured for template message generation. The assistant ID is sourced from the context object as follows:
+
+```javascript
+// Assistant ID is retrieved from the context object's ai_config section
+const assistantId = contextObject.ai_config.assistant_id_template_sender;
+```
+
+This `assistant_id_template_sender` field is populated by the Channel Router when creating the context object, based on the `wa_company_data` DynamoDB table's `ai_config` section for the specific company and project. 
+
+The template sender assistant is specifically designed to:
+1. Process the context object
+2. Extract relevant information for template variables
+3. Generate appropriate JSON-formatted template variables
+4. Return a structured response that can be used with WhatsApp templates
+
+For reply handling (which is not implemented in this build but will be in future versions), a different assistant ID (`assistant_id_replies`) would be used from the same context object.
+
 ## 3. Rate Limit Handling with Exponential Backoff
 
 OpenAI's API has rate limits that must be handled gracefully. A robust exponential backoff mechanism is implemented:
@@ -464,7 +483,8 @@ async function processWithOpenAI(openai, contextObject) {
     // Update context object with thread_id
     contextObject.thread_id = thread_id;
     
-    // Get assistant ID from context
+    // Get assistant ID from context - using the template sender assistant for initial messages
+    // This assistant ID is populated by the Channel Router from the wa_company_data table
     const assistantId = contextObject.ai_config.assistant_id_template_sender;
     
     // Create and start the run
