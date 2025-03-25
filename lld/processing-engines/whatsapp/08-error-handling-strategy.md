@@ -763,4 +763,186 @@ process.on('unhandledRejection', (reason, promise) => {
 
 - [Overview and Architecture](./01-overview-architecture.md)
 - [SQS Integration and Heartbeat Pattern](./02-sqs-integration.md)
-- [Monitoring and Observability](./09-monitoring-observability.md) 
+- [Monitoring and Observability](./09-monitoring-observability.md)
+
+## 2. Error Categorization
+
+Errors are categorized into distinct types to enable appropriate handling:
+
+| Error Category | Source | Description | Retry Strategy |
+|----------------|--------|-------------|---------------|
+| `validation_error` | Input validation | Invalid or missing required parameters | No retry (business error) |
+| `authentication_error` | Credentials | Invalid API keys or authentication tokens | No retry (needs human intervention) |
+| `authorization_error` | Permissions | Valid credentials but insufficient permissions | No retry (needs human intervention) |
+| `resource_not_found` | Resources | Requested resource doesn't exist | No retry (business error) |
+| `rate_limit_error` | External APIs | API rate limits exceeded | Exponential backoff retry |
+| `timeout_error` | External APIs | API call or operation timeout | Exponential backoff retry |
+| `service_unavailable` | External APIs | Temporary service disruption | Exponential backoff retry |
+| `network_error` | Connectivity | Network connectivity issues | Exponential backoff retry |
+| `internal_error` | System | Unexpected internal system error | Limited retry (3 attempts) |
+| `data_inconsistency` | Database | Database or state inconsistency detected | No retry (needs investigation) |
+| `configuration_error` | System | System misconfiguration detected | No retry (needs human intervention) |
+| `assistant_configuration_error` | OpenAI assistant | Assistant prompt or configuration issue | No retry (needs human intervention) |
+
+### 2.1 Error Subcategories
+
+Some error categories have important subcategories:
+
+#### Authentication Errors
+- Missing credentials
+- Invalid API key
+- Expired credentials
+- Malformed token
+
+#### Network Errors
+- Connection timeout
+- Connection reset
+- DNS resolution failure
+- Socket hang up
+
+#### Assistant Configuration Errors
+- Missing function call - Assistant did not call a function when expected to
+- Unexpected function call - Assistant called additional functions when it should have completed
+
+### 2.2 Error Context and Metadata
+
+All errors include context metadata to facilitate troubleshooting:
+
+```javascript
+// Example of well-structured error with metadata
+const error = new Error('Failed to process message');
+error.code = 'OPENAI_RATE_LIMIT';
+error.category = 'rate_limit_error';
+error.retryable = true;
+error.metadata = {
+  conversation_id: 'conv_123456',
+  thread_id: 'thread_abcdef',
+  processing_stage: 'initial',
+  operation: 'createRun',
+  httpStatus: 429
+};
+throw error;
+```
+
+## 5. Error Handling by Source
+
+The system implements specific handling strategies based on error source:
+
+### 5.1 SQS Processing Errors
+
+SQS message processing errors are handled according to their type:
+
+| Error Type | Handling Strategy | DLQ | Effect |
+|------------|-------------------|-----|--------|
+| Validation errors | No retry | Yes | Message sent to DLQ immediately |
+| Transient errors | Automatic SQS retry | After max retries | Message becomes visible again up to 3 times, then DLQ |
+| Message format errors | No retry | Yes | Message sent to DLQ immediately |
+| Processing timeout | Lambda retry via SQS | After max retries | New Lambda instance attempts to process message |
+
+### 5.2 OpenAI API Errors
+
+OpenAI API errors are handled with specialized strategies:
+
+| Error Type | Handling Strategy | DLQ | Effect |
+|------------|-------------------|-----|--------|
+| Rate limit (429) | Exponential backoff | After max attempts | Retry with increasing delays up to 5 times |
+| Server errors (5xx) | Exponential backoff | After max attempts | Retry with increasing delays up to 5 times |
+| Authentication errors | No retry | Yes | Message sent to DLQ immediately |
+| Invalid requests | No retry | Yes | Message sent to DLQ immediately |
+| Timeout errors | Retry with longer timeout | After max attempts | Retry with increasing timeouts up to 3 times |
+| Network errors | Exponential backoff | After max attempts | Retry with increasing delays up to 5 times |
+| Assistant configuration errors | No retry | Yes | Message sent to DLQ immediately with clear error message |
+
+### 5.3 Twilio API Errors
+
+Twilio API errors follow similar patterns:
+
+| Error Type | Handling Strategy | DLQ | Effect |
+|------------|-------------------|-----|--------|
+| Rate limit errors | Exponential backoff | After max attempts | Retry with increasing delays up to 5 times |
+| Authentication errors | No retry | Yes | Message sent to DLQ immediately |
+| Invalid request errors | No retry | Yes | Message sent to DLQ immediately |
+| Server errors | Exponential backoff | After max attempts | Retry with increasing delays up to 5 times |
+| Message content errors | No retry | Yes | Message sent to DLQ immediately |
+
+## 8. DLQ Processing and Investigation
+
+### 8.1 DLQ Message Structure
+
+DLQ messages contain rich error context to facilitate investigation:
+
+```json
+{
+  "messageId": "123e4567-e89b-12d3-a456-426614174000",
+  "receiptHandle": "AQEBwJnKyrHigUMZj6rYigCgxiXzY...",
+  "body": "{\"original_payload\": {...}, \"error\": {\"message\": \"Error message\", \"code\": \"ERROR_CODE\", \"category\": \"error_category\", \"metadata\": {\"conversation_id\": \"conv_123\", \"thread_id\": \"thread_abc\", \"processing_stage\": \"initial\"}}}",
+  "attributes": {
+    "ApproximateReceiveCount": "1",
+    "SentTimestamp": "1580815939997",
+    "SenderId": "AROAEXAMPLE:lambda-function-name",
+    "ApproximateFirstReceiveTimestamp": "1580815940017"
+  },
+  "messageAttributes": {},
+  "md5OfBody": "3cafe40d0b946c856817bb77fe1ada97"
+}
+```
+
+### 8.2 DLQ Investigation Process
+
+1. **Classify Error Type**: Determine error category from message metadata
+2. **Assess Retry Potential**: Determine if the error is retryable or requires human intervention
+3. **Check for Patterns**: Look for similar errors affecting multiple messages
+4. **Analyze Root Cause**: Investigate underlying issue using error metadata
+5. **Resolution Strategy**: Develop appropriate resolution based on error type
+
+#### 8.2.1 Assistant Configuration Errors
+
+When investigating assistant configuration errors:
+
+1. Check the assistant ID in the error metadata
+2. Verify the OpenAI assistant configuration in the OpenAI dashboard
+3. Review the system prompt for clear instructions about function calling behavior
+4. Ensure the assistant has the correct functions available
+5. Test the assistant directly in the OpenAI playground with similar inputs
+6. Update the assistant configuration as needed
+7. Requeue messages for processing after fixing the configuration
+
+### 8.3 DLQ Message Reprocessing
+
+For retryable errors, messages can be reprocessed:
+
+```javascript
+// Example DLQ reprocessing function
+async function reprocessDLQMessage(dlqMessage) {
+  try {
+    // Parse original message
+    const originalMessage = JSON.parse(dlqMessage.body);
+    const errorMetadata = JSON.parse(originalMessage.error || "{}").metadata || {};
+    
+    // Check if error is retryable
+    if (errorMetadata.category === 'assistant_configuration_error') {
+      console.log('Assistant configuration error detected - manual intervention required', {
+        error_code: errorMetadata.code,
+        assistant_id: errorMetadata.assistant_id,
+        conversation_id: errorMetadata.conversation_id
+      });
+      
+      // Log detailed guidance
+      console.log('Please check the assistant configuration in the OpenAI dashboard');
+      return false; // Not automatically retryable
+    }
+    
+    // For retryable errors
+    if (isRetryableError(errorMetadata.category)) {
+      // Send back to original queue
+      await sendToOriginalQueue(originalMessage.original_payload);
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error reprocessing DLQ message', error);
+    return false;
+  }
+}
+``` 

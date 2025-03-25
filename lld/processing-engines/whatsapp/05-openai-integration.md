@@ -15,6 +15,7 @@ The OpenAI integration follows these key architectural principles:
 3. **Resilient Operation**: Handles API rate limits and temporary failures
 4. **Functional Implementation**: Uses OpenAI function calls for structured outputs
 5. **Context Preservation**: Maintains conversation context between messages
+6. **Processing Stage Tracking**: Tracks whether a run is the initial or final stage of processing
 
 The system stores OpenAI thread IDs in the conversation record, enabling conversation continuity across multiple messages.
 
@@ -380,6 +381,15 @@ async function processWithOpenAI(openai, contextObject) {
     console.log('Starting OpenAI processing');
     const startTime = Date.now();
     
+    // Ensure processing_stage is set (default to 'initial' if not present)
+    const processingStage = contextObject.processing_stage || 'initial';
+    contextObject.processing_stage = processingStage;
+    
+    console.log('OpenAI processing stage:', { 
+      processing_stage: processingStage,
+      conversation_id: contextObject.conversation_data?.conversation_id 
+    });
+    
     // Create OpenAI thread and add context as message
     const { thread_id } = await createOpenAIThread(openai, contextObject);
     
@@ -394,6 +404,81 @@ async function processWithOpenAI(openai, contextObject) {
     
     // Poll run status until completion or action required
     const finalRun = await pollRunStatus(openai, thread_id, run.id);
+    
+    // Check for potential configuration issues based on processing stage
+    if (processingStage === 'initial' && finalRun.status === 'completed') {
+      // This is a configuration issue - AI didn't call a function when it should have
+      console.warn('Assistant configuration issue detected: AI did not call function on initial run', {
+        conversation_id: contextObject.conversation_data?.conversation_id,
+        thread_id,
+        run_id: run.id,
+        assistant_id: assistantId,
+        processing_stage: 'initial',
+        expected_status: 'requires_action',
+        actual_status: 'completed'
+      });
+      
+      // Emit metric for monitoring
+      await emitConfigurationIssueMetric('MissingFunctionCall', {
+        conversation_id: contextObject.conversation_data?.conversation_id,
+        assistant_id: assistantId,
+        processing_stage: 'initial'
+      });
+      
+      // Throw specific error for this configuration issue
+      const error = new Error(
+        'ASSISTANT_CONFIGURATION_ERROR: AI assistant did not call required function in initial processing. ' +
+        'Please check system prompt configuration in OpenAI dashboard.'
+      );
+      error.code = 'ASSISTANT_CONFIGURATION_ERROR';
+      error.metadata = {
+        error_type: 'configuration_issue',
+        issue: 'missing_function_call',
+        assistant_id: assistantId,
+        conversation_id: contextObject.conversation_data?.conversation_id,
+        thread_id,
+        run_id: run.id,
+        processing_stage: 'initial'
+      };
+      throw error;
+    }
+    
+    if (processingStage === 'final' && finalRun.status === 'requires_action') {
+      // This is a configuration issue - AI called additional functions when it should have completed
+      console.warn('Assistant configuration issue detected: AI called functions after tool outputs', {
+        conversation_id: contextObject.conversation_data?.conversation_id,
+        thread_id,
+        run_id: run.id,
+        assistant_id: assistantId,
+        processing_stage: 'final',
+        expected_status: 'completed',
+        actual_status: 'requires_action'
+      });
+      
+      // Emit metric for monitoring
+      await emitConfigurationIssueMetric('UnexpectedFunctionCall', {
+        conversation_id: contextObject.conversation_data?.conversation_id,
+        assistant_id: assistantId,
+        processing_stage: 'final'
+      });
+      
+      // Throw specific error for this configuration issue
+      const error = new Error(
+        'ASSISTANT_CONFIGURATION_ERROR: AI assistant called additional functions after tool outputs. ' +
+        'Please check system prompt configuration in OpenAI dashboard.'
+      );
+      error.code = 'ASSISTANT_CONFIGURATION_ERROR';
+      error.metadata = {
+        error_type: 'configuration_issue',
+        issue: 'unexpected_function_call',
+        assistant_id: assistantId,
+        conversation_id: contextObject.conversation_data?.conversation_id,
+        thread_id,
+        run_id: run.id,
+        processing_stage: 'final'
+      };
+      throw error;
+    }
     
     // Check final run status and handle accordingly
     if (finalRun.status === 'requires_action') {
@@ -456,8 +541,65 @@ async function processWithOpenAI(openai, contextObject) {
       throw new Error(`Run ended with status: ${finalRun.status}`);
     }
   } catch (error) {
-    console.error('Error in OpenAI processing:', error);
+    // Add metadata to the error for DLQ processing if not already present
+    if (!error.metadata) {
+      error.metadata = {
+        thread_id: contextObject.thread_id,
+        conversation_id: contextObject.conversation_data?.conversation_id,
+        processing_stage: contextObject.processing_stage || 'unknown'
+      };
+    }
+    
+    console.error('Error in OpenAI processing:', error, {
+      error_code: error.code,
+      error_metadata: error.metadata
+    });
+    
     throw error;
+  }
+}
+
+/**
+ * Helper function to emit configuration issue metrics to CloudWatch
+ * @param {string} issueType - Type of configuration issue
+ * @param {object} dimensions - Dimensions for the metric
+ * @returns {Promise<void>}
+ */
+async function emitConfigurationIssueMetric(issueType, dimensions) {
+  try {
+    // Create CloudWatch client
+    const cloudwatch = new AWS.CloudWatch();
+    
+    // Prepare dimensions array for CloudWatch
+    const metricDimensions = Object.entries(dimensions).map(([name, value]) => ({
+      Name: name,
+      Value: String(value)
+    }));
+    
+    // Emit metric
+    await cloudwatch.putMetricData({
+      Namespace: 'WhatsAppProcessingEngine',
+      MetricData: [
+        {
+          MetricName: 'AssistantConfigurationIssue',
+          Value: 1,
+          Unit: 'Count',
+          Dimensions: [
+            ...metricDimensions,
+            { Name: 'IssueType', Value: issueType }
+          ]
+        }
+      ]
+    }).promise();
+    
+    console.log('Emitted configuration issue metric', {
+      metric_name: 'AssistantConfigurationIssue',
+      issue_type: issueType,
+      dimensions
+    });
+  } catch (metricError) {
+    // Just log the error but don't throw - metrics should not break processing
+    console.error('Failed to emit configuration issue metric', metricError);
   }
 }
 ```
@@ -513,13 +655,18 @@ Errors are categorized to enable appropriate handling:
 | `invalid_request` | 400 | Bad request format | Fail immediately, log details |
 | `server_error` | 5xx | OpenAI server error | Retry with exponential backoff |
 | `network_error` | N/A | Network connectivity | Retry with exponential backoff |
+| `configuration_issue` | N/A | Assistant configuration | Fail immediately, no retry, alert operations team |
 
-### 8.2 Partial Success Handling
+### 8.2 Assistant Configuration Issues
 
-The system handles partial success scenarios:
+A specific category of errors has been added for assistant configuration issues:
 
-- If thread creation succeeds but message creation fails, the thread ID is still returned
-- If a run times out, the Lambda's heartbeat pattern ensures the SQS message remains invisible
+| Issue Type | Description | Cause | Handling |
+|------------|-------------|-------|----------|
+| `missing_function_call` | AI didn't call function on initial run | Incorrect system prompt or assistant configuration | Fail immediately, no retry, alert operations team |
+| `unexpected_function_call` | AI called function after tool outputs | Incorrect system prompt or assistant configuration | Fail immediately, no retry, alert operations team |
+
+These issues require human intervention to fix as they relate to how the assistant is configured in the OpenAI dashboard, not runtime issues that might resolve with retries.
 
 ## 9. Monitoring and Metrics
 

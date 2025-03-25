@@ -103,153 +103,110 @@ await publishMetric(
 );
 ```
 
-## 4. Custom Metrics Dashboard
+## 4. Custom Metrics
 
-A custom CloudWatch dashboard provides a holistic view of the system:
+The WhatsApp Processing Engine emits custom CloudWatch metrics to provide detailed visibility into operations:
 
-```javascript
-// CDK code to create dashboard
-const dashboard = new cloudwatch.Dashboard(this, 'WhatsAppProcessingDashboard', {
-  dashboardName: 'WhatsAppProcessingEngine-Metrics'
-});
+### 4.1 Operational Metrics
 
-// Add widgets
-dashboard.addWidgets(
-  new cloudwatch.GraphWidget({
-    title: 'Message Processing Volume',
-    left: [
-      new cloudwatch.Metric({
-        namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-        metricName: 'MessageVolume',
-        statistic: 'Sum',
-        dimensions: { Status: 'received' },
-        period: Duration.minutes(1)
-      }),
-      new cloudwatch.Metric({
-        namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-        metricName: 'MessageVolume',
-        statistic: 'Sum',
-        dimensions: { Status: 'processed' },
-        period: Duration.minutes(1)
-      }),
-      new cloudwatch.Metric({
-        namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-        metricName: 'MessageVolume',
-        statistic: 'Sum',
-        dimensions: { Status: 'failed' },
-        period: Duration.minutes(1)
-      })
-    ],
-    width: 12,
-    height: 6
-  }),
-  
-  new cloudwatch.GraphWidget({
-    title: 'Message Processing Time',
-    left: [
-      new cloudwatch.Metric({
-        namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-        metricName: 'MessageProcessingTime',
-        statistic: 'p50',
-        period: Duration.minutes(1)
-      }),
-      new cloudwatch.Metric({
-        namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-        metricName: 'MessageProcessingTime',
-        statistic: 'p90',
-        period: Duration.minutes(1)
-      }),
-      new cloudwatch.Metric({
-        namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-        metricName: 'MessageProcessingTime',
-        statistic: 'p99',
-        period: Duration.minutes(1)
-      })
-    ],
-    width: 12,
-    height: 6
-  })
-);
-```
+| Metric Name | Description | Dimensions | Unit | Statistics |
+|-------------|-------------|------------|------|-----------|
+| `MessageProcessingTime` | Time to process a message end-to-end | `CompanyId`, `ProjectId` | Milliseconds | Average, P90, P99 |
+| `OpenAICallDuration` | Duration of OpenAI API calls | `Operation` (createThread, createRun, etc.) | Milliseconds | Average, P90, P99 |
+| `OpenAIRetryCount` | Number of retries for OpenAI API calls | `Operation` | Count | Sum, Average |
+| `TwilioCallDuration` | Duration of Twilio API calls | `Operation` (sendMessage, etc.) | Milliseconds | Average, P90, P99 |
+| `FunctionExecutionTime` | Time to execute OpenAI functions | `FunctionName` | Milliseconds | Average, P90, P99 |
+| `DynamoDBOperationTime` | Duration of DynamoDB operations | `Operation`, `TableName` | Milliseconds | Average, P90, P99 |
+| `TotalTokenUsage` | Total tokens used in OpenAI calls | `CompanyId`, `ProjectId` | Count | Sum |
+| `PromptTokenUsage` | Prompt tokens used in OpenAI calls | `CompanyId`, `ProjectId` | Count | Sum |
+| `CompletionTokenUsage` | Completion tokens used in OpenAI calls | `CompanyId`, `ProjectId` | Count | Sum |
+| `AssistantConfigurationIssue` | Count of assistant configuration issues | `ConversationId`, `AssistantId`, `ProcessingStage`, `IssueType`, `Environment` | Count | Sum |
 
-## 5. Alarms and Alerting
+### 4.2 SQS Metrics
 
-### 5.1 Operational Alarms
+| Metric Name | Description | Dimensions | Unit | Statistics |
+|-------------|-------------|------------|------|-----------|
+| `HeartbeatExtensions` | Number of visibility timeout extensions | None | Count | Sum |
+| `VisibilityTimeoutTotal` | Total processing time with extensions | None | Seconds | Average, Max |
+| `MessagesProcessed` | Count of successfully processed messages | None | Count | Sum |
+| `MessagesFailed` | Count of failed messages sent to DLQ | `ErrorCategory` | Count | Sum |
 
-Alarms are configured to alert on operational issues:
+## 5. CloudWatch Dashboards
 
-```javascript
-// Example alarms
-const highErrorRateAlarm = new cloudwatch.Alarm(this, 'HighErrorRateAlarm', {
-  metric: new cloudwatch.Metric({
-    namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-    metricName: 'MessageVolume',
-    dimensions: { Status: 'failed' },
-    statistic: 'Sum',
-    period: Duration.minutes(5)
-  }),
-  evaluationPeriods: 1,
-  threshold: 5, // More than 5 failures in 5 minutes
-  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-  actionsEnabled: true
-});
+The system includes pre-configured CloudWatch dashboards for monitoring:
 
-const dlqMessagesAlarm = new cloudwatch.Alarm(this, 'DLQMessagesAlarm', {
-  metric: new cloudwatch.Metric({
-    namespace: 'AWS/SQS',
-    metricName: 'ApproximateNumberOfMessagesVisible',
-    dimensions: { QueueName: this.dlq.queueName },
-    statistic: 'Maximum',
-    period: Duration.minutes(5)
-  }),
-  evaluationPeriods: 1,
-  threshold: 1, // Any message in DLQ
-  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-  actionsEnabled: true
-});
+### 5.1 Main Operational Dashboard
 
-// Add notification actions to alarms
-const alertTopic = new sns.Topic(this, 'WhatsAppProcessingAlertTopic');
-highErrorRateAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
-dlqMessagesAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
-```
+The main dashboard provides a holistic view of the system:
 
-### 5.2 Business Metrics Alarms
+![Main Dashboard](../../diagrams/monitoring-main-dashboard.png)
 
-Alarms for business-relevant thresholds:
+#### Widgets:
+- **System Health**: Error rates, DLQ message counts, system uptime
+- **Performance Metrics**: Processing times, API latencies, queue depths
+- **Message Flow**: Messages processed per minute, success rates, failure rates
+- **External Dependencies**: OpenAI and Twilio API health and performance
 
-```javascript
-// Alert on high token usage
-const highTokenUsageAlarm = new cloudwatch.Alarm(this, 'HighTokenUsageAlarm', {
-  metric: new cloudwatch.Metric({
-    namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-    metricName: 'TokenUsage',
-    dimensions: { TokenType: 'Total' },
-    statistic: 'Sum',
-    period: Duration.hours(24)
-  }),
-  evaluationPeriods: 1,
-  threshold: 1000000, // 1 million tokens per day
-  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD
-});
+### 5.2 WhatsApp Processing Dashboard
 
-// Alert on processing delays
-const processingDelayAlarm = new cloudwatch.Alarm(this, 'ProcessingDelayAlarm', {
-  metric: new cloudwatch.Metric({
-    namespace: 'ChannelRouter/WhatsAppProcessingEngine',
-    metricName: 'MessageProcessingTime',
-    statistic: 'p95',
-    period: Duration.minutes(15)
-  }),
-  evaluationPeriods: 3,
-  threshold: 30000, // 30 seconds at p95
-  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD
-});
-```
+This dashboard focuses specifically on WhatsApp processing:
 
-## 6. Structured Logging
+![WhatsApp Dashboard](../../diagrams/monitoring-whatsapp-dashboard.png)
 
-### 6.1 Log Format
+#### Widgets:
+- **Message Processing**: Volumes, success rates, processing times
+- **OpenAI Integration**: Thread creation, run times, token usage
+- **Function Execution**: Execution counts, durations, success rates
+- **Twilio Integration**: Message sending latency, delivery rates
+- **Assistant Configuration Issues**: Configuration errors by type and assistant
+
+### 5.3 Error Investigation Dashboard
+
+This dashboard aids in diagnosing and resolving errors:
+
+![Error Dashboard](../../diagrams/monitoring-error-dashboard.png)
+
+#### Widgets:
+- **DLQ Message Counts**: By queue and error type
+- **Error Rates**: Breakdowns by category and source
+- **Error Timelines**: Error occurrence patterns
+- **Retry Statistics**: Success rates after retries
+- **Assistant Configuration Issues**: Detailed breakdown with conversation and assistant IDs
+
+## 6. CloudWatch Alarms
+
+The system includes the following alarms for critical conditions:
+
+### 6.1 Critical Alarms
+
+| Alarm Name | Condition | Threshold | Period | Evaluation Periods | Actions |
+|------------|-----------|-----------|--------|-------------------|---------|
+| HighErrorRate | Error rate exceeds threshold | >5% | 5 minutes | 3 | SNS notification to operations team |
+| DLQMessageCount | Messages in DLQ | >0 | 5 minutes | 1 | SNS notification to operations team |
+| APITimeout | OpenAI API timeouts | >3 | 15 minutes | 1 | SNS notification to operations team |
+| HighLatency | Processing time | >30 seconds | 5 minutes | 3 | SNS notification to operations team |
+| AssistantConfigurationIssues | Configuration errors detected | >0 | 5 minutes | 1 | SNS notification to operations team |
+
+### 6.2 Warning Alarms
+
+| Alarm Name | Condition | Threshold | Period | Evaluation Periods | Actions |
+|------------|-----------|-----------|--------|-------------------|---------|
+| ElevatedErrorRate | Error rate exceeds threshold | >2% | 15 minutes | 3 | Email to development team |
+| HighTokenUsage | Token usage spike | >200% of baseline | 1 hour | 1 | Email to development team |
+| IncreasedLatency | Processing time | >15 seconds | 15 minutes | 3 | Email to development team |
+| OpenAIRateLimiting | Rate limit errors | >0 | 15 minutes | 3 | Email to development team |
+
+### 6.3 Assistant Configuration Issue Alarms
+
+| Alarm Name | Condition | Threshold | Period | Evaluation Periods | Actions |
+|------------|-----------|-----------|--------|-------------------|---------|
+| MissingFunctionCallIssue | Missing function call errors | >0 | 5 minutes | 1 | SNS high-priority notification |
+| UnexpectedFunctionCallIssue | Unexpected function call errors | >0 | 5 minutes | 1 | SNS high-priority notification |
+| RecurringConfigurationIssues | Configuration issues on same assistant | >3 | 1 hour | 1 | SNS + ticketing system |
+
+## 7. Structured Logging
+
+### 7.1 Log Format
 
 All logs follow a consistent structured format:
 
@@ -346,7 +303,7 @@ class Logger {
 }
 ```
 
-### 6.2 Example Usage
+### 7.2 Example Usage
 
 ```javascript
 // Initialize logger with context
@@ -380,9 +337,9 @@ logger.info('Successfully processed message', {
 });
 ```
 
-## 7. CloudWatch Logs Insights
+## 8. CloudWatch Logs Insights
 
-### 7.1 Common Queries
+### 8.1 Common Queries
 
 Predefined CloudWatch Logs Insights queries for operational analysis:
 
@@ -419,7 +376,7 @@ fields @timestamp, message
 | sort @timestamp desc
 ```
 
-### 7.2 Log Retention and Exports
+### 8.2 Log Retention and Exports
 
 Logs are retained and exported for long-term analysis:
 
@@ -438,9 +395,9 @@ new logs.SubscriptionFilter(this, 'WhatsAppProcessingLogExport', {
 });
 ```
 
-## 8. Distributed Tracing
+## 9. Distributed Tracing
 
-### 8.1 X-Ray Integration
+### 9.1 X-Ray Integration
 
 AWS X-Ray is enabled for distributed tracing:
 
@@ -505,7 +462,7 @@ async function callOpenAI() {
 }
 ```
 
-### 8.2 Trace Analysis
+### 9.2 Trace Analysis
 
 X-Ray traces help identify performance bottlenecks:
 
@@ -514,7 +471,7 @@ X-Ray traces help identify performance bottlenecks:
 3. **Error Correlation**: Link errors across distributed components
 4. **Cold Start Analysis**: Identify Lambda cold starts
 
-## 9. Business Metrics
+## 10. Business Metrics
 
 In addition to operational metrics, the system tracks business-relevant metrics:
 
@@ -549,7 +506,7 @@ await publishMetric(
 );
 ```
 
-## 10. Operational Dashboard
+## 11. Operational Dashboard
 
 A central operational dashboard combines metrics, logs, and traces:
 
@@ -559,7 +516,120 @@ A central operational dashboard combines metrics, logs, and traces:
 4. **Business Metrics**: Message volumes, template usage, token consumption
 5. **Resource Utilization**: Lambda concurrency, DynamoDB capacity
 
-## 11. Related Documentation
+## 12. Implementing CloudWatch Alarms
+
+The following provides implementation examples for key alarms:
+
+### 12.1 Error Rate Alarm
+
+```javascript
+// CDK implementation for error rate alarm
+const highErrorRateAlarm = new cloudwatch.Alarm(this, 'HighErrorRate', {
+  metric: new cloudwatch.MathExpression({
+    expression: 'errors / invocations * 100',
+    usingMetrics: {
+      errors: whatsappProcessingLambda.metricErrors(),
+      invocations: whatsappProcessingLambda.metricInvocations()
+    },
+    period: cdk.Duration.minutes(5)
+  }),
+  threshold: 5,
+  evaluationPeriods: 3,
+  datapointsToAlarm: 3,
+  treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+  alarmDescription: 'High error rate in WhatsApp Processing Lambda'
+});
+
+highErrorRateAlarm.addAlarmAction(new cloudwatchActions.SnsAction(operationsAlarmTopic));
+```
+
+### 12.2 Assistant Configuration Issue Alarm
+
+```javascript
+// CDK implementation for assistant configuration issue alarm
+const assistantConfigIssueAlarm = new cloudwatch.Alarm(this, 'AssistantConfigurationIssue', {
+  metric: new cloudwatch.Metric({
+    namespace: 'WhatsAppProcessingEngine',
+    metricName: 'AssistantConfigurationIssue',
+    statistic: 'Sum',
+    period: cdk.Duration.minutes(5)
+  }),
+  threshold: 0,
+  evaluationPeriods: 1,
+  datapointsToAlarm: 1,
+  treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+  alarmDescription: 'OpenAI Assistant configuration issue detected'
+});
+
+// Add high-priority notification for immediate attention
+assistantConfigIssueAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
+```
+
+### 12.3 DLQ Message Alarm
+
+```javascript
+// CDK implementation for DLQ message alarm
+const dlqMessageAlarm = new cloudwatch.Alarm(this, 'DLQMessageCount', {
+  metric: whatsappDLQ.metricApproximateNumberOfMessagesVisible(),
+  threshold: 0,
+  evaluationPeriods: 1,
+  datapointsToAlarm: 1,
+  treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+  alarmDescription: 'Messages detected in WhatsApp Processing DLQ'
+});
+
+dlqMessageAlarm.addAlarmAction(new cloudwatchActions.SnsAction(operationsAlarmTopic));
+```
+
+### 12.4 Specific Assistant Configuration Issue Alarms
+
+```javascript
+// CDK implementation for specific assistant configuration issue alarms
+const missingFunctionCallAlarm = new cloudwatch.Alarm(this, 'MissingFunctionCallIssue', {
+  metric: new cloudwatch.Metric({
+    namespace: 'WhatsAppProcessingEngine',
+    metricName: 'AssistantConfigurationIssue',
+    statistic: 'Sum',
+    period: cdk.Duration.minutes(5),
+    dimensions: {
+      'IssueType': 'MissingFunctionCall'
+    }
+  }),
+  threshold: 0,
+  evaluationPeriods: 1,
+  datapointsToAlarm: 1,
+  treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+  alarmDescription: 'OpenAI Assistant failed to call function when expected'
+});
+
+const unexpectedFunctionCallAlarm = new cloudwatch.Alarm(this, 'UnexpectedFunctionCallIssue', {
+  metric: new cloudwatch.Metric({
+    namespace: 'WhatsAppProcessingEngine',
+    metricName: 'AssistantConfigurationIssue',
+    statistic: 'Sum',
+    period: cdk.Duration.minutes(5),
+    dimensions: {
+      'IssueType': 'UnexpectedFunctionCall'
+    }
+  }),
+  threshold: 0,
+  evaluationPeriods: 1,
+  datapointsToAlarm: 1,
+  treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+  alarmDescription: 'OpenAI Assistant called additional functions after tool outputs'
+});
+
+// Add high-priority notifications for immediate attention
+missingFunctionCallAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
+unexpectedFunctionCallAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
+```
+
+## 13. Related Documentation
 
 - [Overview and Architecture](./01-overview-architecture.md)
 - [Error Handling Strategy](./08-error-handling-strategy.md)

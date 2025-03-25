@@ -188,73 +188,79 @@ const getConversationDetailsFunction = {
 
 ## 5. Function Execution Flow
 
-The function execution flow is handled in several stages:
-
-### 5.1 Function Call Handler
-
-When an OpenAI run requires action, the function calls are processed:
+The complete function execution flow involves:
+1. Extracting function calls from OpenAI run
+2. Determining which function to call
+3. Converting OpenAI arguments to JS objects
+4. Executing the appropriate function
+5. Preparing for final processing
+6. Submitting tool outputs back to OpenAI
+7. Continuing the run to completion
 
 ```javascript
 /**
- * Handles function calls required by an OpenAI run
+ * Processes function calls received from OpenAI
  * @param {object} openai - Initialized OpenAI client
+ * @param {object} contextObject - The context object with conversation data
  * @param {string} threadId - OpenAI thread ID
  * @param {string} runId - OpenAI run ID
- * @param {object} requiredAction - The required action object from the run
- * @returns {Promise<object>} - Result of the function execution
+ * @param {object} requiredAction - Required action object from OpenAI
+ * @returns {Promise<object>} - Result of the continued run
  */
-async function handleFunctionCalls(openai, threadId, runId, requiredAction) {
+async function processFunctionCalls(openai, contextObject, threadId, runId, requiredAction) {
   try {
-    console.log('Handling function calls', {
+    console.log('Processing function calls from OpenAI', {
       thread_id: threadId,
       run_id: runId,
-      tool_calls_count: requiredAction.submit_tool_outputs.tool_calls.length
+      function_count: requiredAction.submit_tool_outputs.tool_calls.length
     });
     
-    const toolCalls = requiredAction.submit_tool_outputs.tool_calls;
+    // Get function calls
+    const functionCalls = requiredAction.submit_tool_outputs.tool_calls;
+    
+    // Process each function call
     const toolOutputs = [];
     
-    // Process each tool call
-    for (const toolCall of toolCalls) {
-      const { id, function: functionCall } = toolCall;
-      const { name, arguments: argsString } = functionCall;
-      
-      console.log('Processing function call', {
-        function_name: name,
-        tool_call_id: id
-      });
-      
+    for (const call of functionCalls) {
       try {
-        // Parse function arguments
-        const args = JSON.parse(argsString);
+        console.log('Processing function call', {
+          tool_call_id: call.id,
+          function_name: call.function.name
+        });
         
-        // Execute the function
-        const result = await executeFunctionByName(name, args);
+        // Parse arguments
+        const args = JSON.parse(call.function.arguments);
+        
+        // Execute the appropriate function
+        const result = await executeFunctionByName(call.function.name, args, contextObject);
         
         // Add to tool outputs
         toolOutputs.push({
-          tool_call_id: id,
+          tool_call_id: call.id,
           output: JSON.stringify(result)
         });
         
         console.log('Function executed successfully', {
-          function_name: name,
-          tool_call_id: id
+          tool_call_id: call.id,
+          function_name: call.function.name
         });
-      } catch (functionError) {
+      } catch (funcError) {
         console.error('Error executing function', {
-          function_name: name,
-          tool_call_id: id,
-          error: functionError.message
+          tool_call_id: call.id,
+          function_name: call.function.name,
+          error: funcError.message
         });
         
         // Add error result to tool outputs
         toolOutputs.push({
-          tool_call_id: id,
-          output: JSON.stringify({ error: functionError.message })
+          tool_call_id: call.id,
+          output: JSON.stringify({ error: funcError.message })
         });
       }
     }
+    
+    // Prepare context for final processing stage
+    const updatedContext = prepareForFinalProcessing(contextObject, toolOutputs);
     
     // Submit tool outputs back to OpenAI
     await withExponentialBackoff(
@@ -268,19 +274,67 @@ async function handleFunctionCalls(openai, threadId, runId, requiredAction) {
     console.log('Submitted tool outputs to OpenAI', {
       thread_id: threadId,
       run_id: runId,
-      tool_outputs_count: toolOutputs.length
+      output_count: toolOutputs.length
     });
     
-    // Continue polling the run until it completes
-    return await pollRunStatus(openai, threadId, runId);
+    // Continue polling the run until completion
+    const finalRun = await pollRunStatus(openai, threadId, runId);
+    
+    return {
+      thread_id: threadId,
+      run_id: runId,
+      status: finalRun.status,
+      tool_outputs: toolOutputs,
+      final_run: finalRun
+    };
   } catch (error) {
-    console.error('Error handling function calls', error);
+    console.error('Error processing function calls', error);
     throw error;
   }
 }
 ```
 
-### 5.2 Function Execution
+### 5.1 Preparing for Final Processing Stage
+
+After function execution, the system prepares the context object for the final processing stage. This centralizes the state transition and ensures consistent handling:
+
+```javascript
+/**
+ * Prepares the context object for the final OpenAI processing stage after function execution
+ * @param {object} contextObject - The original context object
+ * @param {array} toolOutputs - The tool outputs that were submitted to OpenAI
+ * @returns {object} - Updated context object
+ */
+function prepareForFinalProcessing(contextObject, toolOutputs) {
+  // Create a shallow copy to ensure we don't accidentally modify by reference
+  const updatedContext = { ...contextObject };
+  
+  // Update the processing stage to 'final'
+  updatedContext.processing_stage = 'final';
+  
+  // Record function execution results in the context
+  updatedContext.function_execution = {
+    tool_outputs: toolOutputs,
+    execution_timestamp: new Date().toISOString()
+  };
+  
+  console.log('Context prepared for final processing stage', { 
+    conversation_id: updatedContext.conversation_data?.conversation_id,
+    processing_stage: 'final'
+  });
+  
+  return updatedContext;
+}
+```
+
+This function serves as a clear, centralized location for the transition from initial to final processing stage. It ensures that:
+
+1. The `processing_stage` is explicitly set to 'final'
+2. Function execution results are preserved for reference
+3. The transition is properly logged for monitoring
+4. All code paths properly mark the transition
+
+### 5.2 Function Dispatch
 
 The `executeFunctionByName` function dispatches the function call to the appropriate handler:
 
