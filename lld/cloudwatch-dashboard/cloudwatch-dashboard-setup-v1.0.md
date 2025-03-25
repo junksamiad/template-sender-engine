@@ -904,6 +904,250 @@ async function processWithOpenAI(message) {
 }
 ```
 
+## AI Assistant Configuration Monitoring
+
+For applications that use OpenAI Assistants API or similar AI services, specific monitoring for configuration issues is critical as these require human intervention and cannot be resolved through automated retries.
+
+### Custom Metrics for AI Configuration Issues
+
+Set up custom metrics to track configuration-related issues:
+
+```javascript
+// Example of emitting assistant configuration issue metrics
+async function emitConfigurationIssueMetric(issueType, dimensions) {
+  const cloudwatch = new AWS.CloudWatch();
+  
+  // Convert dimensions object to CloudWatch format
+  const metricDimensions = Object.entries(dimensions).map(([name, value]) => ({
+    Name: name,
+    Value: String(value)
+  }));
+  
+  // Emit the metric
+  await cloudwatch.putMetricData({
+    Namespace: 'WhatsAppProcessingEngine',
+    MetricData: [
+      {
+        MetricName: 'AssistantConfigurationIssue',
+        Value: 1,
+        Unit: 'Count',
+        Dimensions: [
+          ...metricDimensions,
+          { Name: 'IssueType', Value: issueType }
+        ]
+      }
+    ]
+  }).promise();
+}
+```
+
+### Key Metrics to Monitor
+
+| Metric Name | Description | Dimensions | Unit | Statistic |
+|-------------|-------------|------------|------|-----------|
+| `AssistantConfigurationIssue` | Count of AI assistant configuration issues | `ConversationId`, `AssistantId`, `ProcessingStage`, `IssueType`, `Environment` | Count | Sum |
+
+### AI Configuration Issues Dashboard
+
+Create a dedicated dashboard for monitoring AI assistant configuration issues:
+
+```typescript
+// AI Configuration Issues Dashboard
+const aiConfigDashboard = new cloudwatch.Dashboard(this, 'AIConfigIssuesDashboard', {
+  dashboardName: 'WhatsAppEngine-AIConfigIssues'
+});
+
+aiConfigDashboard.addWidgets(
+  // Header
+  new cloudwatch.TextWidget({
+    markdown: '# AI Assistant Configuration Issues\nMonitoring for OpenAI Assistants API configuration problems',
+    width: 24,
+    height: 2
+  }),
+  
+  // Configuration Issues by Type
+  new cloudwatch.GraphWidget({
+    title: 'Configuration Issues by Type',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'WhatsAppProcessingEngine',
+        metricName: 'AssistantConfigurationIssue',
+        dimensionsMap: {
+          'IssueType': 'MissingFunctionCall'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'WhatsAppProcessingEngine',
+        metricName: 'AssistantConfigurationIssue',
+        dimensionsMap: {
+          'IssueType': 'UnexpectedFunctionCall'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // Configuration Issues by Assistant ID
+  new cloudwatch.GraphWidget({
+    title: 'Configuration Issues by Assistant',
+    left: [
+      // This uses a metric math expression to separate by AssistantId dimension
+      new cloudwatch.MathExpression({
+        expression: "SELECT SUM(AssistantConfigurationIssue) FROM SCHEMA(WhatsAppProcessingEngine, AssistantId) GROUP BY AssistantId",
+        period: cdk.Duration.minutes(60),
+        label: "Issues per Assistant"
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // Configuration Issues by Processing Stage
+  new cloudwatch.GraphWidget({
+    title: 'Configuration Issues by Processing Stage',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'WhatsAppProcessingEngine',
+        metricName: 'AssistantConfigurationIssue',
+        dimensionsMap: {
+          'ProcessingStage': 'initial'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      }),
+      new cloudwatch.Metric({
+        namespace: 'WhatsAppProcessingEngine',
+        metricName: 'AssistantConfigurationIssue',
+        dimensionsMap: {
+          'ProcessingStage': 'final'
+        },
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // Time Since Last Configuration Issue
+  new cloudwatch.SingleValueWidget({
+    title: 'Time Since Last Configuration Issue',
+    metrics: [
+      new cloudwatch.MathExpression({
+        expression: "TIME_SECONDS(AssistantConfigurationIssue)",
+        usingMetrics: {
+          AssistantConfigurationIssue: new cloudwatch.Metric({
+            namespace: 'WhatsAppProcessingEngine',
+            metricName: 'AssistantConfigurationIssue',
+            statistic: 'Sample',
+            period: cdk.Duration.hours(24)
+          })
+        }
+      })
+    ],
+    width: 12,
+    height: 6
+  })
+);
+```
+
+### AI Configuration Issues Alarms
+
+Set up specific alarms for assistant configuration issues:
+
+```typescript
+// Missing Function Call Alarm
+const missingFunctionCallAlarm = new cloudwatch.Alarm(this, 'MissingFunctionCallAlarm', {
+  metric: new cloudwatch.Metric({
+    namespace: 'WhatsAppProcessingEngine',
+    metricName: 'AssistantConfigurationIssue',
+    dimensionsMap: {
+      'IssueType': 'MissingFunctionCall'
+    },
+    statistic: 'Sum',
+    period: cdk.Duration.minutes(5)
+  }),
+  threshold: 0,
+  evaluationPeriods: 1,
+  datapointsToAlarm: 1,
+  treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+  alarmDescription: 'AI assistant did not call function when expected'
+});
+
+// Unexpected Function Call Alarm
+const unexpectedFunctionCallAlarm = new cloudwatch.Alarm(this, 'UnexpectedFunctionCallAlarm', {
+  metric: new cloudwatch.Metric({
+    namespace: 'WhatsAppProcessingEngine',
+    metricName: 'AssistantConfigurationIssue',
+    dimensionsMap: {
+      'IssueType': 'UnexpectedFunctionCall'
+    },
+    statistic: 'Sum',
+    period: cdk.Duration.minutes(5)
+  }),
+  threshold: 0,
+  evaluationPeriods: 1,
+  datapointsToAlarm: 1,
+  treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+  comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+  alarmDescription: 'AI assistant called additional functions when it should have completed'
+});
+
+// Add high-priority notifications
+missingFunctionCallAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
+unexpectedFunctionCallAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
+```
+
+### Integration with Main Dashboard
+
+Add a widget showing configuration issues to the main WhatsApp Processing Engine dashboard:
+
+```typescript
+// Add to existing WhatsApp Processing Dashboard
+whatsappDashboard.addWidgets(
+  // Other widgets...
+  
+  // AI Configuration Issues Section
+  new cloudwatch.TextWidget({
+    markdown: '## AI Assistant Configuration Issues',
+    width: 24,
+    height: 1
+  }),
+  
+  // Configuration Issues Overview
+  new cloudwatch.GraphWidget({
+    title: 'AI Configuration Issues',
+    left: [
+      new cloudwatch.Metric({
+        namespace: 'WhatsAppProcessingEngine',
+        metricName: 'AssistantConfigurationIssue',
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(5)
+      })
+    ],
+    width: 12,
+    height: 6
+  }),
+  
+  // Alarm Status Widget
+  new cloudwatch.AlarmWidget({
+    title: 'Configuration Issue Alarms',
+    alarms: [
+      missingFunctionCallAlarm.alarmArn,
+      unexpectedFunctionCallAlarm.alarmArn
+    ],
+    width: 12,
+    height: 6
+  })
+);
+```
+
 ## Alarm Integration
 
 CloudWatch dashboards can display alarm states:

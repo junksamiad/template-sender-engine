@@ -184,6 +184,104 @@ async function sendWithRetry(message, maxRetries = 3) {
 - Define fallback behaviors for critical operations
 - Gracefully degrade functionality rather than failing completely
 
+### AI Assistant Configuration Error Tracking:
+
+When working with external AI services like OpenAI Assistants API, it's crucial to detect and track configuration-related errors that can't be resolved through retries:
+
+1. **Processing Stage Tracking**:
+   - Track whether an AI operation is in initial or final stage of processing
+   - Use context object fields to maintain processing state across steps
+   - Example: `contextObject.processing_stage = 'initial'` or `'final'`
+
+2. **Expected Behavior Validation**:
+   - Validate that the AI assistant behaves as expected at each stage
+   - Initial stage should result in function calls, not direct completion
+   - Final stage (after submitting tool outputs) should result in completion, not more function calls
+
+```javascript
+// Example: Detecting assistant configuration issues
+if (processingStage === 'initial' && runStatus === 'completed') {
+  console.warn('Assistant configuration error: Missing function call', {
+    conversation_id: contextObject.conversation_id,
+    assistant_id: assistantId,
+    processing_stage: 'initial'
+  });
+  
+  // Add detailed metadata for troubleshooting
+  const error = new Error('ASSISTANT_CONFIGURATION_ERROR: AI assistant did not call required function');
+  error.code = 'ASSISTANT_CONFIGURATION_ERROR';
+  error.metadata = {
+    error_type: 'configuration_issue',
+    issue: 'missing_function_call',
+    assistant_id: assistantId,
+    conversation_id: contextObject.conversation_data?.conversation_id,
+    thread_id: threadId,
+    processing_stage: 'initial'
+  };
+  
+  // Emit metrics with dimensions for tracking
+  await emitConfigurationIssueMetric('MissingFunctionCall', {
+    conversation_id: contextObject.conversation_data?.conversation_id,
+    assistant_id: assistantId,
+    processing_stage: 'initial'
+  });
+  
+  throw error; // Send to DLQ without retry
+}
+```
+
+3. **No-Retry Strategy**:
+   - Configuration errors should be sent directly to DLQ without retries
+   - These errors require human intervention (fixing AI assistant configuration)
+   - Retrying won't resolve the underlying configuration problem
+
+4. **Rich Error Context**:
+   - Include critical identifiers in error metadata:
+     - Conversation ID
+     - Thread ID
+     - Assistant ID
+     - Processing Stage
+     - Expected vs. Actual status
+
+5. **Immediate Alerting**:
+   - Set up high-priority alerts for configuration errors
+   - Create separate CloudWatch metrics with detailed dimensions
+   - Configure alarms with immediate notification to operations team
+
+```javascript
+// Example: CloudWatch metric emission for configuration issues
+async function emitConfigurationIssueMetric(issueType, dimensions) {
+  try {
+    const cloudwatch = new AWS.CloudWatch();
+    
+    // Prepare dimensions array for CloudWatch
+    const metricDimensions = Object.entries(dimensions).map(([name, value]) => ({
+      Name: name,
+      Value: String(value)
+    }));
+    
+    // Emit metric
+    await cloudwatch.putMetricData({
+      Namespace: 'WhatsAppProcessingEngine',
+      MetricData: [
+        {
+          MetricName: 'AssistantConfigurationIssue',
+          Value: 1,
+          Unit: 'Count',
+          Dimensions: [
+            ...metricDimensions,
+            { Name: 'IssueType', Value: issueType }
+          ]
+        }
+      ]
+    }).promise();
+  } catch (metricError) {
+    // Don't fail the process if metric emission fails
+    console.error('Failed to emit configuration issue metric', metricError);
+  }
+}
+```
+
 ## 6. Administrative Interface
 
 ### Implementation:
