@@ -105,8 +105,6 @@ async function createConversationRecord(contextObject) {
     request_id: request_data.request_id,
     router_version: contextObject.metadata.router_version,
     whatsapp_credentials_reference: channel_config.whatsapp.whatsapp_credentials_id,
-    template_name: channel_config.whatsapp.template_name || 'default_template',
-    template_language: channel_config.whatsapp.template_language || 'en_US',
     recipient_first_name: recipient_data.recipient_first_name,
     recipient_last_name: recipient_data.recipient_last_name,
     conversation_status: 'processing',
@@ -474,13 +472,16 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
       recipient_tel: contextObject.frontend_payload.recipient_data.recipient_tel
     });
     
-    // Get template configuration
-    const templateName = contextObject.channel_config.whatsapp.template_name || 'default_template';
-    const templateLanguage = contextObject.channel_config.whatsapp.template_language || 'en_US';
-    
     // Get WhatsApp credentials from Secrets Manager
     const whatsappCredentialsId = contextObject.channel_config.whatsapp.whatsapp_credentials_id;
     const twilioCredentials = await getSecretValue(whatsappCredentialsId);
+    
+    // Get the content/template SID from Twilio credentials in Secrets Manager
+    const contentSid = twilioCredentials.twilio_template_sid;
+    
+    if (!contentSid) {
+      throw new Error('Template SID not found in credentials. Please ensure twilio_template_sid is set in the WhatsApp credentials in Secrets Manager.');
+    }
     
     // Initialize Twilio client
     const twilioClient = twilio(
@@ -492,21 +493,9 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
     const messageOptions = {
       from: `whatsapp:${contextObject.channel_config.whatsapp.company_whatsapp_number}`,
       to: `whatsapp:${contextObject.frontend_payload.recipient_data.recipient_tel}`,
-      contentSid: null,
+      contentSid: contentSid,
       contentVariables: JSON.stringify(variables)
     };
-    
-    // Find the content SID for the template
-    const templates = await twilioClient.messaging.contentAndTemplates.templates.list();
-    const template = templates.find(t => 
-      t.name === templateName && t.language === templateLanguage
-    );
-    
-    if (!template) {
-      throw new Error(`Template not found: ${templateName} (${templateLanguage})`);
-    }
-    
-    messageOptions.contentSid = template.sid;
     
     // Send the message
     const message = await twilioClient.messages.create(messageOptions);
@@ -521,7 +510,7 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
     await addMessageToConversation(
       contextObject.conversation_data,
       'assistant',
-      `Template: ${templateName}`,
+      `Template message sent`,
       message.sid
     );
     

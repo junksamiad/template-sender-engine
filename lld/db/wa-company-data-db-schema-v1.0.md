@@ -97,9 +97,7 @@ This structure stores up to 5 company representatives that may be involved in co
 {
   "whatsapp": {
     "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
-    "company_whatsapp_number": "+14155238886",
-    "template_name": "default_template",
-    "template_language": "en_US"
+    "company_whatsapp_number": "+14155238886"
   },
   "sms": {
     "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
@@ -116,8 +114,6 @@ This structure stores up to 5 company representatives that may be involved in co
 |---------|-------|-------------|
 | whatsapp | `whatsapp_credentials_id` | Reference to WhatsApp (Twilio) credentials in Secrets Manager using format: whatsapp-credentials/{company_id}/{project_id}/twilio |
 | whatsapp | `company_whatsapp_number` | The WhatsApp phone number assigned to this company/project |
-| whatsapp | `template_name` | Name of the default WhatsApp template to use for sending messages |
-| whatsapp | `template_language` | Language code for the default template (e.g., "en_US") |
 | sms | `sms_credentials_id` | Reference to SMS (Twilio) credentials in Secrets Manager using format: sms-credentials/{company_id}/{project_id}/twilio |
 | sms | `company_sms_number` | The SMS phone number assigned to this company/project |
 | email | `email_credentials_id` | Reference to Email (SendGrid) credentials in Secrets Manager using format: email-credentials/{company_id}/{project_id}/sendgrid |
@@ -167,9 +163,7 @@ The `project_status` field can have the following values:
   "channel_config": {
     "whatsapp": {
       "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
-      "company_whatsapp_number": "+14155238886",
-      "template_name": "default_template",
-      "template_language": "en_US"
+      "company_whatsapp_number": "+14155238886"
     },
     "sms": {
       "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio",
