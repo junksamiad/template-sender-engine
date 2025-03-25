@@ -79,9 +79,11 @@ The WhatsApp Processing Engine follows a linear, efficient processing flow:
 
 4. **Template Message Sending**:
    - The updated context object with content variables is passed to the Twilio integration function.
-   - The function retrieves the template SID from the Twilio credentials in AWS Secrets Manager.
-   - The content variables are passed to the Twilio API along with the template SID.
-   - The message is sent to the recipient's WhatsApp number.
+   - The function retrieves WhatsApp credentials from AWS Secrets Manager using the `channel_config.whatsapp.whatsapp_credentials_id` reference from the context object.
+   - These credentials include the `twilio_account_sid`, `twilio_auth_token`, and `twilio_template_sid` needed for API authentication and template identification.
+   - The function uses the `channel_config.whatsapp.company_whatsapp_number` from the context object as the sender's phone number.
+   - The content variables are passed to the Twilio API along with the template SID, account SID, and auth token.
+   - The message is sent to the recipient's WhatsApp number (extracted from `frontend_payload.recipient_data.recipient_tel`).
 
 5. **Conversation Finalization**:
    - The conversation record is updated with thread ID and delivery status.
