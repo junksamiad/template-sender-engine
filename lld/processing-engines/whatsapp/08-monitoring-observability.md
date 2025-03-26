@@ -748,8 +748,8 @@ The system includes the following alarms for critical conditions:
 
 | Alarm Name | Condition | Threshold | Period | Evaluation Periods | Actions |
 |------------|-----------|-----------|--------|-------------------|---------|
-| MissingFunctionCallIssue | Missing function call errors | >0 | 5 minutes | 1 | SNS high-priority notification |
-| UnexpectedFunctionCallIssue | Unexpected function call errors | >0 | 5 minutes | 1 | SNS high-priority notification |
+| MissingStructuredJSONResponseIssue | Missing structured JSON response errors | >0 | 5 minutes | 1 | SNS high-priority notification |
+| MalformedJSONResponseIssue | Malformed JSON response errors | >0 | 5 minutes | 1 | SNS high-priority notification |
 | RecurringConfigurationIssues | Configuration issues on same assistant | >3 | 1 hour | 1 | SNS + ticketing system |
 
 ## 9. Structured Logging

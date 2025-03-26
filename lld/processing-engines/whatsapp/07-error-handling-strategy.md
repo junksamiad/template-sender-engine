@@ -821,8 +821,9 @@ Some error categories have important subcategories:
 - Socket hang up
 
 #### Assistant Configuration Errors
-- Missing function call - Assistant did not call a function when expected to
-- Unexpected function call - Assistant called additional functions when it should have completed
+- Missing structured JSON response - Assistant did not provide the expected structured JSON response
+- Malformed JSON response - Assistant provided a response that couldn't be parsed as valid JSON
+- Missing content_variables field - Assistant's JSON response is missing the required content_variables field
 
 ### 2.2 Error Context and Metadata
 

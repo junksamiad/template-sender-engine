@@ -508,8 +508,27 @@ Each business use case has a dedicated OpenAI Assistant configured with:
 
 1. **System Instructions**: Detailed instructions on how to extract data from the context object
 2. **Template Structure**: Information about the template format and variable positions
-3. **Output Format Requirements**: Explicit instructions to return content variables in a specific JSON format
-4. **Constraints**: Rules for handling missing or ambiguous data
+3. **Output Format Requirements**: Explicit instructions to return content variables in a structured JSON format (not using function calls)
+4. **JSON Schema**: Clear schema definition for the expected response format containing a `content_variables` object 
+5. **Constraints**: Rules for handling missing or ambiguous data
+
+The assistant is specifically instructed to return JSON content either within a markdown code block or directly as text. This provides a reliable structured output format without requiring function call mechanisms.
+
+Example system instructions excerpt:
+```
+Your task is to analyze the provided context object and generate appropriate content variables for WhatsApp message templates.
+
+FORMAT YOUR RESPONSE AS A JSON OBJECT using the following schema:
+{
+  "content_variables": {
+    "1": "First variable value",
+    "2": "Second variable value",
+    ...
+  }
+}
+
+The content_variables object must use numeric strings as keys ("1", "2", etc.) corresponding to the WhatsApp template variable positions.
+```
 
 ### 9.2 Processing Flow for Variable Generation
 

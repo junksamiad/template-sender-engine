@@ -973,7 +973,7 @@ aiConfigDashboard.addWidgets(
         namespace: 'WhatsAppProcessingEngine',
         metricName: 'AssistantConfigurationIssue',
         dimensionsMap: {
-          'IssueType': 'MissingFunctionCall'
+          'IssueType': 'MissingStructuredJSONResponse'
         },
         statistic: 'Sum',
         period: cdk.Duration.minutes(5)
@@ -982,7 +982,7 @@ aiConfigDashboard.addWidgets(
         namespace: 'WhatsAppProcessingEngine',
         metricName: 'AssistantConfigurationIssue',
         dimensionsMap: {
-          'IssueType': 'UnexpectedFunctionCall'
+          'IssueType': 'MalformedJSONResponse'
         },
         statistic: 'Sum',
         period: cdk.Duration.minutes(5)
@@ -1061,13 +1061,13 @@ aiConfigDashboard.addWidgets(
 Set up specific alarms for assistant configuration issues:
 
 ```typescript
-// Missing Function Call Alarm
-const missingFunctionCallAlarm = new cloudwatch.Alarm(this, 'MissingFunctionCallAlarm', {
+// Missing Structured JSON Response Alarm
+const missingStructuredJSONResponseAlarm = new cloudwatch.Alarm(this, 'MissingStructuredJSONResponseAlarm', {
   metric: new cloudwatch.Metric({
     namespace: 'WhatsAppProcessingEngine',
     metricName: 'AssistantConfigurationIssue',
     dimensionsMap: {
-      'IssueType': 'MissingFunctionCall'
+      'IssueType': 'MissingStructuredJSONResponse'
     },
     statistic: 'Sum',
     period: cdk.Duration.minutes(5)
@@ -1077,16 +1077,16 @@ const missingFunctionCallAlarm = new cloudwatch.Alarm(this, 'MissingFunctionCall
   datapointsToAlarm: 1,
   treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
   comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-  alarmDescription: 'AI assistant did not call function when expected'
+  alarmDescription: 'AI assistant did not provide the expected structured JSON response'
 });
 
-// Unexpected Function Call Alarm
-const unexpectedFunctionCallAlarm = new cloudwatch.Alarm(this, 'UnexpectedFunctionCallAlarm', {
+// Malformed JSON Response Alarm
+const malformedJSONResponseAlarm = new cloudwatch.Alarm(this, 'MalformedJSONResponseAlarm', {
   metric: new cloudwatch.Metric({
     namespace: 'WhatsAppProcessingEngine',
     metricName: 'AssistantConfigurationIssue',
     dimensionsMap: {
-      'IssueType': 'UnexpectedFunctionCall'
+      'IssueType': 'MalformedJSONResponse'
     },
     statistic: 'Sum',
     period: cdk.Duration.minutes(5)
@@ -1096,12 +1096,12 @@ const unexpectedFunctionCallAlarm = new cloudwatch.Alarm(this, 'UnexpectedFuncti
   datapointsToAlarm: 1,
   treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
   comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-  alarmDescription: 'AI assistant called additional functions when it should have completed'
+  alarmDescription: 'AI assistant provided a response that could not be parsed as valid JSON'
 });
 
 // Add high-priority notifications
-missingFunctionCallAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
-unexpectedFunctionCallAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
+missingStructuredJSONResponseAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
+malformedJSONResponseAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
 ```
 
 ### Integration with Main Dashboard
@@ -1139,8 +1139,8 @@ whatsappDashboard.addWidgets(
   new cloudwatch.AlarmWidget({
     title: 'Configuration Issue Alarms',
     alarms: [
-      missingFunctionCallAlarm.alarmArn,
-      unexpectedFunctionCallAlarm.alarmArn
+      missingStructuredJSONResponseAlarm.alarmArn,
+      malformedJSONResponseAlarm.alarmArn
     ],
     width: 12,
     height: 6
@@ -1152,7 +1152,7 @@ whatsappDashboard.addWidgets(
 
 CloudWatch dashboards can display alarm states:
 
-```typescript
+```typitten
 // Create an alarm
 const dlqAlarm = new cloudwatch.Alarm(this, 'DLQMessagesAlarm', {
   metric: new cloudwatch.Metric({

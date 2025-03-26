@@ -658,7 +658,22 @@ async function getAssistantResponse(openai, threadId, contextObject) {
     throw error;
   }
 }
-```
+
+### 6.1 Processing Structured JSON Response
+
+The WhatsApp Processing Engine uses a structured JSON response approach rather than OpenAI function calls. This design choice provides several benefits:
+
+1. **Simplified Implementation**: By having the assistant generate structured JSON directly in its response, we eliminate the need for function call boilerplate and parameter validation.
+
+2. **Flexible Structure**: The assistant can include the required `content_variables` object within a broader JSON structure that may contain additional metadata or context when needed.
+
+3. **Clear Instructions**: The assistant is configured with a system prompt that explicitly instructs it to format its response as structured JSON with a specific schema for content variables.
+
+4. **Consistent Parsing**: The system parses JSON reliably whether it appears within markdown code blocks (```json) or directly as text in the assistant's response.
+
+5. **Error Detection**: The parsing logic includes validation to ensure the response contains the required `content_variables` field and emits metrics for monitoring when the format is incorrect.
+
+This approach differs from using OpenAI function calls, where the assistant would be configured to call specific functions with parameters. Instead, our implementation relies on proper system prompt configuration to instruct the assistant to consistently produce well-structured JSON output containing the required template variables.
 
 ## 7. Main Integration Function
 
