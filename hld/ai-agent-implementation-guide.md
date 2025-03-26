@@ -2,7 +2,9 @@
 
 This document serves as a comprehensive guide for AI agents tasked with implementing the AI Multi-Communications Engine. It explains how to navigate the documentation, follow the implementation roadmap, and execute each phase correctly.
 
-## Getting Started
+## Quick Start
+
+### Immediate Action Steps
 
 1. **First, familiarize yourself with the high-level architecture:**
    - Review `hld/multi-comms-engine-hld-v1.0.md` to understand the overall system
@@ -21,7 +23,33 @@ This document serves as a comprehensive guide for AI agents tasked with implemen
    - Examine commit history to understand recent work
    - This assessment helps you understand which phase and task to work on next
 
-## Implementation Workflow
+4. **Initialize your work on the current phase:**
+   - Study the current phase implementation plan in detail
+   - Create phase notes file if not already created:
+     ```bash
+     cp hld/templates/phase-notes-template.md hld/notes/phase0-notes.md
+     # Edit and replace '0' with current phase number
+     ```
+   - Create phase branch if not already done:
+     ```bash
+     git checkout -b phase-0  # Replace '0' with current phase number
+     ```
+   - Begin with the first uncompleted task in the current phase plan
+
+## Key Files Reference Table
+
+| Purpose | File Path | What to Do With It |
+|---------|-----------|-------------------|
+| Project Overview | `hld/multi-comms-engine-hld-v1.0.md` | Read and understand |
+| Implementation Methodology | `hld/phase-implementation-cycle-v1.0.md` | Follow for each task |
+| Complete Roadmap | `hld/implementation-roadmap-v1.0.md` | Use as a map for all phases and find LLD document references |
+| Directory Structure | `hld/directory-structure-v1.0.md` | Follow when creating files |
+| Current Phase Plan | `hld/phases/phase0-implementation-plan-v1.0.md` | Implement tasks; mark with ✅ when done |
+| Phase Notes Template | `hld/templates/phase-notes-template.md` | Copy to create phase notes |
+| Component Documentation Template | `hld/templates/component-doc-template.md` | Use when documenting components |
+| LLD Documents | `lld/` directory | Consult specific LLD documents referenced in the roadmap for each phase |
+
+## Detailed Implementation Workflow
 
 For each phase, follow this precise implementation workflow:
 
@@ -135,6 +163,20 @@ The implementation cycle defined in `hld/phase-implementation-cycle-v1.0.md` mus
    - Include updated documentation and test results
    - Consider creating a pull request for merging into the main branch when the phase is complete
 
+## GitHub Repository Management
+
+1. Create one commit per logical task completion
+2. Use descriptive commit messages:
+   ```
+   Phase 0: Complete task 1.1 - Install required software
+   
+   - Installed Node.js v16.14.0
+   - Installed TypeScript 4.7.4
+   - Installed AWS CDK 2.50.0
+   - Installed Git 2.37.1
+   ```
+3. After completing all tasks in the current phase, create a pull request
+
 ## Documentation Maintenance
 
 As you implement, maintain these documentation types:
@@ -238,4 +280,6 @@ The LLD references in the implementation roadmap are critical to successful impl
 - Refer to the LLD documents linked in the implementation roadmap for each phase
 - Always check the current progress (green ticks ✅) before starting work to ensure you're working on the correct task
 
-By following this guide, you will systematically implement the AI Multi-Communications Engine according to the defined roadmap and architecture. 
+## Begin Now
+
+Start by checking which phase and task are next based on the green ticks (✅) in the implementation roadmap and phase plan documents. 
