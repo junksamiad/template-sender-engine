@@ -161,30 +161,22 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
       conversation_id: contextObject.conversation_data?.conversation_id
     });
     
+    // Complete the message object with timestamp, role, and content
+    contextObject.conversation_data.message.message_timestamp = new Date().toISOString();
+    contextObject.conversation_data.message.role = "assistant";
+    contextObject.conversation_data.message.content = `Template message sent with SID: ${message.sid}`;
+    
     // First retrieve the conversation record from DynamoDB
     const conversation = await getConversationRecord(
       contextObject.frontend_payload.recipient_data.recipient_tel,
       contextObject.conversation_data.conversation_id
     );
     
-    // Complete the pending assistant message with the template content
-    const completeAssistantMessage = {
-      ...contextObject.conversation_data.pending_assistant_message,
-      content: `Template message sent with SID: ${message.sid}`
-    };
-    
-    // Add the complete message to conversation history
-    await addMessageToConversation(conversation, completeAssistantMessage);
-    
     // Prepare the final conversation update data
     const finalUpdateData = {
       conversation_status: 'initial_message_sent',
-      thread_id: contextObject.thread_id,
-      processing_time_ms: completeAssistantMessage.processing_time_ms,
-      task_complete: true,
-      ai_prompt_tokens: completeAssistantMessage.ai_prompt_tokens,
-      ai_completion_tokens: completeAssistantMessage.ai_completion_tokens,
-      ai_total_tokens: completeAssistantMessage.ai_total_tokens
+      thread_id: contextObject.conversation_data.thread_id,
+      messages: [contextObject.conversation_data.message]  // Message object contains all metrics
     };
     
     // Update conversation record with final status and metrics
@@ -246,8 +238,8 @@ async function processWhatsAppMessage(event) {
       success: true,
       thread_id: contextObject.thread_id,
       sent_at: messageResult.sent_at,
-      processing_time_ms: contextObject.conversation_data.pending_assistant_message.processing_time_ms,
-      ai_total_tokens: contextObject.conversation_data.pending_assistant_message.ai_total_tokens
+      processing_time_ms: contextObject.conversation_data.message.processing_time_ms,
+      ai_total_tokens: contextObject.conversation_data.message.ai_total_tokens
     };
   } catch (error) {
     console.error('Error processing WhatsApp message:', error);
@@ -541,7 +533,7 @@ async function processWithOpenAI(openai, contextObject) {
       };
       
       // Store pending message for later completion
-      contextObject.conversation_data.pending_assistant_message = assistantMessage;
+      contextObject.conversation_data.message = assistantMessage;
       
       return {
         thread_id: thread.id,
