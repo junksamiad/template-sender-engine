@@ -193,7 +193,38 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
     throw error;
   }
 }
+
+### 5.2.1 Final DynamoDB Update Mapping
+
+When updating the conversation record after successful message sending, the following mapping is used:
+
+```javascript
+// Final DynamoDB Update Mapping
+{
+  // Status update
+  conversation_status: "initial_message_sent",  // Static value
+  
+  // Thread reference
+  thread_id: contextObject.conversation_data.thread_id,
+  
+  // Complete message added to messages array
+  messages: [{                                                    // First message in conversation
+    entry_id: contextObject.conversation_data.message.entry_id,   // Generated UUID
+    message_timestamp: contextObject.conversation_data.message.message_timestamp,  // When Twilio confirmed sending
+    role: "assistant",                                           // Static for template message
+    content: contextObject.conversation_data.message.content,     // Template message with Twilio SID
+    ai_prompt_tokens: contextObject.conversation_data.message.ai_prompt_tokens,      // From OpenAI
+    ai_completion_tokens: contextObject.conversation_data.message.ai_completion_tokens,  // From OpenAI
+    ai_total_tokens: contextObject.conversation_data.message.ai_total_tokens,          // From OpenAI
+    processing_time_ms: contextObject.conversation_data.message.processing_time_ms      // Total processing time
+  }]
+}
 ```
+
+This update:
+1. Sets the conversation status to indicate successful template sending
+2. Stores the OpenAI thread ID for future reference
+3. Adds the complete message to the messages array with all metrics contained within the message object
 
 ### 5.3 Integration with OpenAI Processing
 
