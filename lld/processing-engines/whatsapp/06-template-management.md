@@ -202,38 +202,6 @@ async function sendWhatsAppTemplateMessage(contextObject, variables) {
   }
 }
 
-### 5.2.1 Final DynamoDB Update Mapping
-
-When updating the conversation record after successful message sending, the following mapping is used:
-
-```javascript
-// Final DynamoDB Update Mapping
-{
-  // Status update
-  conversation_status: "initial_message_sent",  // Static value
-  
-  // Thread reference
-  thread_id: contextObject.conversation_data.thread_id,
-  
-  // Complete message added to messages array
-  messages: [{                                                    // First message in conversation
-    entry_id: contextObject.conversation_data.message.entry_id,   // Generated UUID
-    message_timestamp: contextObject.conversation_data.message.message_timestamp,  // When Twilio confirmed sending
-    role: "assistant",                                           // Static for template message
-    content: contextObject.conversation_data.message.content,     // Template message with Twilio SID
-    ai_prompt_tokens: contextObject.conversation_data.message.ai_prompt_tokens,      // From OpenAI
-    ai_completion_tokens: contextObject.conversation_data.message.ai_completion_tokens,  // From OpenAI
-    ai_total_tokens: contextObject.conversation_data.message.ai_total_tokens,          // From OpenAI
-    processing_time_ms: contextObject.conversation_data.message.processing_time_ms      // Total processing time
-  }]
-}
-```
-
-This update:
-1. Sets the conversation status to indicate successful template sending
-2. Stores the OpenAI thread ID for future reference
-3. Adds the complete message to the messages array with all metrics contained within the message object
-
 ### 5.3 Integration with OpenAI Processing
 
 The template sending function is integrated with the OpenAI processing flow:
@@ -293,7 +261,39 @@ async function processWhatsAppMessage(event) {
 }
 ```
 
-## 6. Error Handling for Template Sending
+## 6. Final DynamoDB Update Structure
+
+When a message has been successfully processed and sent, the conversation record in DynamoDB is updated with the following structure:
+
+```javascript
+// Final DynamoDB Update Mapping
+{
+  // Status update
+  conversation_status: "initial_message_sent",  // Static value
+  
+  // Thread reference
+  thread_id: contextObject.conversation_data.thread_id,
+  
+  // Complete message added to messages array
+  messages: [{                                                    // First message in conversation
+    entry_id: contextObject.conversation_data.message.entry_id,   // Generated UUID
+    message_timestamp: contextObject.conversation_data.message.message_timestamp,  // When Twilio confirmed sending
+    role: "assistant",                                           // Static for template message
+    content: contextObject.conversation_data.message.content,     // Template message with Twilio SID
+    ai_prompt_tokens: contextObject.conversation_data.message.ai_prompt_tokens,      // From OpenAI
+    ai_completion_tokens: contextObject.conversation_data.message.ai_completion_tokens,  // From OpenAI
+    ai_total_tokens: contextObject.conversation_data.message.ai_total_tokens,          // From OpenAI
+    processing_time_ms: contextObject.conversation_data.message.processing_time_ms      // Total processing time
+  }]
+}
+```
+
+This update:
+1. Sets the conversation status to indicate successful template sending
+2. Stores the OpenAI thread ID for future reference
+3. Adds the complete message to the messages array with all metrics contained within the message object
+
+## 7. Error Handling for Template Sending
 
 Template sending has specific error handling logic to provide clear information about failures:
 
@@ -372,11 +372,11 @@ async function handleTemplateSendingError(error, contextObject) {
 }
 ```
 
-## 7. Message Status Tracking
+## 8. Message Status Tracking
 
 Once messages are sent, their status is tracked in the conversations DynamoDB table:
 
-### 7.1 Status Webhook Integration
+### 8.1 Status Webhook Integration
 
 The system includes an API endpoint to receive status updates via Twilio webhooks:
 
@@ -433,7 +433,7 @@ exports.handleStatusWebhook = async (event) => {
 };
 ```
 
-### 7.2 Status Update in Conversation Record
+### 8.2 Status Update in Conversation Record
 
 ```javascript
 /**
@@ -498,11 +498,11 @@ async function updateMessageStatus(conversation, messageSid, status, errorCode =
 }
 ```
 
-## 8. AI-Driven Template Variable Generation
+## 9. AI-Driven Template Variable Generation
 
 A key innovation in our approach is using OpenAI to generate template variables based on the context data, rather than hardcoding variable mapping for each use case:
 
-### 8.1 OpenAI Assistant Configuration
+### 9.1 OpenAI Assistant Configuration
 
 Each business use case has a dedicated OpenAI Assistant configured with:
 
@@ -511,7 +511,7 @@ Each business use case has a dedicated OpenAI Assistant configured with:
 3. **Output Format Requirements**: Explicit instructions to return content variables in a specific JSON format
 4. **Constraints**: Rules for handling missing or ambiguous data
 
-### 8.2 Processing Flow for Variable Generation
+### 9.2 Processing Flow for Variable Generation
 
 ```javascript
 /**
@@ -591,7 +591,7 @@ async function processWithOpenAI(openai, contextObject) {
 }
 ```
 
-## 9. Setup Process for New Business Integration
+## 10. Setup Process for New Business Integration
 
 Setting up a new business to use the WhatsApp Processing Engine involves these steps:
 
@@ -629,7 +629,7 @@ Setting up a new business to use the WhatsApp Processing Engine involves these s
    - Monitor initial message delivery rates
    - Adjust AI configuration if necessary
 
-## 10. Related Documentation
+## 11. Related Documentation
 
 - [Overview and Architecture](./01-overview-architecture.md)
 - [OpenAI Integration](./05-openai-integration.md)
@@ -637,7 +637,7 @@ Setting up a new business to use the WhatsApp Processing Engine involves these s
 - [Monitoring and Observability](./08-monitoring-observability.md)
 - [Operations Playbook](./09-operations-playbook.md)
 
-## 11. Best Practices for Template Management
+## 12. Best Practices for Template Management
 
 1. **Template Identifiers**: Store template SIDs in AWS Secrets Manager alongside Twilio credentials for secure access
 
