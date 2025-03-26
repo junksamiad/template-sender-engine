@@ -1092,3 +1092,490 @@ try {
   );
   throw error;
 } 
+```
+
+## 9. Concurrency and Robustness Considerations
+
+### 9.1 Asynchronous Processing Model
+
+The WhatsApp Processing Engine implements a sophisticated asynchronous processing model to handle long-running operations efficiently:
+
+```javascript
+/**
+ * Main asynchronous processing flow
+ * Uses Promise chaining to handle sequential operations with proper error propagation
+ * @param {object} message - SQS message
+ * @returns {Promise<object>} - Processing result
+ */
+async function processMessageAsync(message) {
+  // Create heartbeat for SQS visibility extension
+  const { heartbeatInterval, clearHeartbeat } = setupSQSHeartbeat(message.receiptHandle);
+  
+  try {
+    // Stage 1: Parse and validate message
+    const contextObject = await parseAndValidateMessage(message.body);
+    
+    // Stage 2: Create conversation record
+    const conversationRecord = await createConversationRecord(contextObject);
+    contextObject.conversation_data = conversationRecord;
+    
+    // Stage 3: Process with OpenAI (long-running operation)
+    const openAIResult = await Promise.race([
+      processWithOpenAI(contextObject),
+      createTimeoutPromise('OpenAI processing', 300000) // 5-minute timeout
+    ]);
+    
+    // Stage 4: Send template message via Twilio
+    const twilioResult = await sendWhatsAppTemplateMessage(
+      contextObject,
+      contextObject.conversation_data.content_variables
+    );
+    
+    // Stage 5: Update conversation with results
+    await finalizeConversation(contextObject, twilioResult);
+    
+    // Clean up resources
+    clearHeartbeat();
+    return { success: true, conversationId: conversationRecord.conversation_id };
+  } catch (error) {
+    // Ensure heartbeat is cleared even on error
+    clearHeartbeat();
+    
+    // Handle error appropriately
+    await handleProcessingError(error, message);
+    throw error; // Re-throw for SQS retry mechanism if needed
+  }
+}
+
+/**
+ * Creates a timeout promise that rejects after specified duration
+ * @param {string} operation - Name of the operation
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<never>} - Promise that rejects on timeout
+ */
+function createTimeoutPromise(operation, timeoutMs) {
+  return new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`${operation} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+}
+```
+
+The asynchronous processing model provides several important benefits:
+
+1. **Resource Efficiency**: Allows the Lambda function to handle I/O-bound operations efficiently
+2. **Graceful Timeouts**: Implements timeout safety for long-running operations
+3. **Progressive Processing**: Enables step-by-step processing with appropriate error handling at each stage
+4. **Clean Resource Management**: Ensures resources are properly released even on failure
+5. **Non-blocking Operations**: Maximizes throughput by avoiding blocking on I/O operations
+
+### 9.2 Managing Long-Running Operations
+
+The WhatsApp Processing Engine handles long-running operations with a combination of techniques:
+
+#### 9.2.1 SQS Visibility Extension
+
+For operations that exceed the default SQS visibility timeout, the system implements an automatic heartbeat:
+
+```javascript
+/**
+ * Sets up a heartbeat to extend SQS message visibility
+ * @param {string} receiptHandle - SQS message receipt handle
+ * @returns {object} - Heartbeat control functions
+ */
+function setupSQSHeartbeat(receiptHandle) {
+  // Start with a 5-minute interval (300,000ms)
+  // This is shorter than the 10-minute visibility timeout
+  const heartbeatInterval = setInterval(async () => {
+    try {
+      console.log('Extending message visibility timeout');
+      
+      await sqs.changeMessageVisibility({
+        QueueUrl: process.env.WHATSAPP_QUEUE_URL,
+        ReceiptHandle: receiptHandle,
+        VisibilityTimeout: 600 // 10 minutes in seconds
+      }).promise();
+      
+      console.log('Successfully extended message visibility timeout');
+    } catch (error) {
+      console.error('Failed to extend message visibility timeout', error);
+      // We don't clear the interval here, as it may succeed on the next attempt
+    }
+  }, 300000); // Every 5 minutes
+  
+  // Return functions to control the heartbeat
+  return {
+    heartbeatInterval,
+    clearHeartbeat: () => clearInterval(heartbeatInterval)
+  };
+}
+```
+
+#### 9.2.2 OpenAI Polling with Backoff
+
+When waiting for OpenAI runs to complete, the system uses adaptive polling with backoff:
+
+```javascript
+/**
+ * Polls OpenAI run status with adaptive backoff
+ * @param {object} openai - OpenAI client
+ * @param {string} threadId - Thread ID
+ * @param {string} runId - Run ID
+ * @returns {Promise<object>} - Final run status
+ */
+async function pollRunWithAdaptiveBackoff(openai, threadId, runId) {
+  const MAX_POLL_DURATION = 600000; // 10 minutes total
+  const startTime = Date.now();
+  let pollInterval = 1000; // Start with 1 second
+  const MAX_POLL_INTERVAL = 5000; // Cap at 5 seconds
+  
+  let run = await openai.beta.threads.runs.retrieve(threadId, runId);
+  
+  while (isRunInProgress(run.status)) {
+    // Check for timeout
+    if (Date.now() - startTime > MAX_POLL_DURATION) {
+      throw new Error(`Run polling exceeded maximum duration (${MAX_POLL_DURATION}ms)`);
+    }
+    
+    // Wait before next poll with backoff
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+    
+    // Increase poll interval with a cap
+    pollInterval = Math.min(pollInterval * 1.5, MAX_POLL_INTERVAL);
+    
+    // Get updated status
+    run = await openai.beta.threads.runs.retrieve(threadId, runId);
+    
+    // Emit metrics for monitoring
+    await emitRunStatusMetric(run.status, {
+      thread_id: threadId,
+      run_id: runId,
+      company_id: contextObject.company_id,
+      elapsed_ms: Date.now() - startTime
+    });
+  }
+  
+  return run;
+}
+
+/**
+ * Checks if run status indicates it's still in progress
+ * @param {string} status - Run status
+ * @returns {boolean} - True if run is still in progress
+ */
+function isRunInProgress(status) {
+  return ['queued', 'in_progress', 'cancelling'].includes(status);
+}
+```
+
+#### 9.2.3 Lambda Timeout Safety
+
+To prevent abrupt Lambda timeouts, the system implements safety mechanisms:
+
+```javascript
+/**
+ * Sets up timeout safety for Lambda function
+ * @param {object} context - Lambda context
+ * @param {number} safetyMarginMs - Safety margin in milliseconds
+ * @returns {object} - Timeout safety functions
+ */
+function setupTimeoutSafety(context, safetyMarginMs = 10000) {
+  // Calculate when to trigger safety shutdown
+  const safetyTime = context.getRemainingTimeInMillis() - safetyMarginMs;
+  
+  // Create timeout for graceful shutdown
+  const timeoutId = setTimeout(() => {
+    console.warn('Lambda approaching timeout, performing graceful shutdown');
+    // Perform cleanup operations here
+    cleanupResources();
+    
+    // Log the timeout for monitoring
+    console.error('Lambda timed out after graceful shutdown');
+  }, safetyTime);
+  
+  return {
+    // Clear the timeout if operation completes normally
+    clearTimeoutSafety: () => clearTimeout(timeoutId),
+    
+    // Check if we're approaching the timeout
+    isTimeoutImminent: () => context.getRemainingTimeInMillis() < safetyMarginMs * 2
+  };
+}
+
+// Example usage in Lambda handler
+exports.handler = async (event, context) => {
+  const { clearTimeoutSafety, isTimeoutImminent } = setupTimeoutSafety(context);
+  
+  try {
+    // Process message with timeout awareness
+    const result = await processMessageAsync(event.Records[0]);
+    
+    // Check for imminent timeout before additional operations
+    if (isTimeoutImminent()) {
+      console.log('Skipping non-critical operations due to imminent timeout');
+      // Skip non-essential operations
+    } else {
+      // Perform additional non-critical operations
+      await performAdditionalOperations(result);
+    }
+    
+    // Clear timeout safety
+    clearTimeoutSafety();
+    return result;
+  } catch (error) {
+    // Clear timeout safety even on error
+    clearTimeoutSafety();
+    throw error;
+  }
+};
+```
+
+### 9.3 Idempotent Processing
+
+The WhatsApp Processing Engine implements idempotent processing to handle potential duplicate message processing safely:
+
+#### 9.3.1 Idempotent Conversation Creation
+
+```javascript
+/**
+ * Creates conversation record with idempotency
+ * @param {object} contextObject - Context object
+ * @returns {Promise<object>} - Created conversation record
+ */
+async function createConversationRecordIdempotent(contextObject) {
+  const conversationId = generateConversationId(contextObject);
+  const recipientTel = contextObject.frontend_payload.recipient_data.recipient_tel;
+  
+  // Check if conversation already exists
+  try {
+    const existingRecord = await dynamoDB.get({
+      TableName: CONVERSATIONS_TABLE,
+      Key: {
+        recipient_tel: recipientTel,
+        conversation_id: conversationId
+      }
+    }).promise();
+    
+    if (existingRecord.Item) {
+      console.log('Found existing conversation record, using it for idempotency', {
+        conversation_id: conversationId,
+        recipient_tel: recipientTel
+      });
+      return existingRecord.Item;
+    }
+  } catch (error) {
+    console.error('Error checking for existing conversation', error);
+    // Continue to creation if lookup fails
+  }
+  
+  // Generate new conversation record with processing status
+  const conversationRecord = {
+    recipient_tel: recipientTel,
+    conversation_id: conversationId,
+    company_id: contextObject.company_data.company_id,
+    project_id: contextObject.company_data.project_id,
+    conversation_status: 'processing',
+    channel_method: 'whatsapp',
+    company_whatsapp_number: contextObject.channel_config.whatsapp.company_whatsapp_number,
+    messages: [],
+    request_id: contextObject.frontend_payload.request_data.request_id,
+    task_complete: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    idempotency_key: contextObject.frontend_payload.request_data.idempotency_key || null
+  };
+  
+  // Use conditional expression to ensure idempotency
+  try {
+    await dynamoDB.put({
+      TableName: CONVERSATIONS_TABLE,
+      Item: conversationRecord,
+      ConditionExpression: 'attribute_not_exists(conversation_id)'
+    }).promise();
+    
+    console.log('Created new conversation record', {
+      conversation_id: conversationId,
+      recipient_tel: recipientTel
+    });
+    
+    return conversationRecord;
+  } catch (error) {
+    if (error.code === 'ConditionalCheckFailedException') {
+      // Race condition - record was created between our check and put
+      // Retrieve the existing record
+      const result = await dynamoDB.get({
+        TableName: CONVERSATIONS_TABLE,
+        Key: {
+          recipient_tel: recipientTel,
+          conversation_id: conversationId
+        }
+      }).promise();
+      
+      console.log('Conversation record created concurrently, using existing record', {
+        conversation_id: conversationId
+      });
+      
+      return result.Item;
+    }
+    
+    // For other errors, rethrow
+    throw error;
+  }
+}
+```
+
+#### 9.3.2 Idempotent Message Sending
+
+```javascript
+/**
+ * Sends template message with idempotency safeguards
+ * @param {object} contextObject - Context object with conversation data
+ * @param {object} variables - Template variables
+ * @returns {Promise<object>} - Message sending result
+ */
+async function sendWhatsAppTemplateMessageIdempotent(contextObject, variables) {
+  const conversationRecord = contextObject.conversation_data;
+  const idempotencyKey = `wamsg_${conversationRecord.conversation_id}`;
+  
+  // Check if message was already sent
+  if (conversationRecord.message_sid) {
+    console.log('Message already sent for this conversation, returning existing SID', {
+      conversation_id: conversationRecord.conversation_id,
+      message_sid: conversationRecord.message_sid
+    });
+    
+    return {
+      sid: conversationRecord.message_sid,
+      status: 'sent',
+      idempotent: true
+    };
+  }
+  
+  // If not previously sent, send the message with idempotency key
+  try {
+    // Get WhatsApp credentials
+    const whatsappCredentialsId = contextObject.channel_config.whatsapp.whatsapp_credentials_id;
+    const twilioCredentials = await getSecretValue(whatsappCredentialsId);
+    
+    // Initialize Twilio client
+    const twilioClient = twilio(
+      twilioCredentials.twilio_account_sid,
+      twilioCredentials.twilio_auth_token
+    );
+    
+    // Prepare message options with idempotency key
+    const messageOptions = {
+      from: `whatsapp:${contextObject.channel_config.whatsapp.company_whatsapp_number}`,
+      to: `whatsapp:${contextObject.frontend_payload.recipient_data.recipient_tel}`,
+      contentSid: twilioCredentials.twilio_template_sid,
+      contentVariables: JSON.stringify(variables),
+      pathParams: { idempotencyKey }  // Twilio API idempotency key
+    };
+    
+    // Send the message
+    const message = await twilioClient.messages.create(messageOptions);
+    
+    // Store message SID for future idempotency checks
+    await updateConversationMessageSid(
+      conversationRecord,
+      message.sid
+    );
+    
+    return {
+      sid: message.sid,
+      status: message.status,
+      idempotent: false
+    };
+  } catch (error) {
+    // Handle specific idempotency error from Twilio
+    if (error.code === 20056) {  // Duplicate message error
+      // Extract SID from error message if possible
+      const sidMatch = error.message.match(/SID: (SM[a-f0-9]+)/);
+      const messageSid = sidMatch ? sidMatch[1] : null;
+      
+      if (messageSid) {
+        // Update conversation with the extracted SID
+        await updateConversationMessageSid(
+          conversationRecord,
+          messageSid
+        );
+        
+        return {
+          sid: messageSid,
+          status: 'sent',
+          idempotent: true
+        };
+      }
+    }
+    
+    // Rethrow other errors
+    throw error;
+  }
+}
+
+/**
+ * Updates conversation with message SID
+ * @param {object} conversationRecord - Conversation record
+ * @param {string} messageSid - Message SID
+ * @returns {Promise<void>}
+ */
+async function updateConversationMessageSid(conversationRecord, messageSid) {
+  await dynamoDB.update({
+    TableName: CONVERSATIONS_TABLE,
+    Key: {
+      recipient_tel: conversationRecord.recipient_tel,
+      conversation_id: conversationRecord.conversation_id
+    },
+    UpdateExpression: 'SET message_sid = :sid, updated_at = :now',
+    ExpressionAttributeValues: {
+      ':sid': messageSid,
+      ':now': new Date().toISOString()
+    }
+  }).promise();
+}
+```
+
+### 9.4 Concurrent Processing Considerations
+
+The WhatsApp Processing Engine carefully manages concurrency to ensure system stability:
+
+```javascript
+// CDK configuration with concurrency controls
+const whatsappProcessingLambda = new lambda.Function(this, 'WhatsAppProcessingFunction', {
+  runtime: lambda.Runtime.NODEJS_16_X,
+  code: lambda.Code.fromAsset('lambda'),
+  handler: 'whatsapp-processing.handler',
+  timeout: cdk.Duration.minutes(15),
+  memorySize: 1024,
+  environment: {
+    CONVERSATIONS_TABLE: conversationsTable.tableName,
+    WHATSAPP_QUEUE_URL: whatsappQueue.queueUrl,
+    LOG_LEVEL: 'INFO',
+    NODE_OPTIONS: '--enable-source-maps'
+  },
+  tracing: lambda.Tracing.ACTIVE,
+  reservedConcurrentExecutions: 25,  // Limit concurrent executions
+});
+
+// SQS event source with controlled batch size
+whatsappProcessingLambda.addEventSource(new SqsEventSource(whatsappQueue, {
+  batchSize: 1,  // Process one message at a time
+  maxBatchingWindow: Duration.seconds(0)  // Don't wait to collect messages
+}));
+```
+
+Key concurrency management strategies include:
+
+1. **Reserved Concurrency**: Limits Lambda to 25 concurrent executions to prevent overwhelming downstream services
+2. **Batch Size 1**: Processes one message at a time to ensure clean failure isolation
+3. **DynamoDB Capacity Management**: Ensures DynamoDB can handle the concurrent request volume
+4. **Adaptive Rate Limiting**: Controls API call rates to external services
+5. **Connection Pooling**: Reuses connections to AWS services across invocations
+6. **Throttling Awareness**: Handles throttling from downstream services appropriately
+
+These concurrency controls ensure the system remains stable under load and prevents cascading failures across components.
+
+## 10. Resource Cleanup
+
+// ... existing code ...

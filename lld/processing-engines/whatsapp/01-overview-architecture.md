@@ -142,3 +142,289 @@ Each document focuses on a specific aspect of the processing engine, providing a
 - [AWS Reference Management](../../secrets-manager/aws-referencing-v1.0.md)
 - [Error Tracking Strategies](../error-tracking-strategies-v1.0.md)
 - [CloudWatch Dashboard Setup](../../cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) 
+
+## 10. Lambda Function Configuration
+
+The WhatsApp Processing Engine Lambda function is configured with specific settings to ensure optimal performance, reliability, and scalability:
+
+### 10.1 Environment Variables
+
+| Environment Variable | Description | Value | Purpose |
+|----------------------|-------------|-------|---------|
+| `CONVERSATIONS_TABLE` | DynamoDB table for conversations | `template-sender-conversations` | Store conversation data |
+| `WHATSAPP_QUEUE_URL` | SQS queue URL | `https://sqs.{region}.amazonaws.com/{account}/whatsapp-queue` | Process incoming messages |
+| `SECRETS_MANAGER_REGION` | AWS region for Secrets Manager | `us-east-1` | Access Twilio and OpenAI credentials |
+| `LOG_LEVEL` | Logging verbosity | `INFO` | Control logging detail (INFO, DEBUG, ERROR) |
+| `OPENAI_MAX_TOKENS` | Maximum tokens for OpenAI | `2048` | Limit token usage for cost control |
+| `DYNAMO_MAX_RETRY` | DynamoDB retry count | `3` | Configure retry behavior for DynamoDB |
+| `SQS_HEARTBEAT_INTERVAL_MS` | SQS visibility extension interval | `300000` | Configure heartbeat (5 minutes) |
+| `OPENAI_DEFAULT_TIMEOUT_MS` | OpenAI API timeout | `60000` | Configure API timeout (60 seconds) |
+| `NODE_OPTIONS` | Node.js runtime options | `--enable-source-maps` | Improve error stack traces |
+| `USE_ADAPTIVE_RATE_LIMITING` | Rate limiting flag | `true` | Enable adaptive rate limiting |
+
+### 10.2 Memory and Timeout Configuration
+
+The Lambda function is configured with appropriate memory and timeout settings:
+
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| Memory Size | 1024 MB | Provides sufficient memory for processing messages with large context objects |
+| Timeout | 15 minutes | Maximum allowed Lambda timeout; provides ample time for long-running OpenAI operations |
+| Ephemeral Storage | 512 MB | Default storage is sufficient for processing needs |
+
+### 10.3 Concurrency Configuration
+
+To control the rate of processing and prevent overloading downstream services:
+
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| Reserved Concurrency | 25 | Limits simultaneous executions to prevent overwhelming OpenAI/Twilio APIs |
+| Provisioned Concurrency | 0 | Not required; cold starts are acceptable for this workload |
+| Asynchronous Invocation | Disabled | Uses SQS for message queue processing instead |
+
+### 10.4 Networking Configuration
+
+The Lambda function uses VPC configuration to access private resources:
+
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| VPC | Application VPC | Provides access to VPC-isolated resources if needed |
+| Subnets | Private subnets | Isolates Lambda functions from direct internet access |
+| Security Group | Lambda-SG | Controls network access to/from Lambda functions |
+
+## 11. Infrastructure as Code
+
+The WhatsApp Processing Engine infrastructure is defined as code using AWS CDK, enabling consistent and repeatable deployments:
+
+### 11.1 CDK Stack Implementation
+
+The following is the core infrastructure defined in the CDK stack:
+
+```typescript
+export class WhatsAppProcessingStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+
+    // DynamoDB table for conversations
+    const conversationsTable = new dynamodb.Table(this, 'ConversationsTable', {
+      tableName: 'template-sender-conversations',
+      partitionKey: { name: 'recipient_tel', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'conversation_id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN
+    });
+    
+    // Add GSI for company_id lookups
+    conversationsTable.addGlobalSecondaryIndex({
+      indexName: 'company-id-index',
+      partitionKey: { name: 'company_id', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL
+    });
+
+    // Create Dead Letter Queue
+    const whatsappDLQ = new sqs.Queue(this, 'WhatsAppDLQ', {
+      queueName: 'whatsapp-processing-dlq',
+      retentionPeriod: cdk.Duration.days(14),
+      encryption: sqs.QueueEncryption.KMS_MANAGED
+    });
+
+    // Create main WhatsApp SQS queue
+    const whatsappQueue = new sqs.Queue(this, 'WhatsAppQueue', {
+      queueName: 'whatsapp-processing-queue',
+      visibilityTimeout: cdk.Duration.seconds(600), // 10 minutes
+      receiveMessageWaitTime: cdk.Duration.seconds(20), // Long polling
+      deadLetterQueue: {
+        queue: whatsappDLQ,
+        maxReceiveCount: 3
+      },
+      encryption: sqs.QueueEncryption.KMS_MANAGED
+    });
+
+    // Create IAM role with required permissions
+    const processingLambdaRole = new iam.Role(this, 'WhatsAppProcessingLambdaRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaVPCAccessExecutionRole')
+      ]
+    });
+
+    // Add custom IAM policies
+    processingLambdaRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:Query',
+        'dynamodb:BatchWriteItem'
+      ],
+      resources: [
+        conversationsTable.tableArn,
+        `${conversationsTable.tableArn}/index/*`
+      ]
+    }));
+
+    processingLambdaRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'sqs:ReceiveMessage',
+        'sqs:DeleteMessage',
+        'sqs:GetQueueAttributes',
+        'sqs:ChangeMessageVisibility'
+      ],
+      resources: [whatsappQueue.queueArn]
+    }));
+
+    processingLambdaRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'secretsmanager:GetSecretValue'
+      ],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:whatsapp/*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:openai/*`
+      ]
+    }));
+
+    // Create Lambda function
+    const whatsappProcessingLambda = new lambda.Function(this, 'WhatsAppProcessingFunction', {
+      runtime: lambda.Runtime.NODEJS_16_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/whatsapp-processing')),
+      memorySize: 1024,
+      timeout: cdk.Duration.minutes(15),
+      environment: {
+        CONVERSATIONS_TABLE: conversationsTable.tableName,
+        WHATSAPP_QUEUE_URL: whatsappQueue.queueUrl,
+        LOG_LEVEL: 'INFO',
+        OPENAI_MAX_TOKENS: '2048',
+        DYNAMO_MAX_RETRY: '3',
+        SQS_HEARTBEAT_INTERVAL_MS: '300000',
+        OPENAI_DEFAULT_TIMEOUT_MS: '60000',
+        USE_ADAPTIVE_RATE_LIMITING: 'true',
+        NODE_OPTIONS: '--enable-source-maps'
+      },
+      role: processingLambdaRole,
+      tracing: lambda.Tracing.ACTIVE,
+      reservedConcurrentExecutions: 25,
+      logRetention: logs.RetentionDays.ONE_MONTH
+    });
+
+    // Set up SQS as event source
+    whatsappProcessingLambda.addEventSource(new SqsEventSource(whatsappQueue, {
+      batchSize: 1,
+      maxBatchingWindow: cdk.Duration.seconds(0)
+    }));
+
+    // Create CloudWatch alarm for DLQ messages
+    const dlqAlarm = new cloudwatch.Alarm(this, 'WhatsAppDLQAlarm', {
+      metric: whatsappDLQ.metricApproximateNumberOfMessagesVisible(),
+      evaluationPeriods: 1,
+      threshold: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      alarmDescription: 'Alert when messages are sent to WhatsApp Processing DLQ'
+    });
+
+    // Create SNS topic for alarms
+    const alarmTopic = new sns.Topic(this, 'WhatsAppProcessingAlarms', {
+      displayName: 'WhatsApp Processing Engine Alarms'
+    });
+
+    // Add alarm action
+    dlqAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+
+    // Create dashboard
+    const dashboard = new cloudwatch.Dashboard(this, 'WhatsAppProcessingDashboard', {
+      dashboardName: 'WhatsAppProcessingEngine'
+    });
+
+    // Add widgets to dashboard (additional widgets defined in dashboard configuration)
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Messages Processed',
+        left: [whatsappProcessingLambda.metricInvocations()],
+        width: 12
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Processing Errors',
+        left: [whatsappProcessingLambda.metricErrors()],
+        width: 12
+      })
+    );
+
+    // Outputs
+    new cdk.CfnOutput(this, 'ConversationsTableName', {
+      value: conversationsTable.tableName,
+      description: 'DynamoDB table for WhatsApp conversations'
+    });
+
+    new cdk.CfnOutput(this, 'WhatsAppQueueUrl', {
+      value: whatsappQueue.queueUrl,
+      description: 'SQS Queue URL for WhatsApp processing'
+    });
+
+    new cdk.CfnOutput(this, 'WhatsAppProcessingLambdaArn', {
+      value: whatsappProcessingLambda.functionArn,
+      description: 'ARN of WhatsApp processing Lambda function'
+    });
+  }
+}
+```
+
+### 11.2 Infrastructure Deployment
+
+The infrastructure is deployed using the AWS CDK CLI:
+
+```bash
+# Install dependencies
+npm install
+
+# Synthesize CloudFormation template
+cdk synth
+
+# Deploy to development environment
+cdk deploy -c environment=dev
+
+# Deploy to production environment
+cdk deploy -c environment=prod
+```
+
+### 11.3 CI/CD Integration
+
+The infrastructure deployment is integrated with CI/CD pipelines using GitHub Actions:
+
+```yaml
+name: Deploy WhatsApp Processing Engine
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/**'
+      - 'lambda/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Deploy with CDK
+        run: npx cdk deploy --require-approval never -c environment=prod
+```
+
+These infrastructure configurations ensure consistent, reproducible deployments across environments and enable infrastructure changes to be version-controlled and peer-reviewed alongside application code. 

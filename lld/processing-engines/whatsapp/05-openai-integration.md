@@ -117,152 +117,350 @@ async function withExponentialBackoff(apiCallFn, args = [], options = {}) {
 }
 ```
 
-## 4. Thread Creation and Message Submission
+### 3.1 Adaptive Rate Limiting
 
-### 4.1 Creating a Thread
-
-The first step in OpenAI processing is creating a thread to maintain conversation context:
+In addition to exponential backoff, the system implements adaptive rate limiting based on the OpenAI API's response headers:
 
 ```javascript
 /**
- * Creates an OpenAI thread and adds the context as a message
- * @param {object} openai - Initialized OpenAI client
- * @param {object} contextObject - Full context object with all conversation data
- * @returns {Promise<object>} - Object containing thread_id
+ * Adaptive rate limiting implementation
+ * Uses token bucket algorithm with dynamic refill rate
  */
-async function createOpenAIThread(openai, contextObject) {
-  try {
-    console.log('Creating new OpenAI thread', {
-      conversation_id: contextObject.conversation_data.conversation_id
-    });
+class AdaptiveRateLimiter {
+  constructor(options = {}) {
+    // Initialize with conservative defaults
+    this.maxTokens = options.maxTokens || 60;  // Maximum tokens in bucket
+    this.refillRate = options.refillRate || 1;  // Tokens per second
+    this.tokens = this.maxTokens;  // Start with a full bucket
+    this.lastRefill = Date.now();
+    this.waitingQueue = [];  // Queue of pending operations
     
-    // Create a new thread with retry logic and timeout
-    const thread = await withExponentialBackoff(
-      () => openai.beta.threads.create(),
-      [],
-      { timeoutMs: 15000 }  // 15 second timeout for thread creation
-    );
-    const threadId = thread.id;
+    // Track recent rate limit responses
+    this.rateLimitEvents = [];
+    this.adaptationWindow = options.adaptationWindow || 60000;  // 1 minute
+  }
+  
+  /**
+   * Adapts rate limits based on recent API responses
+   * @param {object} headers - Response headers from OpenAI API
+   */
+  adaptToResponseHeaders(headers) {
+    // Extract rate limit information from headers
+    const remaining = parseInt(headers['x-ratelimit-remaining-requests'] || headers['x-ratelimit-remaining'], 10);
+    const reset = parseInt(headers['x-ratelimit-reset-requests'] || headers['x-ratelimit-reset'], 10);
     
-    console.log('Thread created successfully', { 
-      thread_id: threadId,
-      conversation_id: contextObject.conversation_data.conversation_id
-    });
-    
-    // Update conversation record with thread ID
-    await updateThreadId(contextObject.conversation_data, threadId);
-    
-    // Convert context object to a structured message for the AI
-    const messageContent = JSON.stringify(contextObject, null, 2);
-    
-    try {
-      // Add the context object as a message to the thread
-      await withExponentialBackoff(
-        () => openai.beta.threads.messages.create(threadId, {
-          role: 'user',
-          content: messageContent
-        }),
-        [],
-        { timeoutMs: 30000 }  // 30 second timeout for message creation
+    if (!isNaN(remaining) && !isNaN(reset) && reset > 0) {
+      // Calculate new refill rate based on reset time
+      const newRefillRate = remaining / reset;
+      
+      // Record rate limit event
+      this.rateLimitEvents.push({
+        timestamp: Date.now(),
+        remaining,
+        reset,
+        calculatedRate: newRefillRate
+      });
+      
+      // Clean up old events
+      this.rateLimitEvents = this.rateLimitEvents.filter(
+        event => Date.now() - event.timestamp < this.adaptationWindow
       );
       
-      console.log('Added context message to thread', { 
-        thread_id: threadId,
-        conversation_id: contextObject.conversation_data.conversation_id,
-        content_size: messageContent.length
-      });
-      
-      return {
-        thread_id: threadId
-      };
-    } catch (messageError) {
-      // Handle message creation failure
-      console.error('Failed to add message to thread', {
-        thread_id: threadId,
-        error: messageError.message
-      });
-      
-      // Still return the thread_id even if message creation failed
-      return {
-        thread_id: threadId,
-        message_creation_failed: true,
-        error: messageError.message
-      };
+      // Adapt only if we have enough data points
+      if (this.rateLimitEvents.length >= 3) {
+        // Take the most conservative rate from recent events
+        const rates = this.rateLimitEvents.map(event => event.calculatedRate);
+        const minRate = Math.min(...rates);
+        
+        // Apply with a safety factor of 0.8
+        this.refillRate = minRate * 0.8;
+        
+        console.log('Adapted rate limiter:', {
+          new_refill_rate: this.refillRate,
+          data_points: this.rateLimitEvents.length,
+          min_rate: minRate
+        });
+      }
     }
-  } catch (error) {
-    // Categorize and log error
-    const errorCategory = categorizeOpenAIError(error);
+  }
+  
+  /**
+   * Refills the token bucket based on elapsed time
+   */
+  refill() {
+    const now = Date.now();
+    const elapsedSeconds = (now - this.lastRefill) / 1000;
     
-    console.error('Error creating OpenAI thread:', {
-      error_message: error.message,
-      error_category: errorCategory,
-      error_code: error.status || 'unknown'
+    if (elapsedSeconds > 0) {
+      // Add tokens based on refill rate and elapsed time
+      this.tokens = Math.min(
+        this.maxTokens,
+        this.tokens + (elapsedSeconds * this.refillRate)
+      );
+      this.lastRefill = now;
+    }
+  }
+  
+  /**
+   * Processes the queue of waiting operations
+   */
+  processQueue() {
+    // Process queue if we have tokens and waiting operations
+    if (this.tokens >= 1 && this.waitingQueue.length > 0) {
+      const { resolve } = this.waitingQueue.shift();
+      this.tokens -= 1;
+      resolve();
+      
+      // Continue processing queue if possible
+      if (this.tokens >= 1 && this.waitingQueue.length > 0) {
+        setImmediate(() => this.processQueue());
+      }
+    }
+  }
+  
+  /**
+   * Acquires a token for an operation
+   * @returns {Promise<void>} - Resolves when a token is available
+   */
+  async acquire() {
+    this.refill();
+    
+    // If we have tokens available, consume one immediately
+    if (this.tokens >= 1) {
+      this.tokens -= 1;
+      return;
+    }
+    
+    // Otherwise, wait for a token to become available
+    return new Promise(resolve => {
+      this.waitingQueue.push({ resolve });
+      
+      // Calculate wait time based on refill rate
+      const waitTime = (1 / this.refillRate) * 1000;
+      
+      // Set timer to check for token availability
+      setTimeout(() => {
+        this.refill();
+        this.processQueue();
+      }, waitTime);
     });
+  }
+}
+
+// Global rate limiter instance
+const openaiRateLimiter = new AdaptiveRateLimiter();
+
+/**
+ * Enhanced API call function with adaptive rate limiting
+ * @param {Function} apiCallFn - API call function
+ * @param {Array} args - Function arguments
+ * @param {object} options - Options for retries and timeouts
+ * @returns {Promise<any>} - API call result
+ */
+async function withRateLimitedExponentialBackoff(apiCallFn, args = [], options = {}) {
+  // Wait for a token from the rate limiter
+  await openaiRateLimiter.acquire();
+  
+  try {
+    // Make the API call with exponential backoff
+    const result = await withExponentialBackoff(apiCallFn, args, options);
     
-    throw new Error(`Failed to create OpenAI thread: ${error.message} [${errorCategory}]`);
+    // Adapt rate limiter based on response headers
+    if (result && result.headers) {
+      openaiRateLimiter.adaptToResponseHeaders(result.headers);
+    }
+    
+    return result;
+  } catch (error) {
+    // If we hit a rate limit, adapt the limiter
+    if (error.status === 429 && error.headers) {
+      openaiRateLimiter.adaptToResponseHeaders(error.headers);
+    }
+    
+    throw error;
   }
 }
 ```
 
-### 4.2 Error Categorization
+This adaptive rate limiting system:
 
-The system categorizes OpenAI errors to enable better handling and monitoring:
+1. **Self-tunes** based on observed API response headers
+2. **Prevents cascading failures** by limiting request rate
+3. **Maximizes throughput** while staying within API limits
+4. **Adjusts dynamically** as OpenAI's rate limits change
+5. **Shares limits** across multiple concurrent executions
+
+### 3.2 Usage Monitoring and Circuit Breaking
+
+The system also implements circuit breaking to prevent overloading the OpenAI API during periods of high load or API degradation:
 
 ```javascript
 /**
- * Categorizes OpenAI errors into meaningful groups for monitoring and handling
- * @param {Error} error - The error object from OpenAI API
- * @returns {string} - Error category
+ * Circuit breaker implementation for OpenAI API
  */
-function categorizeOpenAIError(error) {
-  if (!error) return 'unknown';
-  
-  // Handle timeout errors
-  if (error.message.includes('timed out')) {
-    return 'timeout';
+class OpenAICircuitBreaker {
+  constructor(options = {}) {
+    this.failureThreshold = options.failureThreshold || 5;
+    this.resetTimeout = options.resetTimeout || 30000;
+    this.halfOpenTimeout = options.halfOpenTimeout || 5000;
+    this.state = 'closed';  // closed, open, half-open
+    this.failures = 0;
+    this.lastFailure = null;
+    this.halfOpenTimer = null;
   }
   
-  // Handle rate limiting errors
-  if (error.status === 429) {
-    return 'rate_limit';
+  /**
+   * Records a successful API call
+   */
+  recordSuccess() {
+    if (this.state === 'half-open') {
+      // If successful during half-open state, close the circuit
+      this.state = 'closed';
+      this.failures = 0;
+      console.log('Circuit breaker state changed to closed after successful half-open call');
+    } else if (this.state === 'closed') {
+      // In closed state, reset failure count on success
+      this.failures = 0;
+    }
   }
   
-  // Handle authentication errors
-  if (error.status === 401) {
-    return 'authentication';
+  /**
+   * Records a failed API call
+   * @param {Error} error - The error that occurred
+   */
+  recordFailure(error) {
+    // Only count certain types of failures
+    if (error.status === 429 || error.status >= 500) {
+      this.failures++;
+      this.lastFailure = Date.now();
+      
+      // If we exceed the threshold, open the circuit
+      if (this.state === 'closed' && this.failures >= this.failureThreshold) {
+        this.state = 'open';
+        console.log('Circuit breaker opened due to multiple failures', {
+          failure_count: this.failures,
+          failure_threshold: this.failureThreshold
+        });
+        
+        // Schedule half-open state
+        this.halfOpenTimer = setTimeout(() => {
+          if (this.state === 'open') {
+            this.state = 'half-open';
+            console.log('Circuit breaker state changed to half-open');
+          }
+        }, this.resetTimeout);
+      }
+    }
   }
   
-  // Handle permissions and scope errors
-  if (error.status === 403) {
-    return 'authorization';
+  /**
+   * Checks if the circuit is open
+   * @returns {boolean} - True if circuit is open
+   */
+  isOpen() {
+    // If we're in open state but enough time has passed, try half-open
+    if (this.state === 'open' && 
+        this.lastFailure && 
+        Date.now() - this.lastFailure > this.resetTimeout) {
+      this.state = 'half-open';
+      console.log('Circuit breaker state changed to half-open after timeout');
+    }
+    
+    return this.state === 'open';
   }
   
-  // Handle resource not found
-  if (error.status === 404) {
-    return 'not_found';
+  /**
+   * Executes a function with circuit breaker protection
+   * @param {Function} fn - Function to execute
+   * @param {Array} args - Function arguments
+   * @returns {Promise<any>} - Function result
+   */
+  async execute(fn, args = []) {
+    // If circuit is open, fail fast
+    if (this.isOpen()) {
+      throw new Error('Circuit breaker is open, request rejected');
+    }
+    
+    // Allow only one request in half-open state
+    if (this.state === 'half-open') {
+      console.log('Test request in half-open state');
+    }
+    
+    try {
+      const result = await fn(...args);
+      this.recordSuccess();
+      return result;
+    } catch (error) {
+      this.recordFailure(error);
+      throw error;
+    }
   }
-  
-  // Handle invalid requests
-  if (error.status === 400) {
-    return 'invalid_request';
-  }
-  
-  // Handle server errors
-  if (error.status >= 500 && error.status < 600) {
-    return 'server_error';
-  }
-  
-  // Handle network errors
-  if (error.code === 'ECONNRESET' || 
-      error.code === 'ETIMEDOUT' || 
-      error.code === 'ESOCKETTIMEDOUT') {
-    return 'network_error';
-  }
-  
-  // Default to 'api_error' for other error types
-  return 'api_error';
+}
+
+// Global circuit breaker instance
+const openaiCircuitBreaker = new OpenAICircuitBreaker();
+
+/**
+ * Complete API call function with rate limiting, circuit breaking, and retry logic
+ * @param {Function} apiCallFn - API call function
+ * @param {Array} args - Function arguments
+ * @param {object} options - Options for retries and timeouts
+ * @returns {Promise<any>} - API call result
+ */
+async function protectedOpenAICall(apiCallFn, args = [], options = {}) {
+  // Use circuit breaker to prevent cascading failures
+  return openaiCircuitBreaker.execute(
+    async () => withRateLimitedExponentialBackoff(apiCallFn, args, options),
+    []
+  );
 }
 ```
+
+This comprehensive approach to OpenAI API resilience provides:
+
+1. **Graceful degradation** during API instability
+2. **Fast failure** when the API is known to be unavailable
+3. **Automatic recovery** when the API service improves
+4. **Detailed metrics** for monitoring system health
+5. **Adaptive behavior** that responds to changing conditions
+
+## 4. Message Processing and Context Updates
+
+The OpenAI integration adds several key pieces of data to the context object during processing:
+
+1. **Thread ID**: After creating an OpenAI thread
+```javascript
+contextObject.conversation_data.thread_id = thread.id;
+```
+
+2. **Content Variables**: Generated by the OpenAI assistant for template use
+```javascript
+contextObject.conversation_data.content_variables = {
+    "1": "John",
+    "2": "Healthcare Assistant",
+    "3": "your driving licence status and the gap in your work experience..."
+};
+```
+
+3. **Message Object**: Created during OpenAI processing with metrics
+```javascript
+contextObject.conversation_data.message = {
+    entry_id: "msg_67890abcdef12345...",
+    ai_prompt_tokens: 2345,
+    ai_completion_tokens: 156,
+    ai_total_tokens: 2501,
+    processing_time_ms: 4267
+};
+```
+
+After the Twilio message is sent successfully, the message object is completed with:
+```javascript
+contextObject.conversation_data.message.message_timestamp = "2023-06-15T14:31:12.456Z";
+contextObject.conversation_data.message.role = "assistant";
+contextObject.conversation_data.message.content = "Template message sent with SID: SM1234567890abcdef...";
+```
+
+This completed message will be stored in the DynamoDB conversation record's messages array during the final update.
 
 ## 5. Run Creation and Execution
 
@@ -286,7 +484,7 @@ async function createAndStartRun(openai, threadId, assistantId) {
     });
     
     // Create a run with the specified assistant
-    const run = await withExponentialBackoff(
+    const run = await withRateLimitedExponentialBackoff(
       () => openai.beta.threads.runs.create(threadId, {
         assistant_id: assistantId
       }),
@@ -331,7 +529,7 @@ async function pollRunStatus(openai, threadId, runId) {
     let currentPollInterval = pollInterval;
     
     // Get initial run status
-    let run = await withExponentialBackoff(
+    let run = await withRateLimitedExponentialBackoff(
       () => openai.beta.threads.runs.retrieve(threadId, runId),
       [],
       { timeoutMs: 60000 }
@@ -352,7 +550,7 @@ async function pollRunStatus(openai, threadId, runId) {
       currentPollInterval = Math.min(currentPollInterval * 1.5, maxPollInterval);
       
       // Get updated run status
-      run = await withExponentialBackoff(
+      run = await withRateLimitedExponentialBackoff(
         () => openai.beta.threads.runs.retrieve(threadId, runId),
         [],
         { timeoutMs: 60000 }
@@ -398,7 +596,7 @@ After the run completes, the system extracts the JSON response from the assistan
 async function getAssistantResponse(openai, threadId, contextObject) {
   try {
     // Get assistant messages
-    const messages = await withExponentialBackoff(
+    const messages = await withRateLimitedExponentialBackoff(
       () => openai.beta.threads.messages.list(threadId),
       [],
       { timeoutMs: 60000 }
@@ -482,7 +680,7 @@ async function processWithOpenAI(openai, contextObject) {
     const { thread_id } = await createOpenAIThread(openai, contextObject);
     
     // Update context object with thread_id
-    contextObject.thread_id = thread_id;
+    contextObject.conversation_data.thread_id = thread_id;
     
     // Get assistant ID from context - using the template sender assistant for initial messages
     // This assistant ID is populated by the Channel Router from the wa_company_data table
@@ -745,19 +943,17 @@ async function processWhatsAppMessage(event) {
     
     // Process message with OpenAI and get content variables
     // This will:
-    // 1. Create an OpenAI thread and store the thread_id in contextObject
+    // 1. Create an OpenAI thread and store thread_id in contextObject.conversation_data
     // 2. Run the OpenAI assistant to generate content variables
-    // 3. Store the content_variables in contextObject.conversation_data
-    // 4. Create a pending_assistant_message with metrics in contextObject.conversation_data
+    // 3. Store content_variables in contextObject.conversation_data
+    // 4. Create message object with metrics in contextObject.conversation_data.message
     const openAIResult = await processWithOpenAI(openai, contextObject);
     
     // Send WhatsApp template message with content variables
     // This will:
     // 1. Send the template message using Twilio API
-    // 2. Retrieve the conversation record from DynamoDB
-    // 3. Complete the pending_assistant_message by adding the content
-    // 4. Add the completed message to the conversation's messages array
-    // 5. Update the conversation with final status and metrics
+    // 2. Complete the message object by adding timestamp, role, and content
+    // 3. Update the conversation record in DynamoDB with the completed message
     const messageResult = await sendWhatsAppTemplateMessage(
       contextObject, 
       contextObject.conversation_data.content_variables
@@ -766,17 +962,16 @@ async function processWhatsAppMessage(event) {
     // Return success result with key metrics
     return {
       success: true,
-      thread_id: contextObject.thread_id,
+      thread_id: contextObject.conversation_data.thread_id,
       sent_at: messageResult.sent_at,
-      processing_time_ms: contextObject.conversation_data.pending_assistant_message.processing_time_ms,
-      ai_total_tokens: contextObject.conversation_data.pending_assistant_message.ai_total_tokens
+      processing_time_ms: contextObject.conversation_data.message.processing_time_ms,
+      ai_total_tokens: contextObject.conversation_data.message.ai_total_tokens
     };
   } catch (error) {
     console.error('Error processing WhatsApp message:', error);
     throw error;
   }
 }
-```
 
 ## 9. Error Detection for Assistant Configuration Issues
 
