@@ -1,4 +1,4 @@
-# WhatsApp AI Chatbot - Architecture Diagrams v2.1
+# WhatsApp AI Chatbot - Architecture Diagrams v1.0
 
 This document contains the latest visual representations of the WhatsApp AI chatbot architecture, with updated diagrams that reflect the current implementation of the Channel Router and related components.
 
