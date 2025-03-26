@@ -29,297 +29,93 @@ Templates are categorized into three types:
 | MARKETING | Promotional content | Medium | New product announcements, special offers |
 | AUTHENTICATION | Verification codes and account authentication | High | Login codes, account verification |
 
-## 3. Template Registry in DynamoDB
+## 3. Template Management Approach
 
-Templates are stored in DynamoDB for tracking and management:
+Unlike traditional systems that maintain a separate database for templates, our approach simplifies template management by storing the necessary template information directly in AWS Secrets Manager alongside the Twilio credentials. This approach offers several advantages:
 
-### 3.1 Template Table Structure
+1. **Reduced Complexity**: No need for a separate template database
+2. **Secure Storage**: Template IDs are stored alongside credentials in a secure manner
+3. **Simplified Setup**: New businesses can be onboarded quickly without complex template migration
+4. **Direct Integration**: Template SIDs can be retrieved directly during message sending
 
-The `wa_templates` DynamoDB table tracks templates with the following structure:
+### 3.1 Template Setup Process
+
+The template setup process for a new business client involves:
+
+1. **Business Onboarding**: Adaptix Innovation works with the business to understand their use case
+2. **Twilio Account Setup**: Creating or configuring the business's Twilio account
+3. **WhatsApp Business Profile**: Setting up the WhatsApp Business Profile in Meta
+4. **Template Creation**: Designing and submitting templates for WhatsApp approval
+5. **Credentials Storage**: Once approved, storing the template SID along with Twilio credentials in AWS Secrets Manager
+6. **AI Assistant Configuration**: Configuring an OpenAI Assistant with instructions specific to the template structure
+
+### 3.2 Credentials and Template Storage
+
+The credentials for each business are stored in AWS Secrets Manager with the following structure:
 
 ```javascript
 /**
- * Structure of a template record in DynamoDB
+ * WhatsApp credentials structure in AWS Secrets Manager
  */
-const templateRecord = {
-  // Primary Key (company_id)
-  company_id: "company123",
-  
-  // Sort Key (template_name#language)
-  template_key: "welcome_message#en_US",
-  
-  // Template details
-  template_name: "welcome_message",
-  language: "en_US",
-  category: "UTILITY",
-  components: [
-    {
-      type: "HEADER",
-      format: "TEXT",
-      text: "Welcome to {{1}}"
-    },
-    {
-      type: "BODY", 
-      text: "Hello {{1}}! Thank you for reaching out to us. How can we assist you today?"
-    },
-    {
-      type: "FOOTER",
-      text: "Reply to this message to start a conversation."
-    }
-  ],
-  
-  // Twilio/WhatsApp identifiers
-  twilio_content_sid: "HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  whatsapp_template_id: "123456789012345",
-  
-  // Status and timestamps
-  status: "APPROVED", // PENDING, APPROVED, REJECTED
-  created_at: "2023-05-15T12:34:56Z",
-  updated_at: "2023-05-15T14:22:33Z",
-  
-  // Additional attributes
-  rejection_reason: null,
-  created_by: "user@example.com"
-};
+{
+  "twilio_account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "twilio_auth_token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "twilio_template_sid": "HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  // Template SID for the specific use case
+}
 ```
 
-### 3.2 Template Management Operations
+This structure enables the system to retrieve both the authentication credentials and the template SID in a single operation, reducing API calls and simplifying the code.
 
-The system provides several operations for template management:
+## 4. Company Configuration in DynamoDB
 
-#### 3.2.1 Create Template
+While templates themselves are not stored in DynamoDB, essential configuration information for each company is maintained in the `wa_company_data` table:
 
 ```javascript
 /**
- * Creates a new template and submits to Twilio for WhatsApp approval
- * @param {object} template - Template object with components
- * @param {string} companyId - Company ID
- * @returns {Promise<object>} - Created template record
+ * Relevant fields in wa_company_data for template handling
  */
-async function createTemplate(template, companyId) {
-  try {
-    // Validate template structure
-    validateTemplateStructure(template);
-    
-    // Get Twilio credentials
-    const credentials = await getCredentials(
-      'whatsapp/twilio',
-      companyId,
-      'default'
-    );
-    
-    // Initialize Twilio client
-    const twilioClient = twilio(
-      credentials.twilio_account_sid,
-      credentials.twilio_auth_token
-    );
-    
-    // Prepare template for Twilio submission
-    const twilioTemplate = buildTwilioTemplate(template);
-    
-    // Submit template to Twilio
-    const content = await twilioClient.messaging.contentAndTemplates.templates.create(twilioTemplate);
-    
-    // Create DynamoDB record
-    const templateRecord = {
-      company_id: companyId,
-      template_key: `${template.name}#${template.language}`,
-      template_name: template.name,
-      language: template.language,
-      category: template.category,
-      components: template.components,
-      twilio_content_sid: content.sid,
-      whatsapp_template_id: null,  // Will be populated by Twilio webhook later
-      status: "PENDING",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      rejection_reason: null,
-      created_by: template.created_by || "system"
-    };
-    
-    // Save to DynamoDB
-    await documentClient.put({
-      TableName: 'wa_templates',
-      Item: templateRecord
-    }).promise();
-    
-    return templateRecord;
-  } catch (error) {
-    console.error('Error creating template:', error);
-    throw error;
+{
+  "company_id": "adaptix-innovation",
+  "project_id": "recruitment-assistant",
+  "channel_config": {
+    "whatsapp": {
+      "company_whatsapp_number": "+447700900000",
+      "whatsapp_credentials_id": "whatsapp/adaptix/recruitment-assistant" // Reference to Secrets Manager entry
+    }
+  },
+  "ai_config": {
+    "assistant_id_template_sender": "asst_123456789",
+    "ai_api_key_reference": "openai/adaptix" // Reference to OpenAI API key in Secrets Manager
   }
 }
 ```
 
-#### 3.2.2 Get Template
+This configuration provides all the necessary references to access both the template SID via the `whatsapp_credentials_id` and the appropriate AI assistant through `assistant_id_template_sender`.
 
-```javascript
-/**
- * Retrieves a template by name and language
- * @param {string} companyId - Company ID
- * @param {string} templateName - Template name
- * @param {string} language - Template language code
- * @returns {Promise<object>} - Template record
- */
-async function getTemplate(companyId, templateName, language) {
-  try {
-    const templateKey = `${templateName}#${language}`;
-    
-    const result = await documentClient.get({
-      TableName: 'wa_templates',
-      Key: {
-        company_id: companyId,
-        template_key: templateKey
-      }
-    }).promise();
-    
-    if (!result.Item) {
-      throw new Error(`Template not found: ${templateName} (${language})`);
-    }
-    
-    return result.Item;
-  } catch (error) {
-    console.error('Error getting template:', error);
-    throw error;
-  }
-}
-```
+## 5. Message Sending Process
 
-#### 3.2.3 List Templates
+The WhatsApp Processing Engine follows a streamlined process for sending template messages:
 
-```javascript
-/**
- * Lists templates for a company
- * @param {string} companyId - Company ID
- * @param {object} filters - Optional filters (status, category)
- * @returns {Promise<Array>} - Array of template records
- */
-async function listTemplates(companyId, filters = {}) {
-  try {
-    let params = {
-      TableName: 'wa_templates',
-      KeyConditionExpression: 'company_id = :companyId',
-      ExpressionAttributeValues: {
-        ':companyId': companyId
-      }
-    };
-    
-    // Apply additional filters if provided
-    if (filters.status || filters.category) {
-      let filterExpression = [];
-      let expressionAttributeValues = { ...params.ExpressionAttributeValues };
-      
-      if (filters.status) {
-        filterExpression.push('status = :status');
-        expressionAttributeValues[':status'] = filters.status;
-      }
-      
-      if (filters.category) {
-        filterExpression.push('category = :category');
-        expressionAttributeValues[':category'] = filters.category;
-      }
-      
-      params.FilterExpression = filterExpression.join(' AND ');
-      params.ExpressionAttributeValues = expressionAttributeValues;
-    }
-    
-    const result = await documentClient.query(params).promise();
-    
-    return result.Items;
-  } catch (error) {
-    console.error('Error listing templates:', error);
-    throw error;
-  }
-}
-```
+### 5.1 Process Overview
 
-#### 3.2.4 Update Template Status
+1. **Frontend Request**: A custom frontend sends a request with recipient data and business-specific information
+2. **Context Object Creation**: The Channel Router creates a context object with company details from DynamoDB
+3. **AI Processing**: The OpenAI assistant processes the context and generates appropriate template variables
+4. **Template Sending**: The system sends the template message using Twilio API with the generated variables
+5. **Conversation Tracking**: All interactions are recorded in the conversations DynamoDB table
 
-```javascript
-/**
- * Updates a template status based on Twilio webhook
- * @param {string} companySid - Twilio account SID (mapped to company)
- * @param {string} contentSid - Twilio content SID
- * @param {string} status - New status
- * @param {string} whatsappTemplateId - WhatsApp template ID (for approved templates)
- * @param {string} rejectionReason - Reason for rejection (if rejected)
- * @returns {Promise<object>} - Updated template record
- */
-async function updateTemplateStatus(companySid, contentSid, status, whatsappTemplateId, rejectionReason) {
-  try {
-    // Look up company ID by Twilio SID
-    const companyId = await getCompanyIdByTwilioSid(companySid);
-    
-    // Find template by content SID
-    const templates = await documentClient.scan({
-      TableName: 'wa_templates',
-      FilterExpression: 'company_id = :companyId AND twilio_content_sid = :contentSid',
-      ExpressionAttributeValues: {
-        ':companyId': companyId,
-        ':contentSid': contentSid
-      }
-    }).promise();
-    
-    if (!templates.Items || templates.Items.length === 0) {
-      throw new Error(`Template not found for content SID: ${contentSid}`);
-    }
-    
-    const template = templates.Items[0];
-    
-    // Map Twilio status to internal status
-    const mappedStatus = mapTwilioStatus(status);
-    
-    // Update template
-    const updateParams = {
-      TableName: 'wa_templates',
-      Key: {
-        company_id: template.company_id,
-        template_key: template.template_key
-      },
-      UpdateExpression: 'SET #status = :status, updated_at = :updatedAt',
-      ExpressionAttributeNames: {
-        '#status': 'status'
-      },
-      ExpressionAttributeValues: {
-        ':status': mappedStatus,
-        ':updatedAt': new Date().toISOString()
-      },
-      ReturnValues: 'ALL_NEW'
-    };
-    
-    if (whatsappTemplateId) {
-      updateParams.UpdateExpression += ', whatsapp_template_id = :whatsappTemplateId';
-      updateParams.ExpressionAttributeValues[':whatsappTemplateId'] = whatsappTemplateId;
-    }
-    
-    if (rejectionReason) {
-      updateParams.UpdateExpression += ', rejection_reason = :rejectionReason';
-      updateParams.ExpressionAttributeValues[':rejectionReason'] = rejectionReason;
-    }
-    
-    const result = await documentClient.update(updateParams).promise();
-    
-    return result.Attributes;
-  } catch (error) {
-    console.error('Error updating template status:', error);
-    throw error;
-  }
-}
-```
-
-## 4. Sending WhatsApp Template Messages
-
-### 4.1 Sending a Template Message with Variables
+### 5.2 Sending a Template Message with Variables
 
 The key function for sending WhatsApp template messages integrates with Twilio and uses the variables provided by the OpenAI processing:
 
 ```javascript
 /**
  * Sends a WhatsApp template message using Twilio API
- * @param {object} contextObject - Context object with conversation data and content variables
+ * @param {object} contextObject - Context object with conversation data
+ * @param {object} variables - Template variables from OpenAI processing
  * @returns {Promise<object>} - Result of sending message
  */
-async function sendWhatsAppTemplateMessage(contextObject) {
+async function sendWhatsAppTemplateMessage(contextObject, variables) {
   try {
     console.log('Sending WhatsApp template message', {
       conversation_id: contextObject.conversation_data?.conversation_id,
@@ -330,7 +126,7 @@ async function sendWhatsAppTemplateMessage(contextObject) {
     const whatsappCredentialsId = contextObject.channel_config.whatsapp.whatsapp_credentials_id;
     const twilioCredentials = await getSecretValue(whatsappCredentialsId);
     
-    // Get the content/template SID from Twilio credentials in Secrets Manager
+    // Get the template SID directly from Twilio credentials in Secrets Manager
     const contentSid = twilioCredentials.twilio_template_sid;
     
     if (!contentSid) {
@@ -343,12 +139,9 @@ async function sendWhatsAppTemplateMessage(contextObject) {
       twilioCredentials.twilio_auth_token
     );
     
-    // Get content variables from the context object
-    const contentVariables = contextObject.content_variables;
-    
     // Validate content variables
-    if (!contentVariables || typeof contentVariables !== 'object') {
-      throw new Error('Invalid content variables in context object');
+    if (!variables || typeof variables !== 'object') {
+      throw new Error('Invalid content variables generated by AI');
     }
     
     // Prepare message options
@@ -356,7 +149,7 @@ async function sendWhatsAppTemplateMessage(contextObject) {
       from: `whatsapp:${contextObject.channel_config.whatsapp.company_whatsapp_number}`,
       to: `whatsapp:${contextObject.frontend_payload.recipient_data.recipient_tel}`,
       contentSid: contentSid,
-      contentVariables: JSON.stringify(contentVariables)
+      contentVariables: JSON.stringify(variables)
     };
     
     // Send the message
@@ -368,19 +161,34 @@ async function sendWhatsAppTemplateMessage(contextObject) {
       conversation_id: contextObject.conversation_data?.conversation_id
     });
     
-    // Add message to conversation history
-    await addMessageToConversation(
-      contextObject.conversation_data,
-      'assistant',
-      'Template message sent',
-      message.sid
+    // First retrieve the conversation record from DynamoDB
+    const conversation = await getConversationRecord(
+      contextObject.frontend_payload.recipient_data.recipient_tel,
+      contextObject.conversation_data.conversation_id
     );
     
-    // Update conversation status
-    await updateConversationStatus(
-      contextObject.conversation_data,
-      'initial_message_sent'
-    );
+    // Complete the pending assistant message with the template content
+    const completeAssistantMessage = {
+      ...contextObject.conversation_data.pending_assistant_message,
+      content: `Template message sent with SID: ${message.sid}`
+    };
+    
+    // Add the complete message to conversation history
+    await addMessageToConversation(conversation, completeAssistantMessage);
+    
+    // Prepare the final conversation update data
+    const finalUpdateData = {
+      conversation_status: 'initial_message_sent',
+      thread_id: contextObject.thread_id,
+      processing_time_ms: completeAssistantMessage.processing_time_ms,
+      task_complete: true,
+      ai_prompt_tokens: completeAssistantMessage.ai_prompt_tokens,
+      ai_completion_tokens: completeAssistantMessage.ai_completion_tokens,
+      ai_total_tokens: completeAssistantMessage.ai_total_tokens
+    };
+    
+    // Update conversation record with final status and metrics
+    await updateConversationRecord(conversation, finalUpdateData);
     
     return {
       success: true,
@@ -395,9 +203,68 @@ async function sendWhatsAppTemplateMessage(contextObject) {
 }
 ```
 
-### 4.2 Error Handling
+### 5.3 Integration with OpenAI Processing
 
-Template sending has specific error handling logic:
+The template sending function is integrated with the OpenAI processing flow:
+
+```javascript
+/**
+ * Main handler for processing WhatsApp messages
+ * @param {object} event - SQS event trigger
+ * @returns {Promise<object>} - Processing result
+ */
+async function processWhatsAppMessage(event) {
+  try {
+    // Parse context object from SQS message
+    const contextObject = JSON.parse(event.Records[0].body);
+    
+    // Setup OpenAI client with API key from Secrets Manager
+    const openai = await setupOpenAIClient(contextObject.ai_config.ai_api_key_reference);
+    
+    // Process message with OpenAI and get content variables
+    // This will:
+    // 1. Create an OpenAI thread and store the thread_id in contextObject
+    // 2. Run the OpenAI assistant to generate content variables
+    // 3. Store the content_variables in contextObject.conversation_data
+    // 4. Create a pending_assistant_message with metrics in contextObject.conversation_data
+    const openAIResult = await processWithOpenAI(openai, contextObject);
+    
+    // Send WhatsApp template message with content variables
+    // This will:
+    // 1. Send the template message using Twilio API
+    // 2. Retrieve the conversation record from DynamoDB
+    // 3. Complete the pending_assistant_message by adding the content
+    // 4. Add the completed message to the conversation's messages array
+    // 5. Update the conversation with final status and metrics
+    const messageResult = await sendWhatsAppTemplateMessage(
+      contextObject, 
+      contextObject.conversation_data.content_variables
+    );
+    
+    // Return success result with key metrics
+    return {
+      success: true,
+      thread_id: contextObject.thread_id,
+      sent_at: messageResult.sent_at,
+      processing_time_ms: contextObject.conversation_data.pending_assistant_message.processing_time_ms,
+      ai_total_tokens: contextObject.conversation_data.pending_assistant_message.ai_total_tokens
+    };
+  } catch (error) {
+    console.error('Error processing WhatsApp message:', error);
+    
+    // Handle template sending errors if appropriate
+    if (error.code && error.message && error.message.includes('Twilio')) {
+      await handleTemplateSendingError(error, contextObject);
+    }
+    
+    throw error;
+  }
+}
+```
+
+## 6. Error Handling for Template Sending
+
+Template sending has specific error handling logic to provide clear information about failures:
 
 ```javascript
 /**
@@ -474,187 +341,13 @@ async function handleTemplateSendingError(error, contextObject) {
 }
 ```
 
-### 4.3 Integration with OpenAI Processing
+## 7. Message Status Tracking
 
-The template sending function is integrated with the OpenAI processing flow:
+Once messages are sent, their status is tracked in the conversations DynamoDB table:
 
-```javascript
-/**
- * Main handler for processing WhatsApp messages
- * @param {object} event - SQS event trigger
- * @returns {Promise<object>} - Processing result
- */
-async function processWhatsAppMessage(event) {
-  try {
-    // Parse context object from SQS message
-    const contextObject = JSON.parse(event.Records[0].body);
-    
-    // Create conversation record
-    await createConversationRecord(contextObject);
-    
-    // Setup OpenAI client with API key from Secrets Manager
-    const openai = await setupOpenAIClient(contextObject.ai_config.ai_api_key_reference);
-    
-    // Process message with OpenAI and get content variables
-    const openAIResult = await processWithOpenAI(openai, contextObject);
-    
-    // The contextObject now has content_variables from OpenAI processing
-    
-    // Send template message using the updated context object
-    const messageResult = await sendWhatsAppTemplateMessage(contextObject);
-    
-    return {
-      success: true,
-      message_result: messageResult,
-      openai_result: openAIResult
-    };
-  } catch (error) {
-    console.error('Error processing WhatsApp message:', error);
-    
-    // Handle template sending errors if possible
-    if (error.code && error.message && error.message.includes('Twilio')) {
-      await handleTemplateSendingError(error, contextObject);
-    }
-    
-    throw error;
-  }
-}
-```
+### 7.1 Status Webhook Integration
 
-## 5. Message Sending
-
-### 5.1 Sending Template Messages
-
-```javascript
-/**
- * Sends a WhatsApp message using a template
- * @param {string} companyId - Company ID
- * @param {string} to - Recipient phone number
- * @param {string} templateName - Template name
- * @param {string} language - Template language
- * @param {object} variables - Template variables
- * @returns {Promise<object>} - Message sending result
- */
-async function sendTemplateMessage(companyId, to, templateName, language, variables = {}) {
-  try {
-    // Get credentials
-    const credentials = await getCredentials(
-      'whatsapp/twilio',
-      companyId,
-      'default'
-    );
-    
-    // Get company WhatsApp number
-    const companyDetails = await getCompanyDetails(companyId);
-    const fromNumber = companyDetails.whatsapp_number;
-    
-    // Get template
-    const template = await getTemplate(companyId, templateName, language);
-    
-    if (template.status !== 'APPROVED') {
-      throw new Error(`Template ${templateName} is not approved for use (status: ${template.status})`);
-    }
-    
-    // Initialize Twilio client
-    const twilioClient = twilio(
-      credentials.twilio_account_sid,
-      credentials.twilio_auth_token
-    );
-    
-    // Prepare message options
-    const messageOptions = {
-      from: `whatsapp:${fromNumber}`,
-      to: `whatsapp:${to}`,
-      contentSid: template.twilio_content_sid
-    };
-    
-    // Add variables if present
-    if (Object.keys(variables).length > 0) {
-      messageOptions.contentVariables = JSON.stringify(variables);
-    }
-    
-    // Send message
-    const message = await twilioClient.messages.create(messageOptions);
-    
-    return {
-      template_name: templateName,
-      language,
-      message_sid: message.sid,
-      status: message.status,
-      to: to,
-      from: fromNumber
-    };
-  } catch (error) {
-    console.error('Error sending template message:', error);
-    throw error;
-  }
-}
-```
-
-### 5.2 Sending Free-Form Messages
-
-```javascript
-/**
- * Sends a free-form WhatsApp message (only allowed in response to user message)
- * @param {string} companyId - Company ID
- * @param {string} to - Recipient phone number
- * @param {string} text - Message text
- * @param {object} mediaUrl - Optional media URL
- * @returns {Promise<object>} - Message sending result
- */
-async function sendFreeFormMessage(companyId, to, text, mediaUrl = null) {
-  try {
-    // Get credentials
-    const credentials = await getCredentials(
-      'whatsapp/twilio',
-      companyId,
-      'default'
-    );
-    
-    // Get company WhatsApp number
-    const companyDetails = await getCompanyDetails(companyId);
-    const fromNumber = companyDetails.whatsapp_number;
-    
-    // Initialize Twilio client
-    const twilioClient = twilio(
-      credentials.twilio_account_sid,
-      credentials.twilio_auth_token
-    );
-    
-    // Prepare message options
-    const messageOptions = {
-      from: `whatsapp:${fromNumber}`,
-      to: `whatsapp:${to}`,
-      body: text
-    };
-    
-    // Add media URL if present
-    if (mediaUrl) {
-      messageOptions.mediaUrl = mediaUrl;
-    }
-    
-    // Send message
-    const message = await twilioClient.messages.create(messageOptions);
-    
-    return {
-      message_sid: message.sid,
-      status: message.status,
-      to: to,
-      from: fromNumber,
-      has_media: !!mediaUrl
-    };
-  } catch (error) {
-    console.error('Error sending free-form message:', error);
-    throw error;
-  }
-}
-```
-
-## 6. Message Status Handling
-
-### 6.1 Twilio Webhook for Status Updates
-
-The system receives status updates via Twilio webhooks:
+The system includes an API endpoint to receive status updates via Twilio webhooks:
 
 ```javascript
 /**
@@ -709,7 +402,7 @@ exports.handleStatusWebhook = async (event) => {
 };
 ```
 
-### 6.2 Tracking Message Status in Conversation
+### 7.2 Status Update in Conversation Record
 
 ```javascript
 /**
@@ -774,163 +467,136 @@ async function updateMessageStatus(conversation, messageSid, status, errorCode =
 }
 ```
 
-## 7. Template Localization
+## 8. AI-Driven Template Variable Generation
 
-The system supports template localization in multiple languages:
+A key innovation in our approach is using OpenAI to generate template variables based on the context data, rather than hardcoding variable mapping for each use case:
 
-```javascript
-/**
- * Creates a localized version of an existing template
- * @param {string} companyId - Company ID
- * @param {string} templateName - Template name
- * @param {string} sourceLanguage - Source language
- * @param {string} targetLanguage - Target language
- * @param {object} translatedComponents - Translated components
- * @returns {Promise<object>} - Created localized template
- */
-async function createLocalizedTemplate(
-  companyId, 
-  templateName, 
-  sourceLanguage, 
-  targetLanguage, 
-  translatedComponents
-) {
-  try {
-    // Get source template
-    const sourceTemplate = await getTemplate(companyId, templateName, sourceLanguage);
-    
-    // Create new template object
-    const localizedTemplate = {
-      name: sourceTemplate.template_name,
-      language: targetLanguage,
-      category: sourceTemplate.category,
-      components: []
-    };
-    
-    // Process components
-    for (const component of sourceTemplate.components) {
-      const translatedComponent = translatedComponents[component.type] || {};
-      
-      // Create new component with translations
-      const localizedComponent = {
-        type: component.type,
-        format: component.format
-      };
-      
-      if (component.text) {
-        localizedComponent.text = translatedComponent.text || component.text;
-      }
-      
-      if (component.buttons) {
-        localizedComponent.buttons = component.buttons.map((button, index) => {
-          const translatedButton = (translatedComponent.buttons || [])[index] || {};
-          
-          return {
-            type: button.type,
-            text: translatedButton.text || button.text,
-            url: button.url // URL doesn't need translation
-          };
-        });
-      }
-      
-      localizedTemplate.components.push(localizedComponent);
-    }
-    
-    // Create the localized template
-    return await createTemplate(localizedTemplate, companyId);
-  } catch (error) {
-    console.error('Error creating localized template:', error);
-    throw error;
-  }
-}
-```
+### 8.1 OpenAI Assistant Configuration
 
-## 8. Media Messages
+Each business use case has a dedicated OpenAI Assistant configured with:
 
-The system supports sending media in messages:
+1. **System Instructions**: Detailed instructions on how to extract data from the context object
+2. **Template Structure**: Information about the template format and variable positions
+3. **Output Format Requirements**: Explicit instructions to return content variables in a specific JSON format
+4. **Constraints**: Rules for handling missing or ambiguous data
+
+### 8.2 Processing Flow for Variable Generation
 
 ```javascript
 /**
- * Uploads media to Twilio for WhatsApp sending
- * @param {string} companyId - Company ID
- * @param {Buffer} mediaBuffer - Media file buffer
- * @param {string} mimeType - Media MIME type
- * @returns {Promise<string>} - Twilio media URL
+ * Main function to process a message with OpenAI
+ * @param {object} openai - Initialized OpenAI client
+ * @param {object} contextObject - Full context object
+ * @returns {Promise<object>} - Result with content variables
  */
-async function uploadMediaToTwilio(companyId, mediaBuffer, mimeType) {
+async function processWithOpenAI(openai, contextObject) {
   try {
-    // Get credentials
-    const credentials = await getCredentials(
-      'whatsapp/twilio',
-      companyId,
-      'default'
-    );
+    console.log('Starting OpenAI processing');
+    const startTime = Date.now();
     
-    // Initialize Twilio client
-    const twilioClient = twilio(
-      credentials.twilio_account_sid,
-      credentials.twilio_auth_token
-    );
-    
-    // Upload media
-    const media = await twilioClient.messages.media.create({
-      contentType: mimeType,
-      data: mediaBuffer.toString('base64')
+    // Create OpenAI thread with the context object as input
+    const thread = await openai.beta.threads.create({
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify(contextObject)
+        }
+      ]
     });
     
-    return media.uri;
+    // Update context object with thread_id
+    contextObject.thread_id = thread.id;
+    
+    // Get assistant ID from context - using the template sender assistant
+    const assistantId = contextObject.ai_config.assistant_id_template_sender;
+    
+    // Start the run
+    const run = await openai.beta.threads.runs.create(
+      thread.id,
+      { assistant_id: assistantId }
+    );
+    
+    // Poll run status until completion
+    const finalRun = await pollRunStatus(openai, thread.id, run.id);
+    
+    if (finalRun.status === 'completed') {
+      // Extract content variables from assistant response
+      const contentVariables = await getAssistantResponse(openai, thread.id, contextObject);
+      
+      // Store metrics and content variables
+      const processingTimeMs = Date.now() - startTime;
+      
+      // Store content_variables in the conversation_data object
+      contextObject.conversation_data.content_variables = contentVariables;
+      
+      // Create a pending assistant message with all metrics
+      const assistantMessage = {
+        entry_id: uuidv4(),
+        message_timestamp: new Date().toISOString(),
+        role: 'assistant',
+        ai_prompt_tokens: finalRun.usage?.prompt_tokens || 0,
+        ai_completion_tokens: finalRun.usage?.completion_tokens || 0,
+        ai_total_tokens: finalRun.usage?.total_tokens || 0,
+        processing_time_ms: processingTimeMs
+      };
+      
+      // Store pending message for later completion
+      contextObject.conversation_data.pending_assistant_message = assistantMessage;
+      
+      return {
+        thread_id: thread.id,
+        run_id: run.id,
+        status: 'completed',
+        content_variables: contentVariables,
+        processing_time_ms: processingTimeMs
+      };
+    } else {
+      throw new Error(`Run ended with status: ${finalRun.status}`);
+    }
   } catch (error) {
-    console.error('Error uploading media to Twilio:', error);
+    console.error('Error in OpenAI processing:', error);
     throw error;
   }
 }
 ```
 
-## 9. Integration with Function Execution
+## 9. Setup Process for New Business Integration
 
-The template and message sending functionality is integrated with the Function Execution system, allowing the OpenAI Assistant to use these functions:
+Setting up a new business to use the WhatsApp Processing Engine involves these steps:
 
-```javascript
-// Excerpt from function implementations
-async function generateWhatsAppTemplate(args) {
-  // ... (validation code) ...
-  
-  // Create template object
-  const template = {
-    name: args.templateName,
-    category: args.category,
-    language: args.language,
-    components: args.components
-  };
-  
-  // Generate template without saving to Twilio
-  return {
-    template,
-    message: 'Template generated successfully. Ready to be submitted to WhatsApp.'
-  };
-}
+1. **Business Requirements Analysis**: 
+   - Understand the use case and communication needs
+   - Identify recipient data structure and content requirements
 
-async function sendWhatsAppMessage(args) {
-  // ... (validation code) ...
-  
-  if (args.useTemplate) {
-    return await sendTemplateMessage(
-      contextObject.company_id,
-      contextObject.recipient_tel,
-      args.templateName,
-      args.templateLanguage,
-      args.templateVariables
-    );
-  } else {
-    return await sendFreeFormMessage(
-      contextObject.company_id,
-      contextObject.recipient_tel,
-      args.messageText,
-      args.mediaUrl
-    );
-  }
-}
-```
+2. **Twilio & WhatsApp Setup**:
+   - Set up a Twilio account for the business (or use their existing account)
+   - Create a WhatsApp Sender profile in Meta Business Manager
+   - Design and submit templates for approval according to use case
+
+3. **System Configuration**:
+   - Create an entry in the `wa_company_data` table with company_id and project_id
+   - Configure channel_config with WhatsApp number and credentials reference
+   - Configure ai_config with assistant_id and API key reference
+
+4. **Secrets Manager Setup**:
+   - Store Twilio credentials (account SID, auth token)
+   - Store the approved template SID alongside credentials
+   - Generate and store secure reference keys
+
+5. **OpenAI Assistant Configuration**:
+   - Create a custom assistant for the business use case
+   - Configure system instructions specific to the template structure
+   - Test assistant with sample context objects
+
+6. **Frontend Development**:
+   - Create a custom frontend (embedded or standalone) for the business use case
+   - Configure API endpoints and authentication
+   - Implement client-specific data capture
+
+7. **Testing and Deployment**:
+   - Validate end-to-end message flow
+   - Monitor initial message delivery rates
+   - Adjust AI configuration if necessary
 
 ## 10. Related Documentation
 
@@ -938,15 +604,20 @@ async function sendWhatsAppMessage(args) {
 - [OpenAI Integration](./05-openai-integration.md)
 - [Error Handling Strategy](./07-error-handling-strategy.md)
 - [Monitoring and Observability](./08-monitoring-observability.md)
+- [Operations Playbook](./09-operations-playbook.md)
 
 ## 11. Best Practices for Template Management
 
 1. **Template Identifiers**: Store template SIDs in AWS Secrets Manager alongside Twilio credentials for secure access
 
-2. **Error Handling**: Implement specific error handling for template-related issues
+2. **AI Configuration**: Ensure the OpenAI assistant is properly configured to understand the template structure and output compatible content variables
 
-3. **Monitoring**: Track template usage and error metrics in CloudWatch
+3. **Error Monitoring**: Implement specific monitoring for template-related errors, particularly parameter mismatch issues
 
-4. **Content Variables**: Ensure the OpenAI assistant is configured to return structured content variables
+4. **Testing**: Before deploying a new template, test thoroughly with varied context data
 
-5. **Fallback Mechanisms**: Implement fallback templates for critical communications 
+5. **Template Approval**: Plan for WhatsApp approval time (typically 1-3 business days) when onboarding new businesses
+
+6. **Documentation**: Maintain clear documentation of each business's template structure and variable mappings for troubleshooting
+
+7. **Credentials Rotation**: Implement a secure process for rotating Twilio credentials without disrupting template access 
