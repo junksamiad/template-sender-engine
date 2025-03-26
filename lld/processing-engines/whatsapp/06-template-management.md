@@ -1,10 +1,18 @@
-# WhatsApp Processing Engine - Template Management and Message Sending
+# WhatsApp Processing Engine - Template and Message Processing
 
 > **Part 6 of 9 in the WhatsApp Processing Engine documentation series**
 
 ## 1. Introduction
 
-This document details how the WhatsApp Processing Engine manages message templates and handles message sending through the Twilio API. WhatsApp requires business accounts to use pre-approved templates for initial outbound messages, and this system manages these templates while providing a streamlined interface for sending messages.
+This document details the complete message processing flow in the WhatsApp Processing Engine, including template management, message sending through the Twilio API, and conversation tracking. It covers how templates are managed, how messages are processed and sent, and how conversation records are updated in DynamoDB. The document also includes details about business integration setup and status tracking.
+
+Key areas covered:
+1. Template Management and Structure
+2. Message Sending Process
+3. Twilio Integration
+4. Conversation Record Updates
+5. Status Tracking
+6. Business Integration Setup
 
 ## 2. WhatsApp Template Structure
 
