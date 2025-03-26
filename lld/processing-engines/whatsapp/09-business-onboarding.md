@@ -1,6 +1,6 @@
 # WhatsApp Processing Engine - Business Onboarding Process
 
-> **Part 10 of 10 in the WhatsApp Processing Engine documentation series**
+> **Part 9 of 9 in the WhatsApp Processing Engine documentation series**
 
 ## 1. Introduction
 
