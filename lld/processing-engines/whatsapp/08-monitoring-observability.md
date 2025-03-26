@@ -207,11 +207,525 @@ The `ErrorType` dimension for JSON parsing errors can have values like:
 
 These metrics help track issues with the JSON-based content variables approach.
 
-## 6. CloudWatch Alarms
+## 6. Advanced Monitoring for OpenAI Integration
+
+### 6.1 OpenAI Response Time Metrics
+
+The system tracks detailed metrics for OpenAI API operations:
+
+```javascript
+/**
+ * Records timing data for OpenAI API calls
+ * @param {string} operation - API operation name
+ * @param {number} durationMs - Duration in milliseconds
+ * @param {object} dimensions - Additional dimensions
+ */
+async function recordOpenAITiming(operation, durationMs, dimensions) {
+  try {
+    await publishMetric(
+      'OpenAICallDuration',
+      durationMs,
+      {
+        Operation: operation,
+        ...dimensions
+      },
+      'Milliseconds'
+    );
+    
+    // Record appropriate percentiles for CloudWatch
+    if (durationMs > 0) {
+      // Track long-running operations specially
+      if (durationMs > 5000) {
+        await publishMetric(
+          'LongRunningOpenAICall',
+          1,
+          {
+            Operation: operation,
+            DurationBucket: getLongRunningBucket(durationMs)
+          },
+          'Count'
+        );
+      }
+    }
+  } catch (error) {
+    console.error('Failed to record OpenAI timing metric', error);
+    // Non-blocking - continue processing
+  }
+}
+
+/**
+ * Gets bucket for long-running operations
+ * @param {number} durationMs - Duration in milliseconds
+ * @returns {string} - Bucket identifier
+ */
+function getLongRunningBucket(durationMs) {
+  if (durationMs < 10000) return '5s-10s';
+  if (durationMs < 30000) return '10s-30s';
+  if (durationMs < 60000) return '30s-60s';
+  return '60s+';
+}
+
+/**
+ * Wrapper function to time OpenAI operations
+ * @param {Function} func - Function to wrap
+ * @param {string} operationName - Name of operation
+ * @param {object} dimensions - Additional dimensions
+ * @returns {Function} - Wrapped function
+ */
+function withOpenAITiming(func, operationName, dimensions = {}) {
+  return async (...args) => {
+    const startTime = Date.now();
+    try {
+      const result = await func(...args);
+      const duration = Date.now() - startTime;
+      await recordOpenAITiming(operationName, duration, dimensions);
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      await recordOpenAITiming(`${operationName}_error`, duration, dimensions);
+      throw error;
+    }
+  };
+}
+
+// Example usage
+const createThreadWithTiming = withOpenAITiming(
+  openai.beta.threads.create,
+  'CreateThread',
+  { CompanyId: contextObject.company_id }
+);
+
+const threadResponse = await createThreadWithTiming();
+```
+
+### 6.2 Request Correlation with X-Ray
+
+The system implements AWS X-Ray for distributed tracing:
+
+```javascript
+// Initialize X-Ray
+const AWSXRay = require('aws-xray-sdk');
+const AWS = AWSXRay.captureAWS(require('aws-sdk'));
+
+// Create subsegments for key operations
+exports.handler = async (event, context) => {
+  // Create a segment for the entire processing flow
+  const segment = AWSXRay.getSegment();
+  
+  // Parse the message
+  const subsegment = segment.addNewSubsegment('ParseMessage');
+  try {
+    const message = JSON.parse(event.Records[0].body);
+    subsegment.addAnnotation('company_id', message.company_id);
+    subsegment.addAnnotation('project_id', message.project_id);
+    subsegment.close();
+  } catch (error) {
+    subsegment.addError(error);
+    subsegment.close();
+    throw error;
+  }
+  
+  // Create OpenAI thread subsegment
+  const openAISubsegment = segment.addNewSubsegment('OpenAI_CreateThread');
+  try {
+    // ... OpenAI thread creation logic ...
+    openAISubsegment.addAnnotation('thread_id', thread.id);
+    openAISubsegment.close();
+  } catch (error) {
+    openAISubsegment.addError(error);
+    openAISubsegment.close();
+    throw error;
+  }
+  
+  // Additional processing subsegments...
+};
+```
+
+### 6.3 Request Correlation IDs
+
+The WhatsApp Processing Engine implements a request correlation system to track requests through all components:
+
+```javascript
+/**
+ * Generates a correlation ID for tracking requests
+ * @returns {string} - Unique correlation ID
+ */
+function generateCorrelationId() {
+  return `cor_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+}
+
+/**
+ * Adds correlation ID to logs
+ * @param {object} logger - Logger instance
+ * @param {string} correlationId - Correlation ID
+ * @returns {object} - Enhanced logger
+ */
+function enhanceLoggerWithCorrelation(logger, correlationId) {
+  // Create a wrapper around the logger methods
+  return {
+    log: (message, params = {}) => {
+      logger.log(message, { ...params, correlation_id: correlationId });
+    },
+    info: (message, params = {}) => {
+      logger.info(message, { ...params, correlation_id: correlationId });
+    },
+    warn: (message, params = {}) => {
+      logger.warn(message, { ...params, correlation_id: correlationId });
+    },
+    error: (message, params = {}) => {
+      logger.error(message, { ...params, correlation_id: correlationId });
+    }
+  };
+}
+
+// Example usage in the Lambda handler
+exports.handler = async (event, context) => {
+  // Generate correlation ID for this request
+  const correlationId = generateCorrelationId();
+  
+  // Enhance the logger
+  const logger = enhanceLoggerWithCorrelation(console, correlationId);
+  
+  // Log the start of processing
+  logger.info('Starting WhatsApp processing', {
+    event_source: event.Records[0].eventSource,
+    aws_request_id: context.awsRequestId
+  });
+  
+  try {
+    // Process message with correlation ID
+    const result = await processMessage(event.Records[0], {
+      logger,
+      correlationId
+    });
+    
+    // Log successful completion
+    logger.info('WhatsApp processing completed successfully', {
+      result_summary: {
+        conversation_id: result.conversationId,
+        processing_time_ms: result.processingTimeMs
+      }
+    });
+    
+    return result;
+  } catch (error) {
+    // Log failure with correlation ID
+    logger.error('WhatsApp processing failed', {
+      error_message: error.message,
+      error_stack: error.stack
+    });
+    
+    throw error;
+  }
+};
+
+/**
+ * Process the WhatsApp message
+ * @param {object} record - SQS record
+ * @param {object} options - Processing options
+ * @returns {Promise<object>} - Processing result
+ */
+async function processMessage(record, { logger, correlationId }) {
+  // Parse the message
+  const message = JSON.parse(record.body);
+  
+  // Create enhanced context with correlation ID
+  const enhancedMessage = {
+    ...message,
+    metadata: {
+      ...message.metadata,
+      correlation_id: correlationId
+    }
+  };
+  
+  // Log key processing steps with consistent correlation ID
+  logger.info('Parsed SQS message', {
+    company_id: enhancedMessage.company_id,
+    project_id: enhancedMessage.project_id,
+    request_id: enhancedMessage.request_id
+  });
+  
+  // Process with consistent correlation ID
+  const result = await doProcessing(enhancedMessage, logger);
+  
+  // Return result with correlation ID included
+  return {
+    ...result,
+    correlationId
+  };
+}
+```
+
+### 6.4 Custom CloudWatch Metrics for AI
+
+The system implements custom CloudWatch metrics specifically for AI processing:
+
+```javascript
+/**
+ * Publishes AI-specific metrics to CloudWatch
+ * @param {object} contextObject - Context object
+ * @param {object} metrics - AI metrics object
+ */
+async function publishAIMetrics(contextObject, metrics) {
+  const baseMetricDimensions = {
+    CompanyId: contextObject.company_data.company_id,
+    ProjectId: contextObject.company_data.project_id,
+    AssistantId: contextObject.ai_config.assistant_id_template_sender
+  };
+  
+  // Token usage metrics
+  if (metrics.tokens) {
+    await publishMetric(
+      'PromptTokenUsage',
+      metrics.tokens.prompt_tokens || 0,
+      baseMetricDimensions,
+      'Count'
+    );
+    
+    await publishMetric(
+      'CompletionTokenUsage',
+      metrics.tokens.completion_tokens || 0,
+      baseMetricDimensions,
+      'Count'
+    );
+    
+    await publishMetric(
+      'TotalTokenUsage',
+      metrics.tokens.total_tokens || 0,
+      baseMetricDimensions,
+      'Count'
+    );
+  }
+  
+  // Response time metrics
+  if (metrics.timing) {
+    await publishMetric(
+      'AIResponseTime',
+      metrics.timing.total_time_ms || 0,
+      baseMetricDimensions,
+      'Milliseconds'
+    );
+    
+    await publishMetric(
+      'ThreadCreationTime',
+      metrics.timing.thread_creation_ms || 0,
+      baseMetricDimensions,
+      'Milliseconds'
+    );
+    
+    await publishMetric(
+      'RunCreationTime',
+      metrics.timing.run_creation_ms || 0,
+      baseMetricDimensions,
+      'Milliseconds'
+    );
+    
+    await publishMetric(
+      'RunCompletionTime',
+      metrics.timing.run_completion_ms || 0,
+      baseMetricDimensions,
+      'Milliseconds'
+    );
+  }
+  
+  // Structured data validation metrics
+  if (metrics.validation) {
+    await publishMetric(
+      'JSONParsingSuccess',
+      metrics.validation.json_parsing_success ? 1 : 0,
+      baseMetricDimensions,
+      'None'
+    );
+    
+    await publishMetric(
+      'ContentVariablesSuccess',
+      metrics.validation.content_variables_success ? 1 : 0,
+      baseMetricDimensions,
+      'None'
+    );
+    
+    if (metrics.validation.variable_count !== undefined) {
+      await publishMetric(
+        'ContentVariableCount',
+        metrics.validation.variable_count,
+        baseMetricDimensions,
+        'Count'
+      );
+    }
+  }
+  
+  // Cost metrics
+  if (metrics.cost) {
+    await publishMetric(
+      'EstimatedCost',
+      metrics.cost.estimated_cost_usd || 0,
+      baseMetricDimensions,
+      'None'
+    );
+  }
+}
+
+/**
+ * Calculates token cost for monitoring
+ * @param {number} completionTokens - Completion tokens used
+ * @param {number} promptTokens - Prompt tokens used
+ * @returns {number} - Estimated cost in USD
+ */
+function calculateTokenCost(completionTokens, promptTokens) {
+  // GPT-4 Turbo pricing (as of early 2023) - update as needed
+  const PROMPT_COST_PER_1K = 0.01;  // $0.01 per 1K tokens
+  const COMPLETION_COST_PER_1K = 0.03;  // $0.03 per 1K tokens
+  
+  const promptCost = (promptTokens / 1000) * PROMPT_COST_PER_1K;
+  const completionCost = (completionTokens / 1000) * COMPLETION_COST_PER_1K;
+  
+  return promptCost + completionCost;
+}
+
+// Example usage
+const metrics = {
+  tokens: {
+    prompt_tokens: 250,
+    completion_tokens: 50,
+    total_tokens: 300
+  },
+  timing: {
+    total_time_ms: 3500,
+    thread_creation_ms: 350,
+    run_creation_ms: 300,
+    run_completion_ms: 2850
+  },
+  validation: {
+    json_parsing_success: true,
+    content_variables_success: true,
+    variable_count: 5
+  },
+  cost: {
+    estimated_cost_usd: calculateTokenCost(50, 250)
+  }
+};
+
+await publishAIMetrics(contextObject, metrics);
+```
+
+### 6.5 CloudWatch Logs Insights Queries
+
+The system provides pre-configured CloudWatch Logs Insights queries for analyzing AI performance:
+
+#### AI Response Time Analysis
+
+```
+fields @timestamp, @message, correlation_id, company_id, 
+       ai_response_time_ms, thread_id, run_id
+| filter ai_response_time_ms > 0
+| sort ai_response_time_ms desc
+| limit 100
+```
+
+#### AI Processing Errors
+
+```
+fields @timestamp, correlation_id, company_id, error_category, error_message
+| filter message like /openai/ and error_category not null
+| stats count(*) as error_count by error_category, company_id
+| sort error_count desc
+```
+
+#### AI Token Usage by Company
+
+```
+fields @timestamp, correlation_id, company_id, prompt_tokens, completion_tokens, total_tokens
+| filter total_tokens > 0
+| stats 
+    sum(prompt_tokens) as total_prompt_tokens,
+    sum(completion_tokens) as total_completion_tokens,
+    sum(total_tokens) as total_tokens,
+    avg(total_tokens) as avg_tokens_per_request
+  by company_id
+| sort total_tokens desc
+```
+
+## 7. CloudWatch Dashboards
+
+The system includes pre-configured CloudWatch dashboards for monitoring:
+
+### 7.1 Main Operational Dashboard
+
+The main dashboard provides a holistic view of the system:
+
+![Main Dashboard](../../diagrams/monitoring-main-dashboard.png)
+
+#### Widgets:
+- **System Health**: Error rates, DLQ message counts, system uptime
+- **Performance Metrics**: Processing times, API latencies, queue depths
+- **Message Flow**: Messages processed per minute, success rates, failure rates
+- **External Dependencies**: OpenAI and Twilio API health and performance
+
+### 7.2 WhatsApp Processing Dashboard
+
+This dashboard focuses specifically on WhatsApp processing:
+
+![WhatsApp Dashboard](../../diagrams/monitoring-whatsapp-dashboard.png)
+
+#### Widgets:
+- **Message Processing**: Volumes, success rates, processing times
+- **OpenAI Integration**: Thread creation, run times, token usage
+- **Function Execution**: Execution counts, durations, success rates
+- **Twilio Integration**: Message sending latency, delivery rates
+- **Assistant Configuration Issues**: Configuration errors by type and assistant
+
+### 7.3 Error Investigation Dashboard
+
+This dashboard aids in diagnosing and resolving errors:
+
+![Error Dashboard](../../diagrams/monitoring-error-dashboard.png)
+
+#### Widgets:
+- **DLQ Message Counts**: By queue and error type
+- **Error Rates**: Breakdowns by category and source
+- **Error Timelines**: Error occurrence patterns
+- **Retry Statistics**: Success rates after retries
+- **Assistant Configuration Issues**: Detailed breakdown with conversation and assistant IDs
+
+#### AI Response Analytics Widgets:
+
+- **JSON Parser Performance**: Success rates and timings for parsing JSON from AI responses
+- **Content Variables Validation**: Success rates for content variable validation with breakdowns by assistant
+- **AI Response Structure Issues**: Counts of issues with AI response structure
+- **Variable Types**: Analysis of variable types provided by the AI assistant
+
+#### 7.1.3 Assistant Configuration Metrics
+
+| Metric Name | Description | Dimensions | Statistics |
+|-------------|-------------|------------|------------|
+| `AssistantConfigurationIssue` | Count of assistant configuration issues | AssistantId, IssueType, ConversationId | Sum, Maximum |
+
+The `IssueType` dimension can have the following values:
+- `InvalidJSONResponse`: The assistant did not return valid JSON.
+- `MissingContentVariables`: The assistant returned JSON without the required content_variables field.
+- `EmptyContentVariables`: The assistant returned an empty content_variables object.
+
+These metrics allow operational teams to quickly identify if there are issues with the AI assistant configuration that need to be addressed.
+
+#### 7.1.4 JSON Parsing Error Metrics
+
+| Metric Name | Description | Dimensions | Statistics |
+|-------------|-------------|------------|------------|
+| `JSONParsingError` | Count of JSON parsing errors | AssistantId, ErrorType, TemplateName | Sum, Maximum |
+| `VariableValidationError` | Count of variable validation errors | AssistantId, TemplateName, VariableName | Sum, Maximum |
+
+The `ErrorType` dimension for JSON parsing errors can have values like:
+- `SyntaxError`: Invalid JSON syntax in the response.
+- `MissingContentVariables`: JSON parsed but content_variables field is missing.
+- `EmptyContentVariables`: content_variables object is empty.
+
+These metrics help track issues with the JSON-based content variables approach.
+
+## 8. CloudWatch Alarms
 
 The system includes the following alarms for critical conditions:
 
-### 6.1 Critical Alarms
+### 8.1 Critical Alarms
 
 | Alarm Name | Condition | Threshold | Period | Evaluation Periods | Actions |
 |------------|-----------|-----------|--------|-------------------|---------|
@@ -221,7 +735,7 @@ The system includes the following alarms for critical conditions:
 | HighLatency | Processing time | >30 seconds | 5 minutes | 3 | SNS notification to operations team |
 | AssistantConfigurationIssues | Configuration errors detected | >0 | 5 minutes | 1 | SNS notification to operations team |
 
-### 6.2 Warning Alarms
+### 8.2 Warning Alarms
 
 | Alarm Name | Condition | Threshold | Period | Evaluation Periods | Actions |
 |------------|-----------|-----------|--------|-------------------|---------|
@@ -230,7 +744,7 @@ The system includes the following alarms for critical conditions:
 | IncreasedLatency | Processing time | >15 seconds | 15 minutes | 3 | Email to development team |
 | OpenAIRateLimiting | Rate limit errors | >0 | 15 minutes | 3 | Email to development team |
 
-### 6.3 Assistant Configuration Issue Alarms
+### 8.3 Assistant Configuration Issue Alarms
 
 | Alarm Name | Condition | Threshold | Period | Evaluation Periods | Actions |
 |------------|-----------|-----------|--------|-------------------|---------|
@@ -238,9 +752,9 @@ The system includes the following alarms for critical conditions:
 | UnexpectedFunctionCallIssue | Unexpected function call errors | >0 | 5 minutes | 1 | SNS high-priority notification |
 | RecurringConfigurationIssues | Configuration issues on same assistant | >3 | 1 hour | 1 | SNS + ticketing system |
 
-## 7. Structured Logging
+## 9. Structured Logging
 
-### 7.1 Log Format
+### 9.1 Log Format
 
 All logs follow a consistent structured format:
 
@@ -337,7 +851,7 @@ class Logger {
 }
 ```
 
-### 7.2 Example Usage
+### 9.2 Example Usage
 
 ```javascript
 // Initialize logger with context
@@ -371,9 +885,9 @@ logger.info('Successfully processed message', {
 });
 ```
 
-## 8. CloudWatch Logs Insights
+## 10. CloudWatch Logs Insights
 
-### 8.1 Common Queries
+### 10.1 Common Queries
 
 Predefined CloudWatch Logs Insights queries for operational analysis:
 
@@ -410,7 +924,7 @@ fields @timestamp, message
 | sort @timestamp desc
 ```
 
-### 8.2 Log Retention and Exports
+### 10.2 Log Retention and Exports
 
 Logs are retained and exported for long-term analysis:
 
@@ -429,9 +943,9 @@ new logs.SubscriptionFilter(this, 'WhatsAppProcessingLogExport', {
 });
 ```
 
-## 9. Distributed Tracing
+## 11. Distributed Tracing
 
-### 9.1 X-Ray Integration
+### 11.1 X-Ray Integration
 
 AWS X-Ray is enabled for distributed tracing:
 
@@ -496,7 +1010,7 @@ async function callOpenAI() {
 }
 ```
 
-### 9.2 Trace Analysis
+### 11.2 Trace Analysis
 
 X-Ray traces help identify performance bottlenecks:
 
@@ -505,7 +1019,7 @@ X-Ray traces help identify performance bottlenecks:
 3. **Error Correlation**: Link errors across distributed components
 4. **Cold Start Analysis**: Identify Lambda cold starts
 
-## 10. Business Metrics
+## 12. Business Metrics
 
 In addition to operational metrics, the system tracks business-relevant metrics:
 
@@ -540,7 +1054,7 @@ await publishMetric(
 );
 ```
 
-## 11. Operational Dashboard
+## 13. Operational Dashboard
 
 A central operational dashboard combines metrics, logs, and traces:
 
@@ -550,11 +1064,11 @@ A central operational dashboard combines metrics, logs, and traces:
 4. **Business Metrics**: Message volumes, template usage, token consumption
 5. **Resource Utilization**: Lambda concurrency, DynamoDB capacity
 
-## 12. Implementing CloudWatch Alarms
+## 14. Implementing CloudWatch Alarms
 
 The following provides implementation examples for key alarms:
 
-### 12.1 Error Rate Alarm
+### 14.1 Error Rate Alarm
 
 ```javascript
 // CDK implementation for error rate alarm
@@ -578,7 +1092,7 @@ const highErrorRateAlarm = new cloudwatch.Alarm(this, 'HighErrorRate', {
 highErrorRateAlarm.addAlarmAction(new cloudwatchActions.SnsAction(operationsAlarmTopic));
 ```
 
-### 12.2 Assistant Configuration Issue Alarm
+### 14.2 Assistant Configuration Issue Alarm
 
 ```javascript
 // CDK implementation for assistant configuration issue alarm
@@ -601,7 +1115,7 @@ const assistantConfigIssueAlarm = new cloudwatch.Alarm(this, 'AssistantConfigura
 assistantConfigIssueAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
 ```
 
-### 12.3 DLQ Message Alarm
+### 14.3 DLQ Message Alarm
 
 ```javascript
 // CDK implementation for DLQ message alarm
@@ -618,7 +1132,7 @@ const dlqMessageAlarm = new cloudwatch.Alarm(this, 'DLQMessageCount', {
 dlqMessageAlarm.addAlarmAction(new cloudwatchActions.SnsAction(operationsAlarmTopic));
 ```
 
-### 12.4 Specific Assistant Configuration Issue Alarms
+### 14.4 Specific Assistant Configuration Issue Alarms
 
 ```javascript
 // CDK implementation for specific assistant configuration issue alarms
@@ -663,7 +1177,7 @@ missingFunctionCallAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPrio
 unexpectedFunctionCallAlarm.addAlarmAction(new cloudwatchActions.SnsAction(highPriorityAlarmTopic));
 ```
 
-## 13. Related Documentation
+## 15. Related Documentation
 
 - [Overview and Architecture](./01-overview-architecture.md)
 - [Error Handling Strategy](./08-error-handling-strategy.md)
