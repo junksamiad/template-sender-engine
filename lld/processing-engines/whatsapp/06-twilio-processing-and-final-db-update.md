@@ -1,18 +1,18 @@
-# WhatsApp Processing Engine - Template and Message Processing
+# WhatsApp Processing Engine - Twilio Processing and Final DB Update
 
 > **Part 6 of 9 in the WhatsApp Processing Engine documentation series**
 
 ## 1. Introduction
 
-This document details the complete message processing flow in the WhatsApp Processing Engine, including template management, message sending through the Twilio API, and conversation tracking. It covers how templates are managed, how messages are processed and sent, and how conversation records are updated in DynamoDB. The document also includes details about business integration setup and status tracking.
+This document details how the WhatsApp Processing Engine handles message sending through the Twilio API and updates the final conversation record in DynamoDB. It covers the complete flow from preparing the Twilio message to storing the final conversation state, including all metrics and message data.
 
 Key areas covered:
-1. Template Management and Structure
-2. Message Sending Process
-3. Twilio Integration
-4. Conversation Record Updates
-5. Status Tracking
-6. Business Integration Setup
+1. Twilio Message Preparation
+2. Template Message Sending
+3. Message Status Tracking
+4. Final DynamoDB Update Structure
+5. Error Handling
+6. Webhook Integration
 
 ## 2. WhatsApp Template Structure
 
