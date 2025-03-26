@@ -39,6 +39,9 @@ This foundational phase sets up the development environment and prepares essenti
 - [ ] Create base AWS infrastructure (VPC, subnets, security groups)
 - [ ] Deploy core shared services (CloudWatch, Secrets Manager)
 
+**Key LLD References:**
+- None (This is the foundational phase that doesn't depend on specific LLD documents)
+
 ## Phase 1: Database Layer and Foundational Components ⬜
 
 This phase implements the foundational data layer and shared utilities.
@@ -58,6 +61,13 @@ This phase implements the foundational data layer and shared utilities.
 - [ ] Create monitoring configuration:
   - [ ] CloudWatch metrics definition
   - [ ] Alarm configuration
+
+**Key LLD References:**
+- [Conversations DB Schema](../lld/db/conversations-db-schema-v1.0.md)
+- [WA Company Data DB Schema](../lld/db/wa-company-data-db-schema-v1.0.md)
+- [AWS Referencing](../lld/secrets-manager/aws-referencing-v1.0.md)
+- [Context Object](../lld/context-object/context-object-v1.0.md)
+- [CloudWatch Dashboard Setup](../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md)
 
 ## Phase 2: Channel Router Implementation ⬜
 
@@ -88,6 +98,13 @@ This phase implements the Channel Router component, serving as the entry point f
   - [ ] Error logging
   - [ ] Performance metrics
 
+**Key LLD References:**
+- [Channel Router Documentation](../lld/channel-router/channel-router-documentation-v1.0.md)
+- [Channel Router Diagrams](../lld/channel-router/channel-router-diagrams-v1.0.md)
+- [Error Handling](../lld/channel-router/error-handling-v1.0.md)
+- [Message Queue Architecture](../lld/channel-router/message-queue-architecture-v1.0.md)
+- [Context Object](../lld/context-object/context-object-v1.0.md)
+
 ## Phase 3: WhatsApp Processing Engine ⬜
 
 This phase implements the WhatsApp Processing Engine for handling WhatsApp messages.
@@ -114,6 +131,17 @@ This phase implements the WhatsApp Processing Engine for handling WhatsApp messa
   - [ ] Error metrics
   - [ ] Token usage tracking
 
+**Key LLD References:**
+- [Overview and Architecture](../lld/processing-engines/whatsapp/01-overview-architecture.md)
+- [SQS Integration](../lld/processing-engines/whatsapp/02-sqs-integration.md)
+- [Conversation Management](../lld/processing-engines/whatsapp/03-conversation-management.md)
+- [Credential Management](../lld/processing-engines/whatsapp/04-credential-management.md)
+- [OpenAI Integration](../lld/processing-engines/whatsapp/05-openai-integration.md)
+- [Twilio Processing and Final DB Update](../lld/processing-engines/whatsapp/06-twilio-processing-and-final-db-update.md)
+- [Error Handling Strategy](../lld/processing-engines/whatsapp/07-error-handling-strategy.md)
+- [Monitoring and Observability](../lld/processing-engines/whatsapp/08-monitoring-observability.md)
+- [Business Onboarding](../lld/processing-engines/whatsapp/09-business-onboarding.md)
+
 ## Phase 4: Email Processing Engine ⬜
 
 This phase implements the Email Processing Engine for handling email messages.
@@ -133,6 +161,12 @@ This phase implements the Email Processing Engine for handling email messages.
 - [ ] Develop error handling strategies
 - [ ] Implement heartbeat pattern for long-running operations
 - [ ] Configure monitoring and logging
+
+**Key LLD References:**
+- Similar to WhatsApp Processing Engine documents, but adapted for email
+- [Context Object](../lld/context-object/context-object-v1.0.md)
+- [Conversations DB Schema](../lld/db/conversations-db-schema-v1.0.md)
+- [CloudWatch Dashboard Setup](../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md)
 
 ## Phase 5: SMS Processing Engine ⬜
 
@@ -154,6 +188,12 @@ This phase implements the SMS Processing Engine for handling SMS messages.
 - [ ] Implement heartbeat pattern for long-running operations
 - [ ] Configure monitoring and logging
 
+**Key LLD References:**
+- Similar to WhatsApp Processing Engine documents, but adapted for SMS
+- [Context Object](../lld/context-object/context-object-v1.0.md)
+- [Conversations DB Schema](../lld/db/conversations-db-schema-v1.0.md)
+- [CloudWatch Dashboard Setup](../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md)
+
 ## Phase 6: DLQ Processing and System Recovery ⬜
 
 This phase implements the Dead Letter Queue processor and system recovery mechanisms.
@@ -170,6 +210,12 @@ This phase implements the Dead Letter Queue processor and system recovery mechan
   - [ ] Auto-recovery for transient failures
   - [ ] Circuit breaker reset procedures
   - [ ] System health checks
+
+**Key LLD References:**
+- [Error Handling Strategy](../lld/processing-engines/whatsapp/07-error-handling-strategy.md)
+- [Monitoring and Observability](../lld/processing-engines/whatsapp/08-monitoring-observability.md)
+- [CloudWatch Dashboard Setup](../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md)
+- [Channel Router Error Handling](../lld/channel-router/error-handling-v1.0.md)
 
 ## Phase 7: Comprehensive Testing and Optimization ⬜
 
@@ -190,6 +236,11 @@ This phase focuses on system-wide testing, optimization, and performance tuning.
   - [ ] Alert tuning and refinement
   - [ ] Cost tracking and optimization
 
+**Key LLD References:**
+- [CloudWatch Dashboard Setup](../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md)
+- [Monitoring and Observability](../lld/processing-engines/whatsapp/08-monitoring-observability.md)
+- All component documentation for optimization targets
+
 ## Phase 8: Documentation and Handover ⬜
 
 This final phase ensures comprehensive documentation and proper handover for operations.
@@ -208,6 +259,10 @@ This final phase ensures comprehensive documentation and proper handover for ope
   - [ ] Frontend integration guide
   - [ ] API usage examples
   - [ ] Template creation guide
+
+**Key LLD References:**
+- [Frontend Documentation](../lld/frontend/frontend-documentation-v1.0.md)
+- All component documentation for reference
 
 ## Phase Implementation Notes
 

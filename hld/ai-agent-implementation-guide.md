@@ -13,6 +13,7 @@ This document serves as a comprehensive guide for AI agents tasked with implemen
    - Read `ignore/phase-implementation-cycle-v1.0.md` to understand the standard implementation cycle
    - Review `hld/implementation-roadmap-v1.0.md` to see the complete roadmap broken down by phases
    - Each phase builds on the previous one, so follow them sequentially
+   - **Important**: Pay close attention to the "Key LLD References" section under each phase in the roadmap, which links to the specific LLD documents relevant for that phase
 
 ## Implementation Workflow
 
@@ -23,13 +24,14 @@ For each phase, follow this precise implementation workflow:
 1. Open the detailed phase plan document (e.g., `hld/phases/phase0-implementation-plan-v1.0.md`)
 2. Create a phase notes document in `hld/notes/` (using `hld/templates/phase-notes-template.md` as a template)
 3. Create a branch for the phase (e.g., `git checkout -b phase-0`)
+4. Review all LLD documents referenced in the "Key LLD References" section for that phase in the implementation roadmap
 
 ### Step 2: Implement Tasks
 
 For each task listed in the phase plan:
 
 1. Check the task details in the phase implementation plan
-2. For design information, consult the corresponding LLD document in the `lld/` directory
+2. For design information, consult the corresponding LLD document in the `lld/` directory as referenced in the implementation roadmap
 3. Follow the directory structure in `hld/directory-structure-v1.0.md` to know where to place new code
 4. Implement the task following the cycle defined in `ignore/phase-implementation-cycle-v1.0.md`:
    - Set up the functionality locally
@@ -59,6 +61,7 @@ For each component implemented:
 2. Place the documentation in the appropriate location (e.g., under `docs/api/` for API documentation)
 3. Include diagrams, interfaces, data flows, and other important details
 4. Reference this documentation in the phase notes
+5. Reference any relevant LLD documents that guided your implementation
 
 ### Step 4: Complete the Phase
 
@@ -106,6 +109,7 @@ Key LLD documents to reference:
 - `lld/db/wa-company-data-db-schema-v1.0.md`
 - `lld/secrets-manager/aws-referencing-v1.0.md`
 - `lld/context-object/context-object-v1.0.md`
+- `lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md`
 
 ### Phase 2: Channel Router Implementation
 
@@ -120,6 +124,7 @@ Key LLD documents to reference:
 - `lld/channel-router/channel-router-diagrams-v1.0.md`
 - `lld/channel-router/error-handling-v1.0.md`
 - `lld/channel-router/message-queue-architecture-v1.0.md`
+- `lld/context-object/context-object-v1.0.md`
 
 ### Phase 3: WhatsApp Processing Engine
 
@@ -130,7 +135,7 @@ Implement the WhatsApp Processing Engine:
 - Implement error handling and the heartbeat pattern
 
 Key LLD documents to reference:
-- All documents in `lld/processing-engines/whatsapp/`
+- All documents in `lld/processing-engines/whatsapp/` (01-09)
 
 ## Handling Challenges
 
@@ -138,7 +143,7 @@ When encountering challenges:
 
 1. Document the challenge in the phase notes
 2. Research potential solutions
-3. If the challenge relates to design, consult the relevant LLD documents
+3. If the challenge relates to design, consult the relevant LLD documents from the "Key LLD References" section in the implementation roadmap
 4. Implement the solution
 5. Document the solution and outcome in the phase notes
 
@@ -151,6 +156,16 @@ Use these mechanisms to track progress:
 3. Create component documentation for each completed component
 4. Update the main roadmap when a phase is completed
 
+## Using LLD References Effectively
+
+The LLD references in the implementation roadmap are critical to successful implementation:
+
+1. **Before starting a phase:** Read all referenced LLD documents thoroughly to understand the design details
+2. **During implementation:** Refer back to specific sections of LLD documents when implementing related features
+3. **When facing challenges:** Check if the LLD documents provide guidance on how to address similar issues
+4. **During review:** Verify that your implementation follows the patterns specified in the LLD documents
+5. **For documentation:** Reference the LLD documents in your component documentation to maintain traceability
+
 ## Final Notes
 
 - Always prioritize following the standard implementation cycle
@@ -158,5 +173,6 @@ Use these mechanisms to track progress:
 - Maintain comprehensive documentation
 - Ensure all code has appropriate tests
 - Follow the directory structure defined in `hld/directory-structure-v1.0.md`
+- Refer to the LLD documents linked in the implementation roadmap for each phase
 
 By following this guide, you will systematically implement the AI Multi-Communications Engine according to the defined roadmap and architecture. 
