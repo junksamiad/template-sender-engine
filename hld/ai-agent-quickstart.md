@@ -6,34 +6,41 @@ This quickstart guide provides AI agents with a clear, step-by-step process to b
 
 ### Step 1: Understand the Project
 1. Review `hld/multi-comms-engine-hld-v1.0.md` for system overview
-2. Read `ignore/phase-implementation-cycle-v1.0.md` for implementation methodology
+2. Read `hld/phase-implementation-cycle-v1.0.md` for implementation methodology
 3. Study `hld/implementation-roadmap-v1.0.md` for the phase-based roadmap
    - **Important**: Note the "Key LLD References" section under each phase, which links to the relevant LLD documents
 4. Examine `hld/directory-structure-v1.0.md` for project organization
 
-### Step 2: Initialize Phase 0
-1. Study `hld/phases/phase0-implementation-plan-v1.0.md` in detail
-2. Review any LLD documents referenced in the implementation roadmap for Phase 0
-3. Create phase notes file:
+### Step 2: Assess Current Progress
+1. Check the implementation roadmap for completed phases (marked with ✅)
+2. Review phase plan documents to identify completed tasks (marked with ✅)
+3. Examine commit history to understand recent work
+4. Determine which phase and task to work on next based on this assessment
+
+### Step 3: Initialize Phase
+1. Study the current phase implementation plan (e.g., `hld/phases/phase0-implementation-plan-v1.0.md`) in detail
+2. Check which tasks are already completed (marked with ✅)
+3. Review any LLD documents referenced in the implementation roadmap for the current phase
+4. Create phase notes file if not already done:
    ```bash
    cp hld/templates/phase-notes-template.md hld/notes/phase0-notes.md
-   # Edit hld/notes/phase0-notes.md and replace [X] with 0
+   # Edit hld/notes/phase0-notes.md and replace [X] with current phase number
    ```
-4. Create phase branch:
+5. Create phase branch if not already done:
    ```bash
-   git checkout -b phase-0
+   git checkout -b phase-0  # Replace '0' with current phase number
    ```
 
-### Step 3: Begin Implementation
-1. Start with Task 1.1: "Install Required Software" in `hld/phases/phase0-implementation-plan-v1.0.md`
+### Step 4: Begin Implementation
+1. Start with the first uncompleted task in the current phase plan
 2. For each task:
    - Consult the relevant LLD documents from the "Key LLD References" section in the roadmap
-   - Implement according to `ignore/phase-implementation-cycle-v1.0.md`
+   - Implement according to `hld/phase-implementation-cycle-v1.0.md`
    - Mark completed tasks with ✅ in the phase plan
-   - Document progress in `hld/notes/phase0-notes.md`
+   - Document progress in the phase notes
    - Create component documentation as needed using `hld/templates/component-doc-template.md`
 
-### Step 4: Track Progress
+### Step 5: Track Progress
 1. Update the Implementation Progress section in phase notes for each task
 2. Document any challenges, decisions, and solutions
 3. Commit changes to Git after each significant step
@@ -43,7 +50,7 @@ This quickstart guide provides AI agents with a clear, step-by-step process to b
 | Purpose | File Path | What to Do With It |
 |---------|-----------|-------------------|
 | Project Overview | `hld/multi-comms-engine-hld-v1.0.md` | Read and understand |
-| Implementation Methodology | `ignore/phase-implementation-cycle-v1.0.md` | Follow for each task |
+| Implementation Methodology | `hld/phase-implementation-cycle-v1.0.md` | Follow for each task |
 | Complete Roadmap | `hld/implementation-roadmap-v1.0.md` | Use as a map for all phases and find LLD document references |
 | Directory Structure | `hld/directory-structure-v1.0.md` | Follow when creating files |
 | Current Phase Plan | `hld/phases/phase0-implementation-plan-v1.0.md` | Implement tasks; mark with ✅ when done |
@@ -74,6 +81,19 @@ For each phase, refer to these specific LLD documents:
 
 (See implementation roadmap for LLDs for later phases)
 
+## Implementation Cycle
+
+Always follow this cycle from `hld/phase-implementation-cycle-v1.0.md` for each task:
+
+1. Set up functionality locally
+2. Create and run local tests
+3. Update documentation (using ✅ to mark completed items)
+4. Commit changes to Git repository
+5. Deploy to AWS
+6. Create and run AWS tests
+7. Update AWS documentation
+8. Commit final changes
+
 ## For Complete Details
 
 For more detailed guidance, refer to `hld/ai-agent-implementation-guide.md`.
@@ -90,7 +110,7 @@ For more detailed guidance, refer to `hld/ai-agent-implementation-guide.md`.
    - Installed AWS CDK 2.50.0
    - Installed Git 2.37.1
    ```
-3. After completing all Phase 0 tasks, create a pull request
+3. After completing all tasks in the current phase, create a pull request
 
 ## Notes and Documentation
 
@@ -103,4 +123,4 @@ Always document:
 
 ## Begin Now
 
-Start by implementing "Development Environment Setup" in Phase 0, specifically task 1.1 "Install Required Software". 
+Start by checking which phase and task are next based on the green ticks (✅) in the implementation roadmap and phase plan documents. 

@@ -10,10 +10,16 @@ This document serves as a comprehensive guide for AI agents tasked with implemen
    - Study `hld/directory-structure-v1.0.md` to understand the project organization
 
 2. **Next, understand the implementation approach:**
-   - Read `ignore/phase-implementation-cycle-v1.0.md` to understand the standard implementation cycle
+   - Read `hld/phase-implementation-cycle-v1.0.md` to understand the standard implementation cycle
    - Review `hld/implementation-roadmap-v1.0.md` to see the complete roadmap broken down by phases
    - Each phase builds on the previous one, so follow them sequentially
    - **Important**: Pay close attention to the "Key LLD References" section under each phase in the roadmap, which links to the specific LLD documents relevant for that phase
+
+3. **Assess current project progress:**
+   - Check the implementation roadmap for phases marked with green ticks (✅)
+   - Review phase plan documents to identify completed tasks (marked with ✅)
+   - Examine commit history to understand recent work
+   - This assessment helps you understand which phase and task to work on next
 
 ## Implementation Workflow
 
@@ -22,9 +28,10 @@ For each phase, follow this precise implementation workflow:
 ### Step 1: Begin a Phase
 
 1. Open the detailed phase plan document (e.g., `hld/phases/phase0-implementation-plan-v1.0.md`)
-2. Create a phase notes document in `hld/notes/` (using `hld/templates/phase-notes-template.md` as a template)
-3. Create a branch for the phase (e.g., `git checkout -b phase-0`)
-4. Review all LLD documents referenced in the "Key LLD References" section for that phase in the implementation roadmap
+2. Check existing green ticks (✅) to identify which tasks have already been completed
+3. Create a phase notes document in `hld/notes/` (using `hld/templates/phase-notes-template.md` as a template) if not already created
+4. Create a branch for the phase (e.g., `git checkout -b phase-0`) if not already done
+5. Review all LLD documents referenced in the "Key LLD References" section for that phase in the implementation roadmap
 
 ### Step 2: Implement Tasks
 
@@ -33,7 +40,7 @@ For each task listed in the phase plan:
 1. Check the task details in the phase implementation plan
 2. For design information, consult the corresponding LLD document in the `lld/` directory as referenced in the implementation roadmap
 3. Follow the directory structure in `hld/directory-structure-v1.0.md` to know where to place new code
-4. Implement the task following the cycle defined in `ignore/phase-implementation-cycle-v1.0.md`:
+4. Implement the task following the cycle defined in `hld/phase-implementation-cycle-v1.0.md`:
    - Set up the functionality locally
    - Create and run local tests
    - Update documentation
@@ -72,6 +79,61 @@ When all tasks in a phase are complete:
 3. Confirm all documentation is updated
 4. Create a pull request to merge the phase branch into the main branch
 5. Move on to the next phase
+
+## The Standard Implementation Cycle
+
+The implementation cycle defined in `hld/phase-implementation-cycle-v1.0.md` must be followed for each task in order:
+
+1. **Setup New Implementation / Functionality Locally**
+   - Use the existing virtual environment
+   - Implement new features according to the phase requirements
+   - Follow the architecture and design patterns established in the roadmap
+   - Ensure code quality and adherence to project standards
+
+2. **Create and Run Local Tests**
+   - Develop comprehensive test cases for the new functionality
+   - Run tests in the local environment
+   - Log test results in the appropriate phase testing folder
+   - Debug and fix any issues until all tests pass
+   - Only proceed when all functionality is working correctly
+
+3. **Update Documentation**
+   - Update progress information in roadmap and phase docs
+   - Use green emoji ticks ✅ to highlight completed items
+   - Update any relevant diagrams to reflect the current state
+   - Document any challenges encountered and their solutions
+   - Note any deviations from the original plan and their justification
+
+4. **Commit Changes to Git Repository**
+   - For Phase 1: Create a new git repository if not already done
+   - For subsequent phases: Branch off main branch with phase name
+   - Follow proper commit message conventions
+   - Include appropriate documentation updates in commits
+
+5. **Deploy to AWS**
+   - Use CDK to deploy new functionality to AWS
+   - Consider using CDK diff or other quick redeploy tools for incremental updates
+   - Ensure all necessary AWS resources are properly configured
+   - Verify deployment was successful
+
+6. **Create and Run AWS Tests**
+   - Develop test cases specific to the AWS environment
+   - Run tests against the deployed infrastructure
+   - Log test results in the appropriate phase testing folder
+   - Debug and fix any issues until all tests pass
+   - Only proceed when all functionality is working correctly in AWS
+
+7. **Update AWS Documentation**
+   - Update progress information in roadmap, phase, and AWS docs
+   - Use green emoji ticks ✅ to highlight completed items
+   - Update any relevant AWS diagrams to reflect the current state
+   - Document any AWS-specific challenges encountered and their solutions
+   - Note any deviations from the original deployment plan
+
+8. **Commit Final Changes**
+   - Commit all final changes to the git repository on the relevant phase branch
+   - Include updated documentation and test results
+   - Consider creating a pull request for merging into the main branch when the phase is complete
 
 ## Documentation Maintenance
 
@@ -174,5 +236,6 @@ The LLD references in the implementation roadmap are critical to successful impl
 - Ensure all code has appropriate tests
 - Follow the directory structure defined in `hld/directory-structure-v1.0.md`
 - Refer to the LLD documents linked in the implementation roadmap for each phase
+- Always check the current progress (green ticks ✅) before starting work to ensure you're working on the correct task
 
 By following this guide, you will systematically implement the AI Multi-Communications Engine according to the defined roadmap and architecture. 
