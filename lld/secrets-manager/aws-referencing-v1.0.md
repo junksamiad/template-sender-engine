@@ -150,53 +150,162 @@ The Channel Router includes these references in the context object:
 The Processing Engine retrieves values using the references only when needed:
 
 ```javascript
-// Get channel-specific credentials
+/**
+ * Get channel-specific credentials from Secrets Manager
+ * @param {object} channelConfig - Channel configuration from context object
+ * @returns {Promise<object>} Channel credentials
+ * @throws {Error} If credentials cannot be retrieved
+ */
 async function getChannelCredentials(channelConfig) {
-  const secretsManager = new AWS.SecretsManager();
-  
-  let whatsappCredentials = null;
-  if (channelConfig.whatsapp) {
-    const response = await secretsManager.getSecretValue({
-      SecretId: channelConfig.whatsapp.whatsapp_credentials_id
-    }).promise();
+  try {
+    const secretsManager = new AWS.SecretsManager();
     
-    whatsappCredentials = JSON.parse(response.SecretString);
+    let whatsappCredentials = null;
+    if (channelConfig.whatsapp) {
+      // Create a promise that rejects after timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Secrets Manager timeout')), 5000);
+      });
+      
+      // Race the API call against the timeout
+      const response = await Promise.race([
+        secretsManager.getSecretValue({
+          SecretId: channelConfig.whatsapp.whatsapp_credentials_id
+        }).promise(),
+        timeoutPromise
+      ]);
+      
+      whatsappCredentials = JSON.parse(response.SecretString);
+      
+      // Validate required fields
+      if (!whatsappCredentials.twilio_account_sid || !whatsappCredentials.twilio_auth_token) {
+        throw new Error('Invalid WhatsApp credentials structure');
+      }
+    }
+    
+    return whatsappCredentials;
+  } catch (error) {
+    console.error('Error retrieving channel credentials:', {
+      error_message: error.message,
+      error_code: error.code,
+      channel_type: channelConfig.whatsapp ? 'whatsapp' : 'unknown'
+    });
+    
+    // Categorize and throw appropriate error
+    if (error.code === 'DecryptionFailureException') {
+      throw new Error('Unable to decrypt channel credentials');
+    }
+    if (error.code === 'InternalServiceError') {
+      throw new Error('Secrets Manager service error');
+    }
+    if (error.message === 'Secrets Manager timeout') {
+      throw new Error('Credentials retrieval timed out');
+    }
+    
+    throw new Error(`Failed to retrieve channel credentials: ${error.message}`);
   }
-  
-  return whatsappCredentials;
 }
 
-// Get AI API key separately
+/**
+ * Get AI API key from Secrets Manager
+ * @param {object} aiConfig - AI configuration from context object
+ * @returns {Promise<object>} AI credentials
+ * @throws {Error} If credentials cannot be retrieved
+ */
 async function getAiCredentials(aiConfig) {
-  const secretsManager = new AWS.SecretsManager();
-  
-  const response = await secretsManager.getSecretValue({
-    SecretId: aiConfig.ai_api_key_reference
-  }).promise();
-  
-  return JSON.parse(response.SecretString);
+  try {
+    const secretsManager = new AWS.SecretsManager();
+    
+    // Create a promise that rejects after timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Secrets Manager timeout')), 5000);
+    });
+    
+    // Race the API call against the timeout
+    const response = await Promise.race([
+      secretsManager.getSecretValue({
+        SecretId: aiConfig.ai_api_key_reference
+      }).promise(),
+      timeoutPromise
+    ]);
+    
+    const credentials = JSON.parse(response.SecretString);
+    
+    // Validate required fields
+    if (!credentials.ai_api_key) {
+      throw new Error('Invalid AI credentials structure');
+    }
+    
+    return credentials;
+  } catch (error) {
+    console.error('Error retrieving AI credentials:', {
+      error_message: error.message,
+      error_code: error.code,
+      reference: aiConfig.ai_api_key_reference
+    });
+    
+    // Categorize and throw appropriate error
+    if (error.code === 'DecryptionFailureException') {
+      throw new Error('Unable to decrypt AI credentials');
+    }
+    if (error.code === 'InternalServiceError') {
+      throw new Error('Secrets Manager service error');
+    }
+    if (error.message === 'Secrets Manager timeout') {
+      throw new Error('Credentials retrieval timed out');
+    }
+    
+    throw new Error(`Failed to retrieve AI credentials: ${error.message}`);
+  }
 }
 
-// Usage example
+/**
+ * Process message using channel and AI credentials
+ * @param {object} contextObject - Full context object
+ * @returns {Promise<void>}
+ */
 async function processMessage(contextObject) {
-  // Get channel credentials based on channel type
-  const channelCredentials = await getChannelCredentials(contextObject.channel_config);
-  
-  // Get AI credentials (global)
-  const aiCredentials = await getAiCredentials(contextObject.ai_config);
-  
-  // Initialize clients
-  const openai = new OpenAI({
-    apiKey: aiCredentials.ai_api_key
-  });
-  
-  const twilioClient = new twilio(
-    channelCredentials.twilio_account_sid,
-    channelCredentials.twilio_auth_token
-  );
-  
-  // Process message using both credential sets
-  // ...
+  try {
+    // Get channel credentials based on channel type
+    const channelCredentials = await getChannelCredentials(contextObject.channel_config);
+    
+    // Get AI credentials (global)
+    const aiCredentials = await getAiCredentials(contextObject.ai_config);
+    
+    // Initialize clients with timeout handling
+    const openai = new OpenAI({
+      apiKey: aiCredentials.ai_api_key,
+      timeout: 30000,  // 30 second timeout for OpenAI calls
+      maxRetries: 3    // Retry failed requests up to 3 times
+    });
+    
+    const twilioClient = new twilio(
+      channelCredentials.twilio_account_sid,
+      channelCredentials.twilio_auth_token,
+      {
+        timeout: 15000  // 15 second timeout for Twilio calls
+      }
+    );
+    
+    // Log successful client initialization
+    console.log('Clients initialized successfully', {
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      channel_type: contextObject.frontend_payload.request_data.channel_method
+    });
+    
+    // Process message using both credential sets
+    // ... rest of processing logic ...
+  } catch (error) {
+    // Log error with context
+    console.error('Error in message processing:', {
+      error_message: error.message,
+      conversation_id: contextObject.conversation_data?.conversation_id,
+      channel_type: contextObject.frontend_payload.request_data.channel_method
+    });
+    
+    // Rethrow for upstream handling
+    throw error;
+  }
 }
 ```
 
