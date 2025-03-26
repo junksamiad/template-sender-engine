@@ -304,7 +304,7 @@ const emailConversation = {
 
 ## Status Lifecycle
 
-The `conversation_status` field uses a simplified approach with just three essential states:
+The `conversation_status` field uses a simplified approach with three essential states:
 
 1. **processing**: Initial state when conversation record is created. Indicates the message is being processed through the AI system and delivery channel.
 
@@ -313,12 +313,74 @@ The `conversation_status` field uses a simplified approach with just three essen
 3. **failed**: Set if message processing fails after multiple retry attempts and lands in the Dead Letter Queue (DLQ). This indicates a terminal error state.
 
 The status is updated at these key points:
-
 - **Initial Creation**: Set to "processing" when the conversation record is first created
 - **After Successful Delivery**: Updated to "initial_message_sent" after confirmation from Twilio/SendGrid
 - **After Processing Failure**: Updated to "failed" by the DLQ Processor Lambda when a message lands in the DLQ
 
-This streamlined approach minimizes writes to DynamoDB while maintaining visibility into the conversation state.
+## Example Record Structure
+
+```javascript
+{
+  // Primary keys
+  "recipient_tel": "+447700900123",
+  "conversation_id": "cucumber-recruitment#cv-analysis#550e8400-e29b-41d4-a716-446655440000#14155238886",
+  
+  // Core fields
+  "company_id": "cucumber-recruitment",
+  "project_id": "cv-analysis",
+  "company_name": "Cucumber Recruitment Ltd",
+  "project_name": "CV Analysis Bot",
+  "channel_method": "whatsapp",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "router_version": "1.0.0",
+  
+  // Channel configuration
+  "whatsapp_credentials_reference": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio",
+  "company_whatsapp_number": "+14155238886",
+  
+  // Status and tracking
+  "conversation_status": "initial_message_sent",
+  "task_complete": false,  // For use by downstream services
+  "thread_id": "thread_abc123def456",
+  
+  // Message history with all metrics contained within messages
+  "messages": [
+    {
+      "entry_id": "msg_67890abcdef12345...",
+      "message_timestamp": "2023-06-15T14:31:12.456Z",
+      "role": "assistant",
+      "content": "Template message sent with SID: SM1234567890abcdef...",
+      "ai_prompt_tokens": 2345,
+      "ai_completion_tokens": 156,
+      "ai_total_tokens": 2501,
+      "processing_time_ms": 4267
+    }
+  ],
+  
+  // Company representatives
+  "company_rep": {
+    "company_rep_1": "Carol",
+    "company_rep_2": "Mark",
+    "company_rep_3": null,
+    "company_rep_4": null,
+    "company_rep_5": null
+  },
+  
+  // AI configuration
+  "ai_config": {
+    "assistant_id_template_sender": "asst_Ds59ylP35Pn84pasJQVglC2Q",
+    "assistant_id_replies": "asst_Kw59ylP35Pn84pasJQVglXy7",
+    "assistant_id_3": null,
+    "assistant_id_4": null,
+    "assistant_id_5": null,
+    "ai_api_key_reference": "api_key_reference_value"
+  },
+  
+  // Timestamps
+  "created_at": "2023-06-15T14:30:45.123Z",
+  "updated_at": "2023-06-15T14:31:12.456Z"
+}
+```
 
 ## Secondary Indexes
 
