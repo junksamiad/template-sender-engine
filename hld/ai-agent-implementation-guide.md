@@ -31,6 +31,7 @@ This document serves as a concise guide for AI agents implementing the AI Multi-
 | Implementation Order | `hld/implementation-roadmap-v1.0.md` | Complete roadmap and phase order |
 | Implementation Methodology | `hld/phase-implementation-cycle-v1.0.md` | Standard process for each task |
 | Current Phase Plan | `hld/phases/phase<N>-implementation-plan-v1.0.md` | Specific tasks for current phase |
+| Test Configuration | `hld/test-environment-config.md` | Test accounts and credentials setup |
 | LLD Documents | `lld/` | Low-level design documents referenced in roadmap |
 | Phase Notes Template | `hld/templates/phase-notes-template.md` | Template for phase notes |
 | Component Documentation Template | `hld/templates/component-doc-template.md` | Template for component docs |
@@ -49,7 +50,11 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
 **CRITICAL: IMPLEMENT ONE SECTION AT A TIME**
 
 1. Work on a single section of the current phase plan at a time (e.g., Section 1.1, then 1.2, etc.)
-2. For each section, complete the full implementation cycle before moving to the next section:
+2. Before starting implementation:
+   - Check `hld/test-environment-config.md` for required test accounts and credentials
+   - Ensure all necessary test configurations are available
+   - Request any missing credentials from the human supervisor
+3. For each section, complete the full implementation cycle before moving to the next section:
 
    1. Setup the functionality locally
    2. Create and run local tests
