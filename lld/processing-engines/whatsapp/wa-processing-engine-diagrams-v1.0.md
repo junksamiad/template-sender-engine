@@ -165,13 +165,26 @@ classDiagram
         +String conversation_id (Sort Key) 
         +String company_id
         +String project_id
+        +String company_name
+        +String project_name
+        +Map company_rep
         +String channel_method
         +String company_whatsapp_number
-        +String conversation_status
-        +String thread_id
-        +Message[] messages
         +String request_id
+        +String router_version
+        +String whatsapp_credentials_reference
+        +String sms_credentials_reference
+        +String email_credentials_reference
+        +String thread_id
+        +String conversation_status
+        +Message[] messages
         +Boolean task_complete
+        +String recipient_first_name
+        +String recipient_last_name
+        +Boolean comms_consent
+        +Map project_data
+        +Map ai_config
+        +Number processing_time_ms
         +String created_at
         +String updated_at
     }
@@ -184,9 +197,29 @@ classDiagram
         +Number ai_prompt_tokens
         +Number ai_completion_tokens
         +Number ai_total_tokens
+        +Number processing_time_ms
+    }
+    
+    class CompanyRep {
+        +String company_rep_1
+        +String company_rep_2
+        +String company_rep_3
+        +String company_rep_4
+        +String company_rep_5
+    }
+    
+    class AIConfig {
+        +String assistant_id_template_sender
+        +String assistant_id_replies
+        +String assistant_id_3
+        +String assistant_id_4
+        +String assistant_id_5
+        +String ai_api_key_reference
     }
     
     ConversationRecord "1" *-- "many" Message : contains
+    ConversationRecord "1" *-- "1" CompanyRep : contains
+    ConversationRecord "1" *-- "1" AIConfig : contains
 ```
 
 ## 13. Exponential Backoff for API Calls
