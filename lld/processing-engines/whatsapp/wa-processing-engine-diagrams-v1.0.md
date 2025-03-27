@@ -16,13 +16,13 @@ flowchart LR
     SM -.-> OAI
     SM -.-> TWI
     
-    subgraph Flow
+    subgraph Flow["Process Flow"]
         direction TB
-        f1["1. Create conversation record"]
-        f2["2. Update status to processing"]
-        f3["3. Update with OpenAI results"]
-        f4["4. Retrieve credentials"]
-        f5["5. Update with final status"]
+        STEP1["1. Create conversation record"]
+        STEP2["2. Update status to processing"]
+        STEP3["3. Update with OpenAI results"]
+        STEP4["4. Retrieve credentials"]
+        STEP5["5. Update with final status"]
     end
 ```
 
