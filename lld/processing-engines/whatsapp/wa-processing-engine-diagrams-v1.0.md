@@ -16,14 +16,10 @@ flowchart LR
     SM -.-> OAI
     SM -.-> TWI
     
-    subgraph Flow["Process Flow"]
-        direction TB
-        STEP1["1. Create conversation record"]
-        STEP2["2. Update status to processing"]
-        STEP3["3. Update with OpenAI results"]
-        STEP4["4. Retrieve credentials"]
-        STEP5["5. Update with final status"]
-    end
+    %% Process Steps Note
+    classDef noteClass fill:#ffffde,stroke:#aaaa33,stroke-width:1px
+    NOTE[Process Steps:<br>1. Create conversation record<br>2. Update status to processing<br>3. Update with OpenAI results<br>4. Retrieve credentials<br>5. Update with final status]
+    class NOTE noteClass
 ```
 
 Process flow:
