@@ -190,6 +190,13 @@ As you implement, maintain these documentation types:
 
 ## Phase-Specific Guidelines
 
+**IMPORTANT IMPLEMENTATION ORDER**: Follow these phases in this specific order:
+1. First implement Phases 0-3 (Environment Setup through WhatsApp Processing Engine)
+2. Then implement Phases 6-8 (DLQ Processing, Testing, and Documentation)
+3. Finally, return to Phases 4-5 (Email and SMS Processing Engines) as future enhancements
+
+This order ensures that the WhatsApp processing engine is fully implemented and robust before expanding to additional channels.
+
 ### Phase 0: Environment Setup and Infrastructure Preparation
 
 Focus on setting up the development environment and AWS infrastructure:
@@ -240,6 +247,73 @@ Implement the WhatsApp Processing Engine:
 
 Key LLD documents to reference:
 - All documents in `lld/processing-engines/whatsapp/` (01-09)
+
+### Phase 6: DLQ Processing and System Recovery
+
+Implement the Dead Letter Queue processor and recovery mechanisms:
+- Create DLQ processor Lambda
+- Develop error analysis and categorization
+- Implement retry mechanism for recoverable errors
+- Build system recovery processes
+
+Key LLD documents to reference:
+- `lld/processing-engines/whatsapp/07-error-handling-strategy.md`
+- `lld/processing-engines/whatsapp/08-monitoring-observability.md`
+- `lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md`
+- `lld/channel-router/error-handling-v1.0.md`
+
+### Phase 7: Comprehensive Testing and Optimization
+
+Focus on system-wide testing and performance optimization:
+- Implement end-to-end testing
+- Conduct load testing and failure testing
+- Optimize system performance
+- Enhance monitoring and observability
+
+Key LLD documents to reference:
+- `lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md`
+- `lld/processing-engines/whatsapp/08-monitoring-observability.md`
+- All component documentation for optimization targets
+
+### Phase 8: Documentation and Handover
+
+Complete comprehensive documentation and operational handover:
+- Finalize system documentation
+- Create operational procedures
+- Develop user guides and API documentation
+- Prepare frontend integration guides
+
+Key LLD documents to reference:
+- `lld/frontend/frontend-documentation-v1.0.md`
+- All component documentation for reference
+
+### Phase 4: Email Processing Engine (Future Implementation)
+
+Implement the Email Processing Engine after completing Phases 0-3 and 6-8:
+- Create the Email Lambda
+- Integrate with OpenAI for email content
+- Implement Email Service integration
+- Configure error handling and monitoring
+
+Key LLD documents to reference:
+- Similar to WhatsApp Processing Engine documents, but adapted for email
+- `lld/context-object/context-object-v1.0.md`
+- `lld/db/conversations-db-schema-v1.0.md`
+- `lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md`
+
+### Phase 5: SMS Processing Engine (Future Implementation)
+
+Implement the SMS Processing Engine after completing Phases 0-3 and 6-8:
+- Create the SMS Lambda
+- Integrate with OpenAI for SMS content
+- Implement SMS Service integration
+- Configure error handling and monitoring
+
+Key LLD documents to reference:
+- Similar to WhatsApp Processing Engine documents, but adapted for SMS
+- `lld/context-object/context-object-v1.0.md`
+- `lld/db/conversations-db-schema-v1.0.md`
+- `lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md`
 
 ## Handling Challenges
 

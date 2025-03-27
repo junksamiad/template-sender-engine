@@ -2,6 +2,15 @@
 
 This document serves as a high-level implementation plan for the AI Multi-Communications Engine, breaking down the development into logical phases following the components outlined in the High-Level Design. Each phase will have its own detailed implementation document with specific tasks, tests, and documentation requirements.
 
+## Implementation Order
+
+**IMPORTANT**: Phases should be implemented in the following order:
+1. First implement Phases 0-3 (Environment Setup through WhatsApp Processing Engine)
+2. Then implement Phases 6-8 (DLQ Processing, Testing, and Documentation)
+3. Finally, return to Phases 4-5 (Email and SMS Processing Engines) as future enhancements
+
+This order ensures that the WhatsApp processing engine is fully implemented with proper error handling and documentation before expanding to additional channels.
+
 ## Project Directory Structure
 
 ```
