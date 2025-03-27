@@ -1,7 +1,7 @@
 # Test Environment Configuration
 
 ## Overview
-This document outlines all test accounts, credentials, and configurations needed for local and AWS testing during implementation. The AI agent will reference this document when setting up test environments.
+This document outlines all test accounts, credentials, and configurations needed for local testing during implementation. The AI agent will reference this document when setting up the local test environment.
 
 ## Required Test Accounts
 
@@ -17,73 +17,40 @@ This document outlines all test accounts, credentials, and configurations needed
 - [ ] Assistant ID
 - [ ] Model Configuration
 
-### AWS Test Environment
-- [ ] AWS Account ID
-- [ ] Test Environment Region
-- [ ] IAM Role ARNs
-- [ ] Test SQS Queue URLs
-- [ ] Test DynamoDB Table Names
-
 ### Test Recipients
 - [ ] List of Test Phone Numbers
 - [ ] Test Email Addresses
 - [ ] Test Company IDs
 
-## Configuration Instructions
+## Local Testing Configuration
 
-### Local Testing
 1. Create a `.env.test` file in the root directory
 2. Add the following environment variables (values to be provided):
 ```
+# Twilio Configuration
 TWILIO_ACCOUNT_SID=
 TWILIO_AUTH_TOKEN=
-OPENAI_API_KEY=
-OPENAI_ASSISTANT_ID=
 TEST_PHONE_NUMBER=
 TEST_WEBHOOK_URL=
-```
 
-### AWS Testing
-1. Create a `test-config.json` file in the `config` directory
-2. Add the following configuration (values to be provided):
-```json
-{
-  "aws": {
-    "region": "",
-    "accountId": "",
-    "iamRole": "",
-    "sqsQueues": {
-      "whatsapp": "",
-      "email": "",
-      "sms": "",
-      "dlq": ""
-    },
-    "dynamoTables": {
-      "conversations": "",
-      "companyData": ""
-    }
-  },
-  "twilio": {
-    "accountSid": "",
-    "testNumbers": [],
-    "templates": []
-  },
-  "openai": {
-    "assistantId": "",
-    "model": "gpt-4-turbo-preview"
-  },
-  "testRecipients": {
-    "phones": [],
-    "emails": [],
-    "companyIds": []
-  }
-}
+# OpenAI Configuration
+OPENAI_API_KEY=
+OPENAI_ASSISTANT_ID=
+
+# Test Recipients
+TEST_RECIPIENT_PHONE=
+TEST_RECIPIENT_EMAIL=
+TEST_COMPANY_ID=
+
+# Local Development
+LOCAL_PORT=3000
+NODE_ENV=development
 ```
 
 ## Security Notes
 1. Never commit actual credentials to the repository
-2. Store all sensitive values in AWS Secrets Manager
-3. Use environment variables for local testing
+2. Keep `.env.test` in `.gitignore`
+3. Use environment variables for all sensitive data
 4. Rotate test credentials regularly
 
 ## Template Examples
@@ -98,6 +65,6 @@ Add approved message templates here when available:
 
 ## Next Steps
 1. Fill in the test account details above
-2. Configure local environment variables
-3. Set up AWS test environment
-4. Verify all test accounts are working 
+2. Configure local environment variables in `.env.test`
+3. Verify all test accounts are working locally
+4. Document any issues or missing configurations 
