@@ -8,7 +8,7 @@
 flowchart LR
     CR[Channel Router] --> SQS[WhatsApp SQS Queue]
     SQS --> WPE[WhatsApp Processing Engine]
-    WPE --> DDB[(DynamoDB\nConversations)]
+    WPE --> DDB[(DynamoDB<br>Conversations)]
     WPE --> OAI[OpenAI API]
     OAI --> TWI[Twilio API]
     TWI --> EU[End User]
@@ -17,12 +17,12 @@ flowchart LR
     SM -.-> TWI
     
     subgraph Flow
-    direction TB
-    f1[1. Create conversation record]
-    f2[2. Update status to processing]
-    f3[3. Update with OpenAI results]
-    f4[4. Retrieve credentials]
-    f5[5. Update with final status]
+        direction TB
+        f1["1. Create conversation record"]
+        f2["2. Update status to processing"]
+        f3["3. Update with OpenAI results"]
+        f4["4. Retrieve credentials"]
+        f5["5. Update with final status"]
     end
 ```
 
@@ -39,75 +39,77 @@ Process flow:
 
 ```mermaid
 flowchart LR
-    S1[SQS Message\nConsumption] --> S2[Create\nConversation\nRecord]
-    S2 --> S3[Process with\nOpenAI]
-    S3 --> S4[Send Template\nvia Twilio]
-    S4 --> S5[Update Final\nStatus]
+    S1["SQS Message<br>Consumption"] --> S2["Create<br>Conversation<br>Record"]
+    S2 --> S3["Process with<br>OpenAI"]
+    S3 --> S4["Send Template<br>via Twilio"]
+    S4 --> S5["Update Final<br>Status"]
 ```
 
 ## 3. SQS Heartbeat Pattern
 
 ```mermaid
 flowchart TD
-    SQS[SQS Queue] --> LF[Lambda Function]
-    LF --> PM[Process Message]
-    PM --> HB[Start Heartbeat Timer]
-    HB --> PO[Process OpenAI\n(Long-running)]
-    PO --> Success{Success?}
+    SQS["SQS Queue"] --> LF["Lambda Function"]
+    LF --> PM["Process Message"]
+    PM --> HB["Start Heartbeat Timer"]
+    HB --> PO["Process OpenAI<br>(Long-running)"]
+    PO --> Success{"Success?"}
     
-    PO --> EV[Every 5 minutes:\nExtend Visibility\nTimeout]
+    PO --> EV["Every 5 minutes:<br>Extend Visibility<br>Timeout"]
     EV --> PO
     
-    Success -->|Yes| CH[Clear Heartbeat\nDelete Message]
-    Success -->|No| CE[Clear Heartbeat\nRe-throw Error\n(SQS will retry)]
+    Success -->|Yes| CH["Clear Heartbeat<br>Delete Message"]
+    Success -->|No| CE["Clear Heartbeat<br>Re-throw Error<br>(SQS will retry)"]
 ```
 
 ## 4. Credential Management Flow
 
 ```mermaid
 flowchart LR
-    CO[Context Object\nwith Reference] --> SM[AWS Secrets\nManager]
-    SM --> CRED[API\nCredentials]
-    CRED --> INIT[API Client\nInitialization]
+    CO["Context Object<br>with Reference"] --> SM["AWS Secrets<br>Manager"]
+    SM --> CRED["API<br>Credentials"]
+    CRED --> INIT["API Client<br>Initialization"]
 ```
 
 ## 5. OpenAI Integration Flow
 
 ```mermaid
 flowchart LR
-    CT[Create OpenAI\nThread] --> AM[Add Context\nas Message]
-    AM --> CR[Create Run\nwith Assistant]
-    CR --> PR[Poll Run\nUntil Complete]
-    PR --> PJ[Parse JSON\nResponse]
-    PJ --> ECV[Extract\nContent Vars]
+    CT["Create OpenAI<br>Thread"] --> AM["Add Context<br>as Message"]
+    AM --> CR["Create Run<br>with Assistant"]
+    CR --> PR["Poll Run<br>Until Complete"]
+    PR --> PJ["Parse JSON<br>Response"]
+    PJ --> ECV["Extract<br>Content Vars"]
 ```
 
 ## 6. Template Message Sending Flow
 
 ```mermaid
 flowchart LR
-    GWC[Get WhatsApp\nCredentials] --> ITC[Initialize\nTwilio Client]
-    ITC --> STM[Send Template\nMessage]
-    STM --> UC[Update\nConversation]
+    GWC["Get WhatsApp<br>Credentials"] --> ITC["Initialize<br>Twilio Client"]
+    ITC --> STM["Send Template<br>Message"]
+    STM --> UC["Update<br>Conversation"]
 ```
 
 ## 7. Error Handling Strategy
 
 ```mermaid
 flowchart TD
-    EO[Error Occurs] --> CE[Categorize Error]
-    CE --> DET[Determine Error Type]
+    EO["Error Occurs"] --> CE["Categorize Error"]
+    CE --> DET["Determine Error Type"]
     
-    DET --> TE[Transient Error]
-    DET --> PE[Permanent Error]
-    DET --> CE1[Configuration Error]
+    DET --> TE["Transient Error"]
+    DET --> PE["Permanent Error"]
+    DET --> CE1["Configuration Error"]
     
-    TE --> RWB[Retry with Backoff]
-    PE --> SD[Send to DLQ\nLog Details]
-    CE1 --> AOT[Alert Ops Team\nUpdate Status\nin DynamoDB]
+    TE --> RWB["Retry with Backoff"]
+    PE --> SD["Send to DLQ<br>Log Details"]
+    CE1 --> AOT["Alert Ops Team<br>Update Status<br>in DynamoDB"]
     
-    RWB --> MR{Max Retries?}
-    MR -->|Yes| SD2[Send to DLQ]
+    RWB --> MR{"Max Retries?"}
+    MR -->|Yes| SD2["Send to DLQ"]
+    MR -->|No| RAC["Retry API Call"]
+    RAC --> EO
 ```
 
 ## 8. Conversation Status Lifecycle
@@ -126,32 +128,32 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    SM[System Metrics\n& Logs] --> CW[CloudWatch\nLogs & Metrics]
-    CW --> CD[CloudWatch\nDashboards]
-    CD --> CA[CloudWatch\nAlarms]
-    CD --> SN[SNS\nNotifications]
+    SM["System Metrics<br>& Logs"] --> CW["CloudWatch<br>Logs & Metrics"]
+    CW --> CD["CloudWatch<br>Dashboards"]
+    CD --> CA["CloudWatch<br>Alarms"]
+    CD --> SN["SNS<br>Notifications"]
 ```
 
 ## 10. OpenAI Run Polling Loop
 
 ```mermaid
 flowchart TD
-    CR[Create Run] --> GRS[Get Run Status]
-    GRS --> SC{Status = queued,\nin_progress,\nor cancelling?}
-    SC -->|Yes| WB[Wait with Backoff]
+    CR["Create Run"] --> GRS["Get Run Status"]
+    GRS --> SC{"Status = queued,<br>in_progress,<br>or cancelling?"}
+    SC -->|Yes| WB["Wait with Backoff"]
     WB --> GRS
-    SC -->|No| CMP{Status =\ncompleted?}
-    CMP -->|Yes| GAR[Get Assistant Response]
-    GAR --> PJ[Parse JSON &\nExtract Vars]
-    CMP -->|No| HE[Handle Error]
+    SC -->|No| CMP{"Status =<br>completed?"}
+    CMP -->|Yes| GAR["Get Assistant Response"]
+    GAR --> PJ["Parse JSON &<br>Extract Vars"]
+    CMP -->|No| HE["Handle Error"]
 ```
 
 ## 11. Alarm Notification Flow
 
 ```mermaid
 flowchart LR
-    CWA[CloudWatch\nAlarm] --> SNS[SNS Topic]
-    SNS --> NOT[Email/SMS\nNotification]
+    CWA["CloudWatch<br>Alarm"] --> SNS["SNS Topic"]
+    SNS --> NOT["Email/SMS<br>Notification"]
 ```
 
 ## 12. DynamoDB Conversation Record Schema
@@ -191,15 +193,15 @@ classDiagram
 
 ```mermaid
 flowchart TD
-    API[API Call] --> SC{Success?}
-    SC -->|Yes| RR[Return Result]
-    SC -->|No| RE{Retryable\nError?}
-    RE -->|No| TE[Throw Error]
-    RE -->|Yes| MRE{Max Retries\nExceeded?}
-    MRE -->|Yes| TE2[Throw Error]
-    MRE -->|No| CD[Calculate Delay\nwith Backoff+Jitter]
-    CD --> WAIT[Wait]
-    WAIT --> RAC[Retry API Call]
+    API["API Call"] --> SC{"Success?"}
+    SC -->|Yes| RR["Return Result"]
+    SC -->|No| RE{"Retryable<br>Error?"}
+    RE -->|No| TE["Throw Error"]
+    RE -->|Yes| MRE{"Max Retries<br>Exceeded?"}
+    MRE -->|Yes| TE2["Throw Error"]
+    MRE -->|No| CD["Calculate Delay<br>with Backoff+Jitter"]
+    CD --> WAIT["Wait"]
+    WAIT --> RAC["Retry API Call"]
     RAC --> API
 ```
 
@@ -207,26 +209,26 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    REQ[API Request\nInitiated] --> TA{Tokens\nAvailable?}
-    TA -->|No| WFR[Wait for\nRefill]
+    REQ["API Request<br>Initiated"] --> TA{"Tokens<br>Available?"}
+    TA -->|No| WFR["Wait for<br>Refill"]
     WFR --> CT
-    TA -->|Yes| CT[Consume Token\nMake API Call]
-    CT --> CARH[Check API\nResponse\nHeaders]
-    CARH --> ARD[Adapt Rate\nBased on Data]
+    TA -->|Yes| CT["Consume Token<br>Make API Call"]
+    CT --> CARH["Check API<br>Response<br>Headers"]
+    CARH --> ARD["Adapt Rate<br>Based on Data"]
 ```
 
 ## 15. Circuit Breaker Pattern
 
 ```mermaid
 flowchart TD
-    REQ[API Request] --> CO{Circuit\nOpen?}
-    CO -->|Yes| FF[Fail Fast]
-    CO -->|No| CHO{Circuit\nHalf Open?}
-    CHO -->|Yes| ASR[Allow Single\nTest Request]
-    CHO -->|No| MAC[Make API Call]
+    REQ["API Request"] --> CO{"Circuit<br>Open?"}
+    CO -->|Yes| FF["Fail Fast"]
+    CO -->|No| CHO{"Circuit<br>Half Open?"}
+    CHO -->|Yes| ASR["Allow Single<br>Test Request"]
+    CHO -->|No| MAC["Make API Call"]
     ASR --> MAC
-    MAC --> CS{Call\nSuccessful?}
-    CS -->|Yes| RSC[Record Success\nClose Circuit]
-    CS -->|No| RF[Record Failure]
-    RF --> OCT[Open Circuit if\nThreshold Met]
+    MAC --> CS{"Call<br>Successful?"}
+    CS -->|Yes| RSC["Record Success<br>Close Circuit"]
+    CS -->|No| RF["Record Failure"]
+    RF --> OCT["Open Circuit if<br>Threshold Met"]
 ``` 
