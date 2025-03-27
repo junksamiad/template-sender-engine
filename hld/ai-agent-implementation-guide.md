@@ -46,16 +46,26 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
 
 ## Standard Implementation Process
 
-For each task, follow the cycle defined in `hld/phase-implementation-cycle-v1.0.md`:
+**CRITICAL: IMPLEMENT ONE SECTION AT A TIME**
 
-1. Setup the functionality locally
-2. Create and run local tests
-3. Update documentation
-4. Commit changes to Git
-5. Deploy to AWS
-6. Create and run AWS tests
-7. Update AWS documentation
-8. Commit final changes
+1. Work on a single section of the current phase plan at a time (e.g., Section 1.1, then 1.2, etc.)
+2. For each section, complete the full implementation cycle before moving to the next section:
+
+   1. Setup the functionality locally
+   2. Create and run local tests
+   3. Update documentation
+   4. Commit changes to Git
+   5. Deploy to AWS
+   6. Create and run AWS tests
+   7. Update AWS documentation
+   8. Commit final changes
+
+3. After completing a section:
+   - Summarize what was accomplished
+   - Identify any challenges or deviations
+   - **ALWAYS REQUEST HUMAN AUTHORIZATION before proceeding to the next section**
+
+**DO NOT attempt to implement multiple sections simultaneously or jump ahead in the plan.**
 
 ## Handling Challenges
 
@@ -85,4 +95,9 @@ When all tasks in a phase are complete:
 
 ## Begin Implementation
 
-Start by identifying which phase and task are next based on the green ticks (✅) in the implementation roadmap and phase plan documents. 
+1. Identify which phase and task are next based on the green ticks (✅) in the implementation roadmap and phase plan documents
+2. Work on only ONE section of the current phase plan
+3. Complete the ENTIRE implementation cycle for that section
+4. Present your work and request explicit authorization before proceeding to the next section
+
+Remember: Small, manageable chunks with human review between each section ensures the highest quality implementation. 
