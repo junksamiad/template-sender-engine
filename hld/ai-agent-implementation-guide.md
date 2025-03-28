@@ -14,6 +14,47 @@ Before any implementation or deployment, understand the credential management ap
 
 ⚠️ **DO NOT proceed with AWS deployment without first requesting credentials and explicit authorization!** ⚠️
 
+## ⚙️ VIRTUAL ENVIRONMENT REQUIREMENT ⚙️
+
+**ALWAYS use a Python virtual environment for ALL implementation work**
+
+### Virtual Environment Setup
+
+If no virtual environment exists:
+```bash
+# Create a virtual environment
+python -m venv venv
+
+# Activate the environment (macOS/Linux)
+source venv/bin/activate
+# OR (Windows)
+venv\Scripts\activate
+
+# Install dependencies if requirements file exists
+pip install -r requirements.txt
+```
+
+### For Every Implementation Session
+
+```bash
+# Always activate the virtual environment first
+source venv/bin/activate  # macOS/Linux
+# OR
+venv\Scripts\activate     # Windows
+```
+
+### When Adding New Dependencies
+
+```bash
+# Install package with specific version
+pip install package-name==1.2.3
+
+# Update requirements.txt
+pip freeze > requirements.txt
+```
+
+⚠️ **NEVER use the global Python environment for any project work** ⚠️
+
 ## Quick Start
 
 ### Immediate Action Steps
@@ -64,6 +105,7 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
 
 1. Work on a single section of the current phase plan at a time (e.g., Section 1.1, then 1.2, etc.)
 2. Before starting implementation:
+   - **Ensure the virtual environment is activated** (see Virtual Environment Requirement section)
    - Study the credential architecture in `lld/secrets-manager/aws-referencing-v1.0.md`
    - Request any necessary test credentials from the human supervisor
    - Set up mock data that follows the same structure for local testing
@@ -130,9 +172,17 @@ When all tasks in a phase are complete:
 
 ## Begin Implementation
 
-1. Identify which phase and task are next based on the green ticks (✅) in the implementation roadmap and phase plan documents
-2. Work on only ONE section of the current phase plan
-3. Complete the ENTIRE implementation cycle for that section
-4. Present your work and request explicit authorization before proceeding to the next section
+1. **Activate the virtual environment** (this is mandatory for every implementation session)
+   ```bash
+   # macOS/Linux
+   source venv/bin/activate
+   # OR Windows
+   venv\Scripts\activate
+   ```
+
+2. Identify which phase and task are next based on the green ticks (✅) in the implementation roadmap and phase plan documents
+3. Work on only ONE section of the current phase plan
+4. Complete the ENTIRE implementation cycle for that section
+5. Present your work and request explicit authorization before proceeding to the next section
 
 Remember: Small, manageable chunks with human review between each section ensures the highest quality implementation. 
