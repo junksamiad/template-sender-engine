@@ -129,7 +129,7 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
    1. Setup the functionality locally
    2. Create and run local tests
    3. Update documentation
-   4. Commit changes to Git
+   4. Make incremental Git commits with clear messages
    5. Before AWS deployment:
       - **STOP and request AWS credentials**
       - Document planned resources in the AWS resources document
@@ -137,14 +137,60 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
    6. Deploy to AWS
    7. Create and run AWS tests
    8. Update AWS documentation
-   9. Commit final changes
+   9. Make final Git commits for the section
 
-3. After completing a section:
+4. After completing a section:
    - Summarize what was accomplished
    - Identify any challenges or deviations
    - **ALWAYS REQUEST HUMAN AUTHORIZATION before proceeding to the next section**
 
 **DO NOT attempt to implement multiple sections simultaneously or jump ahead in the plan.**
+
+## Source Control and Git Practices
+
+Every phase should follow these git practices to maintain a clean and traceable development history:
+
+1. **Branch Management**:
+   - Create a dedicated branch for each phase (e.g., `phase-0`, `phase-1`, etc.)
+   ```bash
+   git checkout -b phase-N
+   ```
+   - Work exclusively on the phase branch until the phase is complete
+
+2. **Commit Practices**:
+   - Make incremental, logical commits during development
+   - Use clear, descriptive commit messages that explain what was done
+   - Include the phase and section reference in commit messages
+   ```bash
+   git commit -m "Phase N, Section X.Y: Brief description of changes"
+   ```
+
+3. **Phase Completion Process**:
+   - When the phase is complete, ensure all changes are committed
+   - Push the branch to the remote repository
+   ```bash
+   git push -u origin phase-N
+   ```
+   - Create a pull request for merging into the main branch
+   - Notify the human supervisor that the phase is ready for review
+
+4. **Preparing for Next Phase**:
+   - After the pull request is approved and merged:
+   - Switch back to the main branch and pull latest changes
+   ```bash
+   git checkout main
+   git pull origin main
+   ```
+   - Create a new branch for the next phase
+   ```bash
+   git checkout -b phase-N+1
+   ```
+
+These practices ensure that:
+- Each phase is isolated in its own branch
+- The development history is clear and traceable
+- Code review can be done at the phase level
+- The main branch always contains stable, completed phases
 
 ## Credential Management
 
@@ -182,8 +228,10 @@ When all tasks in a phase are complete:
 - Ensure all items are marked with green ticks (✅)
 - Verify all tests are passing
 - Confirm all documentation is updated
-- Create a pull request to merge into main branch
-- Move to the next phase in the implementation order
+- Push all changes to the git repository
+- Create a pull request for the phase branch
+- Request phase review from the human supervisor
+- Upon approval, prepare for the next phase
 
 ## Begin Implementation
 
