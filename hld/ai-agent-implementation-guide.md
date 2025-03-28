@@ -2,6 +2,18 @@
 
 This document serves as a concise guide for AI agents implementing the AI Multi-Communications Engine.
 
+## ⚠️ IMPORTANT CREDENTIAL MANAGEMENT ⚠️
+
+Before any implementation or deployment, understand the credential management approach:
+
+1. **Credential Architecture**: The system uses AWS Secrets Manager for all credentials, with references stored in DynamoDB. Study `lld/secrets-manager/aws-referencing-v1.0.md` and `hld/aws-secrets-summary.md` to understand this pattern.
+
+2. **Local Testing**: When implementing functionality locally, request necessary test credentials from the human supervisor. These should match the format defined in the secrets architecture.
+
+3. **AWS Production**: `hld/aws-production-credentials-template.md` contains the template for documenting AWS resources. The actual credentials will be provided by the human supervisor when needed.
+
+⚠️ **DO NOT proceed with AWS deployment without first requesting credentials and explicit authorization!** ⚠️
+
 ## Quick Start
 
 ### Immediate Action Steps
@@ -31,7 +43,9 @@ This document serves as a concise guide for AI agents implementing the AI Multi-
 | Implementation Order | `hld/implementation-roadmap-v1.0.md` | Complete roadmap and phase order |
 | Implementation Methodology | `hld/phase-implementation-cycle-v1.0.md` | Standard process for each task |
 | Current Phase Plan | `hld/phases/phase<N>-implementation-plan-v1.0.md` | Specific tasks for current phase |
-| Test Configuration | `hld/test-environment-config.md` | Test accounts and credentials setup |
+| **AWS SECRETS STRUCTURE** | `lld/secrets-manager/aws-referencing-v1.0.md` | Credential management architecture |
+| **SECRETS SUMMARY** | `hld/aws-secrets-summary.md` | Summary of secret structures |
+| **AWS RESOURCES DOCUMENT** | `hld/aws-production-credentials-template.md` | AWS resources documentation |
 | LLD Documents | `lld/` | Low-level design documents referenced in roadmap |
 | Phase Notes Template | `hld/templates/phase-notes-template.md` | Template for phase notes |
 | Component Documentation Template | `hld/templates/component-doc-template.md` | Template for component docs |
@@ -51,19 +65,23 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
 
 1. Work on a single section of the current phase plan at a time (e.g., Section 1.1, then 1.2, etc.)
 2. Before starting implementation:
-   - Check `hld/test-environment-config.md` for required test accounts and credentials
-   - Ensure all necessary test configurations are available
-   - Request any missing credentials from the human supervisor
+   - Study the credential architecture in `lld/secrets-manager/aws-referencing-v1.0.md`
+   - Request any necessary test credentials from the human supervisor
+   - Set up mock data that follows the same structure for local testing
 3. For each section, complete the full implementation cycle before moving to the next section:
 
    1. Setup the functionality locally
    2. Create and run local tests
    3. Update documentation
    4. Commit changes to Git
-   5. Deploy to AWS
-   6. Create and run AWS tests
-   7. Update AWS documentation
-   8. Commit final changes
+   5. Before AWS deployment:
+      - **STOP and request AWS credentials**
+      - Document planned resources in the AWS resources document
+      - Request explicit authorization for deployment
+   6. Deploy to AWS
+   7. Create and run AWS tests
+   8. Update AWS documentation
+   9. Commit final changes
 
 3. After completing a section:
    - Summarize what was accomplished
@@ -71,6 +89,20 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
    - **ALWAYS REQUEST HUMAN AUTHORIZATION before proceeding to the next section**
 
 **DO NOT attempt to implement multiple sections simultaneously or jump ahead in the plan.**
+
+## Credential Management
+
+When implementing functionality that requires credentials:
+
+1. **Follow the established pattern**: Use the AWS Secrets Manager reference architecture
+2. **For local testing**: Request test credentials from the human supervisor
+3. **For mock data**: Create data in the same format as the production system
+4. **Key files to review**:
+   - `lld/secrets-manager/aws-referencing-v1.0.md` (credential architecture)
+   - `lld/db/wa-company-data-db-schema-v1.0.md` (DB schema with credential references)
+   - `hld/aws-secrets-summary.md` (summary of secret structures)
+
+This ensures that local implementations match the production architecture.
 
 ## Handling Challenges
 
