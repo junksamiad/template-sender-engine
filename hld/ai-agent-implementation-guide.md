@@ -151,11 +151,19 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
 Every phase should follow these git practices to maintain a clean and traceable development history:
 
 1. **Branch Management**:
-   - Create a dedicated branch for each phase (e.g., `phase-0`, `phase-1`, etc.)
+   - Create a dedicated branch for each phase from the previous phase branch, not from main
+   - Always branch off the most recent phase branch:
    ```bash
-   git checkout -b phase-N
+   # Example: Creating phase-1 branch from phase-0 branch
+   git checkout phase-0
+   git checkout -b phase-1
+   
+   # Example: Creating phase-2 branch from phase-1 branch
+   git checkout phase-1
+   git checkout -b phase-2
    ```
    - Work exclusively on the phase branch until the phase is complete
+   - Do not pull from remote before creating a new branch as the local code is already the latest
 
 2. **Commit Practices**:
    - Make incremental, logical commits during development
@@ -171,26 +179,22 @@ Every phase should follow these git practices to maintain a clean and traceable 
    ```bash
    git push -u origin phase-N
    ```
-   - Create a pull request for merging into the main branch
+   - Create a pull request for merging into the previous phase branch
    - Notify the human supervisor that the phase is ready for review
 
 4. **Preparing for Next Phase**:
-   - After the pull request is approved and merged:
-   - Switch back to the main branch and pull latest changes
+   - DO NOT check out the main branch - each phase builds on the previous phase
+   - Create a new branch directly from the current phase branch:
    ```bash
-   git checkout main
-   git pull origin main
-   ```
-   - Create a new branch for the next phase
-   ```bash
-   git checkout -b phase-N+1
+   # While on phase-1 branch:
+   git checkout -b phase-2
    ```
 
-These practices ensure that:
-- Each phase is isolated in its own branch
-- The development history is clear and traceable
-- Code review can be done at the phase level
-- The main branch always contains stable, completed phases
+This branching strategy means:
+- Each phase's code is built on the previous phase
+- The main branch is only updated at major milestones
+- Code is always developed incrementally
+- We avoid losing work by never pulling down potentially outdated code
 
 ## Credential Management
 

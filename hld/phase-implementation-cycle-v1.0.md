@@ -27,11 +27,18 @@ This document outlines the standard cycle of steps to follow during each phase o
 ### 4. Git Repository Management
 - **Branch Management**:
   - For initial setup: Create the main repository if not already done
-  - For each phase: Create a dedicated phase branch
+  - For each new phase: Create a dedicated phase branch from the previous phase branch, not from main
     ```bash
-    git checkout -b phase-N
+    # Example: When starting Phase 1, branch from Phase 0
+    git checkout phase-0
+    git checkout -b phase-1
+    
+    # Example: When starting Phase 2, branch from Phase 1
+    git checkout phase-1
+    git checkout -b phase-2
     ```
-  - Work exclusively on the phase branch until the phase is complete
+  - Always branch from the most recent phase to ensure you have the latest code
+  - Do not pull from remote before creating a new branch as the local code is already up-to-date
 
 - **Commit Practices**:
   - Make incremental, logical commits during development
@@ -46,13 +53,9 @@ This document outlines the standard cycle of steps to follow during each phase o
     ```bash
     git push -u origin phase-N
     ```
-  - Create a pull request for merging into the main branch
-  - After approval and merge, prepare for the next phase by creating a new branch
-    ```bash
-    git checkout main
-    git pull origin main
-    git checkout -b phase-N+1
-    ```
+  - Create a pull request against the previous phase branch, not main
+  - The previous phase branch serves as the source of truth for completed work
+  - Main branch is only updated at major milestones
 
 ### 5. Deploy to AWS
 - Use CDK to deploy new functionality to AWS
@@ -93,4 +96,4 @@ When all steps in the implementation cycle have been completed successfully, the
 - ☐ All code committed and pushed to the repository
 - ☐ Pull request created for the phase branch
 - ☐ Phase review conducted and approved
-- ☐ New branch created for the next phase 
+- ☐ New branch created for the next phase directly from current phase branch 
