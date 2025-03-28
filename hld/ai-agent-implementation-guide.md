@@ -6,7 +6,7 @@ This document serves as a concise guide for AI agents implementing the AI Multi-
 
 Before any implementation or deployment, understand the credential management approach:
 
-1. **Credential Architecture**: The system uses AWS Secrets Manager for all credentials, with references stored in DynamoDB. Study `lld/secrets-manager/aws-referencing-v1.0.md` and `hld/aws-secrets-summary.md` to understand this pattern.
+1. **Credential Architecture**: The system uses AWS Secrets Manager for all credentials, with references stored in DynamoDB. Study `lld/secrets-manager/aws-referencing-v1.0.md` to understand this pattern.
 
 2. **Local Testing**: When implementing functionality locally, request necessary test credentials from the human supervisor. These should match the format defined in the secrets architecture.
 
@@ -43,8 +43,7 @@ Before any implementation or deployment, understand the credential management ap
 | Implementation Order | `hld/implementation-roadmap-v1.0.md` | Complete roadmap and phase order |
 | Implementation Methodology | `hld/phase-implementation-cycle-v1.0.md` | Standard process for each task |
 | Current Phase Plan | `hld/phases/phase<N>-implementation-plan-v1.0.md` | Specific tasks for current phase |
-| **AWS SECRETS STRUCTURE** | `lld/secrets-manager/aws-referencing-v1.0.md` | Credential management architecture |
-| **SECRETS SUMMARY** | `hld/aws-secrets-summary.md` | Summary of secret structures |
+| **AWS SECRETS ARCHITECTURE** | `lld/secrets-manager/aws-referencing-v1.0.md` | Credential management architecture |
 | **AWS RESOURCES DOCUMENT** | `hld/aws-production-credentials-template.md` | AWS resources documentation |
 | LLD Documents | `lld/` | Low-level design documents referenced in roadmap |
 | Phase Notes Template | `hld/templates/phase-notes-template.md` | Template for phase notes |
@@ -100,7 +99,6 @@ When implementing functionality that requires credentials:
 4. **Key files to review**:
    - `lld/secrets-manager/aws-referencing-v1.0.md` (credential architecture)
    - `lld/db/wa-company-data-db-schema-v1.0.md` (DB schema with credential references)
-   - `hld/aws-secrets-summary.md` (summary of secret structures)
 
 This ensures that local implementations match the production architecture.
 
