@@ -76,6 +76,19 @@ pip freeze > requirements.txt
    - Create phase branch if not already done
    - Begin with the first uncompleted task
 
+## Documentation Organization
+
+**IMPORTANT**: Maintain consistent documentation organization
+
+1. **Phase Notes**: All implementation notes, progress tracking, and phase-specific documentation must be stored in the `hld/notes/` directory using the following naming conventions:
+   - Phase progress notes: `hld/notes/phase<N>-notes.md`
+   - Phase AWS resources: `hld/notes/phase<N>-aws-resources.md`
+   - Phase technical documentation: `hld/notes/phase<N>-<document-name>.md`
+
+2. **Implementation Plans**: Phase implementation plans remain in the `hld/phases/` directory.
+
+3. **Component Documentation**: Component-specific documentation belongs in the appropriate LLD directory.
+
 ## Key Files Reference
 
 | Purpose | File Path | Description |
@@ -84,6 +97,8 @@ pip freeze > requirements.txt
 | Implementation Order | `hld/implementation-roadmap-v1.0.md` | Complete roadmap and phase order |
 | Implementation Methodology | `hld/phase-implementation-cycle-v1.0.md` | Standard process for each task |
 | Current Phase Plan | `hld/phases/phase<N>-implementation-plan-v1.0.md` | Specific tasks for current phase |
+| Current Phase Notes | `hld/notes/phase<N>-notes.md` | Progress tracking for current phase |
+| Current Phase AWS Resources | `hld/notes/phase<N>-aws-resources.md` | AWS resources for current phase |
 | **AWS SECRETS ARCHITECTURE** | `lld/secrets-manager/aws-referencing-v1.0.md` | Credential management architecture |
 | **AWS RESOURCES DOCUMENT** | `hld/aws-production-credentials-template.md` | AWS resources documentation |
 | LLD Documents | `lld/` | Low-level design documents referenced in roadmap |

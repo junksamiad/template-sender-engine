@@ -35,6 +35,7 @@ hld/
 ├── implementation-roadmap-v1.0.md       # Implementation roadmap
 ├── diagrams-v1.0.md                     # System architecture diagrams
 ├── directory-structure-v1.0.md          # This file
+├── ai-agent-implementation-guide.md     # Guide for AI agent implementation
 ├── phases/                              # Phase-specific implementation plans
 │   ├── phase0-implementation-plan-v1.0.md
 │   ├── phase1-implementation-plan-v1.0.md
@@ -44,8 +45,10 @@ hld/
 │   ├── phase-notes-template.md
 │   └── component-doc-template.md
 └── notes/                               # Implementation notes by phase
-    ├── phase0-notes.md
-    ├── phase1-notes.md
+    ├── phase0-notes.md                  # Phase 0 progress tracking and learnings
+    ├── phase0-aws-resources.md          # Phase 0 AWS resources documentation
+    ├── phase1-notes.md                  # Phase 1 progress tracking and learnings
+    ├── phase1-aws-resources.md          # Phase 1 AWS resources documentation
     └── ...
 ```
 
@@ -238,6 +241,20 @@ docs/
     ├── monitoring-guide.md              # Monitoring guide
     └── troubleshooting-guide.md         # Troubleshooting guide
 ```
+
+## Documentation Organization Guidelines
+
+For consistent documentation:
+
+1. **Phase Implementation Plans**: Located in `hld/phases/` - define tasks, deliverables, and requirements for each phase
+2. **Phase Implementation Notes**: Located in `hld/notes/` - track progress, decisions, challenges and lessons learned
+3. **AWS Resources Documentation**: Phase-specific AWS resources documented in `hld/notes/phase<N>-aws-resources.md`
+4. **Component Documentation**: Component-specific details in relevant LLD directories
+
+This structure ensures clear separation between:
+- What to implement (implementation plans)
+- How it's being implemented (implementation notes)
+- What was created (AWS resources documentation)
 
 ## Implementation Notes
 
