@@ -24,12 +24,35 @@ This document outlines the standard cycle of steps to follow during each phase o
 - Document any challenges encountered and their solutions
 - Note any deviations from the original plan and their justification
 
-### 4. Commit Changes to Git Repository
-- For Phase 1: Create a new git repository if not already done
-- For subsequent phases: Branch off main branch with phase name
-  - Example: `phase-2` branch for Phase 2
-- Follow proper commit message conventions
-- Include appropriate documentation updates in commits
+### 4. Git Repository Management
+- **Branch Management**:
+  - For initial setup: Create the main repository if not already done
+  - For each phase: Create a dedicated phase branch
+    ```bash
+    git checkout -b phase-N
+    ```
+  - Work exclusively on the phase branch until the phase is complete
+
+- **Commit Practices**:
+  - Make incremental, logical commits during development
+  - Follow proper commit message conventions
+    ```bash
+    git commit -m "Phase N, Section X.Y: Brief description of changes"
+    ```
+  - Include relevant documentation updates with code changes
+
+- **Phase Completion**:
+  - When the phase is complete, push the branch to the remote repository
+    ```bash
+    git push -u origin phase-N
+    ```
+  - Create a pull request for merging into the main branch
+  - After approval and merge, prepare for the next phase by creating a new branch
+    ```bash
+    git checkout main
+    git pull origin main
+    git checkout -b phase-N+1
+    ```
 
 ### 5. Deploy to AWS
 - Use CDK to deploy new functionality to AWS
@@ -51,11 +74,23 @@ This document outlines the standard cycle of steps to follow during each phase o
 - Document any AWS-specific challenges encountered and their solutions
 - Note any deviations from the original deployment plan
 
-### 8. Commit Final Changes
-- Commit all final changes to the git repository on the relevant phase branch
-- Include updated documentation and test results
-- Consider creating a pull request for merging into the main branch when the phase is complete
+### 8. Final Phase Review and Handoff
+- Verify all implementation steps are complete and documented
+- Ensure all tests are passing in both local and AWS environments
+- Confirm all phase documentation is updated with green ticks
+- Create comprehensive summary of the phase implementation
+- Request formal review from the human supervisor
+- Address any feedback or requested changes
+- Once approved, the phase is considered complete
 
 ## Phase Completion
 
-When all steps in the implementation cycle have been completed successfully, the phase can be considered complete. A final review should be conducted before moving on to the next phase to ensure all objectives have been met and properly documented. 
+When all steps in the implementation cycle have been completed successfully, the phase can be considered complete. A final review should be conducted before moving on to the next phase to ensure all objectives have been met and properly documented. The following checklist should be completed:
+
+- ☐ All implementation tasks marked with green ticks (✅)
+- ☐ All local and AWS tests passing successfully
+- ☐ All documentation updated appropriately
+- ☐ All code committed and pushed to the repository
+- ☐ Pull request created for the phase branch
+- ☐ Phase review conducted and approved
+- ☐ New branch created for the next phase 
