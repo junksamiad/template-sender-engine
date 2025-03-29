@@ -7,7 +7,7 @@ against cascading failures when interacting with external services.
 import time
 import functools
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Set
 
 import structlog
 
@@ -33,12 +33,16 @@ class CircuitBreaker:
     service and periodically testing if the service has recovered.
     """
     
+    # Registry of all circuit breakers to support global operations
+    _registry: Dict[str, 'CircuitBreaker'] = {}
+    
     def __init__(
         self,
         name: str,
         failure_threshold: int = 5,
         reset_timeout_seconds: int = 30,
-        half_open_max_calls: int = 1
+        half_open_max_calls: int = 1,
+        excluded_exceptions: Optional[Set[type]] = None
     ):
         """
         Initialize the circuit breaker.
@@ -48,11 +52,13 @@ class CircuitBreaker:
             failure_threshold: Number of failures before opening circuit
             reset_timeout_seconds: Time to wait before testing recovery
             half_open_max_calls: Maximum calls allowed in half-open state
+            excluded_exceptions: Exception types that should not count as failures
         """
         self.name = name
         self.failure_threshold = failure_threshold
         self.reset_timeout_seconds = reset_timeout_seconds
         self.half_open_max_calls = half_open_max_calls
+        self.excluded_exceptions = excluded_exceptions or set()
         
         # State management
         self.state = CircuitState.CLOSED
@@ -60,6 +66,12 @@ class CircuitBreaker:
         self.last_failure_time = 0
         self.last_success_time = 0
         self.half_open_calls = 0
+        self.total_successes = 0
+        self.total_failures = 0
+        self.consecutive_successes = 0
+        
+        # Register this circuit breaker
+        CircuitBreaker._registry[name] = self
         
         logger.info(
             "Circuit breaker initialized",
@@ -96,6 +108,15 @@ class CircuitBreaker:
             
             return result
         except Exception as e:
+            # If exception type is excluded, don't count as failure
+            if type(e) in self.excluded_exceptions:
+                logger.info(
+                    "Exception excluded from circuit breaker failure count",
+                    circuit_name=self.name,
+                    exception_type=type(e).__name__
+                )
+                raise
+            
             # Record failure
             self._record_failure()
             
@@ -109,6 +130,67 @@ class CircuitBreaker:
         This would be implemented for async functions.
         """
         raise NotImplementedError("Async circuit breaker not implemented yet")
+    
+    def reset(self) -> None:
+        """
+        Manually reset the circuit breaker to closed state.
+        
+        This can be used for administrative purposes to force reset a circuit.
+        """
+        old_state = self.state
+        self.state = CircuitState.CLOSED
+        self.failures = 0
+        self.half_open_calls = 0
+        
+        logger.info(
+            "Circuit manually reset to CLOSED state",
+            circuit_name=self.name,
+            previous_state=old_state.value
+        )
+    
+    def force_open(self) -> None:
+        """
+        Manually force the circuit into the open state.
+        
+        This can be used for administrative purposes or for testing.
+        """
+        old_state = self.state
+        self.state = CircuitState.OPEN
+        self.last_failure_time = time.time()
+        
+        logger.info(
+            "Circuit manually forced to OPEN state",
+            circuit_name=self.name,
+            previous_state=old_state.value
+        )
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """
+        Get metrics about the circuit breaker's current state and history.
+        
+        Returns:
+            Dictionary with circuit metrics
+        """
+        current_time = time.time()
+        
+        return {
+            "name": self.name,
+            "state": self.state.value,
+            "failures": self.failures,
+            "total_failures": self.total_failures,
+            "total_successes": self.total_successes,
+            "consecutive_successes": self.consecutive_successes,
+            "time_since_last_failure_seconds": (
+                current_time - self.last_failure_time if self.last_failure_time > 0 else None
+            ),
+            "time_since_last_success_seconds": (
+                current_time - self.last_success_time if self.last_success_time > 0 else None
+            ),
+            "half_open_calls": self.half_open_calls,
+            "failure_threshold": self.failure_threshold,
+            "reset_timeout_seconds": self.reset_timeout_seconds,
+            "half_open_max_calls": self.half_open_max_calls,
+        }
     
     def _check_state(self) -> None:
         """
@@ -181,6 +263,8 @@ class CircuitBreaker:
     def _record_success(self) -> None:
         """Record a successful operation and potentially reset the circuit."""
         self.last_success_time = time.time()
+        self.total_successes += 1
+        self.consecutive_successes += 1
         
         if self.state == CircuitState.HALF_OPEN:
             # Reset the circuit on success in half-open state
@@ -195,6 +279,8 @@ class CircuitBreaker:
     def _record_failure(self) -> None:
         """Record a failed operation and potentially open the circuit."""
         self.failures += 1
+        self.total_failures += 1
+        self.consecutive_successes = 0
         self.last_failure_time = time.time()
         
         if self.state == CircuitState.CLOSED and self.failures >= self.failure_threshold:
@@ -216,6 +302,35 @@ class CircuitBreaker:
                 "Circuit OPENED from HALF_OPEN state due to failure",
                 circuit_name=self.name
             )
+    
+    @classmethod
+    def get_circuit(cls, name: str) -> Optional['CircuitBreaker']:
+        """
+        Get a registered circuit breaker by name.
+        
+        Args:
+            name: Name of the circuit breaker
+            
+        Returns:
+            Circuit breaker instance or None if not found
+        """
+        return cls._registry.get(name)
+    
+    @classmethod
+    def get_all_circuits(cls) -> Dict[str, 'CircuitBreaker']:
+        """
+        Get all registered circuit breakers.
+        
+        Returns:
+            Dictionary mapping circuit breaker names to instances
+        """
+        return cls._registry.copy()
+    
+    @classmethod
+    def reset_all_circuits(cls) -> None:
+        """Reset all registered circuit breakers to CLOSED state."""
+        for circuit in cls._registry.values():
+            circuit.reset()
 
 
 def circuit_protected(circuit_breaker: CircuitBreaker):
