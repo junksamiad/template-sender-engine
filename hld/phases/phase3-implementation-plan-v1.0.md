@@ -56,6 +56,7 @@ This document outlines the detailed implementation steps for Phase 3 of the AI M
 **Relevant Documentation:**
 - [SQS Integration](../../lld/processing-engines/whatsapp/02-sqs-integration.md) - Context extraction
 - [Context Object](../../lld/context-object/context-object-v1.0.md) - Context object structure
+- [Context Object Implementation](../../lld/context-object/context-object-implementation-v1.0.md) - Context object deserialization and validation
 
 - [ ] Extract context object from SQS message
 - [ ] Validate context object structure

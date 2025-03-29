@@ -16,11 +16,14 @@ This document outlines the detailed implementation steps for Phase 2 of the AI M
 - [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - The complete system architecture and overview
 
 ### Low-Level Design
-- [Channel Router Documentation](../../lld/channel-router/channel-router-documentation-v1.0.md) - Detailed router architecture
-- [Channel Router Diagrams](../../lld/channel-router/channel-router-diagrams-v1.0.md) - Visual representation of the router
-- [Error Handling](../../lld/channel-router/error-handling-v1.0.md) - Router error handling strategy
-- [Message Queue Architecture](../../lld/channel-router/message-queue-architecture-v1.0.md) - Queue design and configuration
+- [Channel Router Documentation](../../lld/channel-router/channel-router-documentation-v1.0.md) - Detailed Channel Router design
+- [Channel Router Diagrams](../../lld/channel-router/channel-router-diagrams-v1.0.md) - Visual representations of the Channel Router flows
+- [Error Handling](../../lld/channel-router/error-handling-v1.0.md) - Error handling strategies for the Channel Router
+- [Message Queue Architecture](../../lld/channel-router/message-queue-architecture-v1.0.md) - SQS queue design and implementation
+- [WA Company Data DB Schema](../../lld/db/wa-company-data-db-schema-v1.0.md) - Database schema for company/project lookups
 - [Context Object](../../lld/context-object/context-object-v1.0.md) - Context object structure and usage
+- [Context Object Implementation](../../lld/context-object/context-object-implementation-v1.0.md) - Context object implementation details
+- [AWS Referencing](../../lld/secrets-manager/aws-referencing-v1.0.md) - Secrets referencing architecture
 
 ## Implementation Steps
 
@@ -98,10 +101,11 @@ This document outlines the detailed implementation steps for Phase 2 of the AI M
 - [ ] Implement authentication caching if appropriate
 - [ ] Create security error handling
 
-#### 2.4 Create Context Object Generation ⬜
+#### 2.4 Implement Context Object Creation ⬜
 **Relevant Documentation:**
 - [Context Object](../../lld/context-object/context-object-v1.0.md) - Context object creation
-- [Channel Router Documentation](../../lld/channel-router/channel-router-documentation-v1.0.md) - Context creation section
+- [Context Object Implementation](../../lld/context-object/context-object-implementation-v1.0.md) - Context object instantiation and serialization
+- [WA Company Data DB Schema](../../lld/db/wa-company-data-db-schema-v1.0.md) - Database schema for company data
 
 - [ ] Extract request information for context
 - [ ] Populate context object with company data

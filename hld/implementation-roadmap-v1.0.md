@@ -154,6 +154,7 @@ This phase implements the WhatsApp Processing Engine for handling WhatsApp messa
 #### 3.1 Define Context Object Schema ✅
 **Relevant Documentation:**
 - [Context Object](../lld/context-object/context-object-v1.0.md) - Complete context object structure
+- [Context Object Implementation](../lld/context-object/context-object-implementation-v1.0.md) - Context object implementation details
 - [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.2 Context Object Flow
 
 - [x] Create TypeScript interfaces for context object
@@ -164,6 +165,7 @@ This phase implements the WhatsApp Processing Engine for handling WhatsApp messa
 #### 3.2 Implement Context Utilities ✅
 **Relevant Documentation:**
 - [Context Object](../lld/context-object/context-object-v1.0.md) - Context object utilities
+- [Context Object Implementation](../lld/context-object/context-object-implementation-v1.0.md) - Helper methods and utility functions
 
 - [x] Create context object factory
 - [x] Build context enrichment utilities
@@ -173,6 +175,7 @@ This phase implements the WhatsApp Processing Engine for handling WhatsApp messa
 #### 3.3 Test Context Implementation ✅
 **Relevant Documentation:**
 - [Context Object](../lld/context-object/context-object-v1.0.md) - Testing considerations
+- [Context Object Implementation](../lld/context-object/context-object-implementation-v1.0.md) - Testing approach and examples
 
 - [x] Create unit tests for context creation
 - [x] Test context validation edge cases
@@ -202,6 +205,7 @@ This phase implements the Email Processing Engine for handling email messages.
 **Key LLD References:**
 - Similar to WhatsApp Processing Engine documents, but adapted for email
 - [Context Object](../lld/context-object/context-object-v1.0.md)
+- [Context Object Implementation](../lld/context-object/context-object-implementation-v1.0.md)
 - [Conversations DB Schema](../lld/db/conversations-db-schema-v1.0.md)
 - [CloudWatch Dashboard Setup](../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md)
 
@@ -228,6 +232,7 @@ This phase implements the SMS Processing Engine for handling SMS messages.
 **Key LLD References:**
 - Similar to WhatsApp Processing Engine documents, but adapted for SMS
 - [Context Object](../lld/context-object/context-object-v1.0.md)
+- [Context Object Implementation](../lld/context-object/context-object-implementation-v1.0.md)
 - [Conversations DB Schema](../lld/db/conversations-db-schema-v1.0.md)
 - [CloudWatch Dashboard Setup](../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md)
 
