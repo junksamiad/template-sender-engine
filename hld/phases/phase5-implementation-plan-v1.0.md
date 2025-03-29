@@ -14,11 +14,28 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - Create robust error handling strategies
 - Implement monitoring and observability
 
+## Key Documentation References
+
+### High-Level Design
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - The complete system architecture and overview
+
+### Low-Level Design
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Context object structure and usage
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Detailed schema for the conversations table
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Monitoring configuration
+- WhatsApp Processing Engine documents (to be adapted for SMS):
+  - Similar patterns should be followed from the WhatsApp engine implementation
+  - Future documentation will be created specifically for SMS processing
+
 ## Implementation Steps
 
 ### 1. SMS Lambda Implementation
 
 #### 1.1 Set Up Lambda Function ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 4.3.3 SMS Processing Engine
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Context object handling
+
 - [ ] Create SMS Lambda resource in CDK
 - [ ] Configure Lambda environment variables
 - [ ] Set up Lambda execution role with necessary permissions
@@ -26,6 +43,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Set up Lambda logging
 
 #### 1.2 Implement SQS Message Consumption ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 4.2 Message Queues
+- WhatsApp SQS Integration (to be adapted for SMS)
+
 - [ ] Create SQS event source mapping
 - [ ] Implement message parsing and validation
 - [ ] Configure batch processing settings
@@ -33,6 +54,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Create message processing queue
 
 #### 1.3 Extract and Validate Context Object ⬜
+**Relevant Documentation:**
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Context object structure
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.2 Context Object Flow
+
 - [ ] Extract context object from SQS message
 - [ ] Validate context object structure
 - [ ] Handle missing or invalid context data
@@ -40,6 +65,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Log context object for debugging
 
 #### 1.4 Create Conversation Records ⬜
+**Relevant Documentation:**
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Database schema
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 4.4.2 DynamoDB Tables
+
 - [ ] Create new DynamoDB record for new conversations
 - [ ] Update existing records for ongoing conversations
 - [ ] Implement conversation expiration logic
@@ -47,6 +76,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Optimize DynamoDB operations
 
 #### 1.5 Test Lambda Functionality ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Testing strategy
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Monitoring tests
+
 - [ ] Create unit tests for Lambda handler
 - [ ] Test SQS integration with mock events
 - [ ] Verify DynamoDB operations
@@ -56,6 +89,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 ### 2. OpenAI Integration for SMS Content
 
 #### 2.1 Implement OpenAI Client ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 8.2 OpenAI Integration
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - AI context handling
+
 - [ ] Create OpenAI API client wrapper
 - [ ] Configure API key retrieval from Secrets Manager
 - [ ] Implement request/response handling
@@ -63,6 +100,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Implement error handling
 
 #### 2.2 Develop Thread Management ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 8.2 OpenAI Integration
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Thread storage
+
 - [ ] Implement thread creation for new conversations
 - [ ] Develop thread retrieval for existing conversations
 - [ ] Create thread storage mechanism in DynamoDB
@@ -70,6 +111,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Create thread validation utilities
 
 #### 2.3 Implement Message Processing ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 8.2 OpenAI Integration
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Message context
+
 - [ ] Format SMS content for OpenAI
 - [ ] Create message assembly with context
 - [ ] Implement token counting and management
@@ -77,6 +122,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Create message history management
 
 #### 2.4 Create Response Handling ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 8.5 SMS Service Integration
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Response tracking
+
 - [ ] Implement response parsing
 - [ ] Extract message content from responses
 - [ ] Create validation for response format
@@ -84,6 +133,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Format response for SMS delivery (character limits)
 
 #### 2.5 Test OpenAI Integration ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.3 Error Handling Strategy
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - AI metrics
+
 - [ ] Create unit tests with mock responses
 - [ ] Test thread management
 - [ ] Verify token management
@@ -93,6 +146,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 ### 3. SMS Service Integration
 
 #### 3.1 Implement SMS Service Client ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 8.5 SMS Service Integration
+- AWS Referencing documentation (for credential management)
+
 - [ ] Create SMS Service API client wrapper (Twilio, SNS, etc.)
 - [ ] Configure credentials retrieval from Secrets Manager
 - [ ] Implement request/response handling
@@ -100,6 +157,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Implement error handling
 
 #### 3.2 Develop SMS Template Construction ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 8.5 SMS Service Integration
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Template variable handling
+
 - [ ] Create SMS templates based on company configuration
 - [ ] Implement dynamic content insertion
 - [ ] Format messages for SMS character limitations
@@ -107,6 +168,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Create fallback mechanisms
 
 #### 3.3 Implement SMS Delivery ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 8.5 SMS Service Integration
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Delivery tracking
+
 - [ ] Create SMS sending logic
 - [ ] Implement delivery receipts handling
 - [ ] Create message ID tracking
@@ -114,6 +179,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Configure delivery timeouts
 
 #### 3.4 Handle Delivery Confirmation ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 8.5 SMS Service Integration
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Status updates
+
 - [ ] Create webhook handlers for delivery status
 - [ ] Update conversation record with delivery status
 - [ ] Implement notification for failed deliveries
@@ -121,6 +190,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Implement retry logic for failed deliveries
 
 #### 3.5 Test SMS Service Integration ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.3 Error Handling Strategy
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - SMS metrics
+
 - [ ] Create unit tests with mock responses
 - [ ] Test SMS template rendering
 - [ ] Verify delivery tracking
@@ -130,6 +203,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 ### 4. Error Handling Strategies
 
 #### 4.1 Implement Transient Error Handling ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.3 Error Handling Strategy
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Error context tracking
+
 - [ ] Create retry mechanism with backoff
 - [ ] Implement circuit breaker for external services
 - [ ] Configure timeout handling
@@ -137,6 +214,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Implement recovery procedures
 
 #### 4.2 Handle Permanent Errors ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.3 Error Handling Strategy
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Error dashboards
+
 - [ ] Identify and categorize permanent errors
 - [ ] Implement dead letter queue routing
 - [ ] Create detailed error reporting
@@ -144,6 +225,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Create error documentation for operations
 
 #### 4.3 Test Error Handling ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.3 Error Handling Strategy
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Error alerting
+
 - [ ] Create tests for transient error scenarios
 - [ ] Test permanent error handling
 - [ ] Verify DLQ functionality
@@ -153,6 +238,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 ### 5. Monitoring and Logging Configuration
 
 #### 5.1 Configure Processing Metrics ⬜
+**Relevant Documentation:**
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Metrics configuration
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 10.1 CloudWatch Dashboards
+
 - [ ] Create metrics for SMS volume
 - [ ] Implement processing time tracking
 - [ ] Configure queue depth monitoring
@@ -160,6 +249,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Implement batch size tracking
 
 #### 5.2 Implement Error Metrics ⬜
+**Relevant Documentation:**
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Error metrics
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 10.2 Alarms and Notifications
+
 - [ ] Create metrics for error categories
 - [ ] Implement retry count monitoring
 - [ ] Configure DLQ monitoring
@@ -167,6 +260,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Implement error rate alerting
 
 #### 5.3 Configure Token Usage Tracking ⬜
+**Relevant Documentation:**
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Token metrics
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 10.1 CloudWatch Dashboards
+
 - [ ] Implement OpenAI token counting
 - [ ] Create cost monitoring metrics
 - [ ] Configure token usage alerting
@@ -174,6 +271,10 @@ This document outlines the detailed implementation steps for Phase 5 of the AI M
 - [ ] Create token usage reporting
 
 #### 5.4 Test Monitoring Configuration ⬜
+**Relevant Documentation:**
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Testing approach
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 10.3 Logging Strategy
+
 - [ ] Verify metric generation
 - [ ] Test alerting thresholds
 - [ ] Validate dashboard functionality

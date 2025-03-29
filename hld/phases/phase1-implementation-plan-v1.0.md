@@ -10,61 +10,102 @@ This document outlines the detailed implementation steps for Phase 1 of the AI M
 - Establish monitoring configuration and metrics
 - Create the foundation for subsequent phases
 
+## Key Documentation References
+
+### High-Level Design
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - The complete system architecture and overview
+
+### Low-Level Design
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Detailed schema for the conversations table
+- [WA Company Data DB Schema](../../lld/db/wa-company-data-db-schema-v1.0.md) - Detailed schema for the wa_company_data table
+- [AWS Referencing](../../lld/secrets-manager/aws-referencing-v1.0.md) - Reference-based credential management system
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Context object structure and usage
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Monitoring configuration
+
 ## Implementation Steps
 
 ### 1. DynamoDB Table Implementation
 
-#### 1.1 Create wa_company_data Table ⬜
-- [ ] Define table structure in CDK
-  - [ ] Partition key: company_id
-  - [ ] Sort key: project_id
-  - [ ] Configure on-demand capacity
-- [ ] Define table attributes according to schema
-- [ ] Implement GSIs for efficient queries
-- [ ] Configure table encryption and security
+#### 1.1 Create wa_company_data Table ✅
+**Relevant Documentation:**
+- [WA Company Data DB Schema](../../lld/db/wa-company-data-db-schema-v1.0.md) - Detailed schema definition and access patterns
 
-#### 1.2 Create conversations Table ⬜
-- [ ] Define table structure in CDK
-  - [ ] Channel-specific primary key design
-  - [ ] Configure on-demand capacity
-- [ ] Define table attributes according to schema
-- [ ] Implement GSIs for efficient queries
-- [ ] Configure table encryption and security
+- [x] Define table structure in CDK
+  - [x] Partition key: company_id
+  - [x] Sort key: project_id
+  - [x] Configure on-demand capacity
+- [x] Define table attributes according to schema
+- [x] Implement GSIs for efficient queries
+- [x] Configure table encryption and security
 
-#### 1.3 Develop Database Access Utilities ⬜
-- [ ] Create DynamoDB client utility
-- [ ] Implement data models and mappers
-- [ ] Create CRUD operations for tables
-- [ ] Build query utilities for common access patterns
-- [ ] Implement pagination helpers
+#### 1.2 Create conversations Table ✅
+**Relevant Documentation:**
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Detailed schema and table design
 
-#### 1.4 Implement Database Testing ⬜
-- [ ] Create mock DynamoDB for unit testing
-- [ ] Develop integration tests with actual DynamoDB
-- [ ] Create test data fixtures
-- [ ] Implement database performance tests
+- [x] Define table structure in CDK
+  - [x] Channel-specific primary key design
+  - [x] Configure on-demand capacity
+- [x] Define table attributes according to schema
+- [x] Implement GSIs for efficient queries
+- [x] Configure table encryption and security
+
+#### 1.3 Develop Database Access Utilities ✅
+**Relevant Documentation:**
+- [WA Company Data DB Schema](../../lld/db/wa-company-data-db-schema-v1.0.md) - Access patterns section
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Query patterns section
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 4.4 Data Storage
+
+- [x] Create DynamoDB client utility
+- [x] Implement data models and mappers
+- [x] Create CRUD operations for tables
+- [x] Build query utilities for common access patterns
+- [x] Implement pagination helpers
+
+#### 1.4 Implement Database Testing ✅
+**Relevant Documentation:**
+- [WA Company Data DB Schema](../../lld/db/wa-company-data-db-schema-v1.0.md) - Testing considerations
+- [Conversations DB Schema](../../lld/db/conversations-db-schema-v1.0.md) - Testing considerations
+
+- [x] Create mock DynamoDB for unit testing
+- [x] Develop integration tests with actual DynamoDB
+- [x] Create test data fixtures
+- [x] Implement database performance tests
 
 ### 2. Secrets Manager Configuration
 
 #### 2.1 Define Secret Structure ⬜
+**Relevant Documentation:**
+- [AWS Referencing](../../lld/secrets-manager/aws-referencing-v1.0.md) - Secret format and structure
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 6.2 Secure Credential Management
+
 - [ ] Design secret naming convention
 - [ ] Create secret reference format
 - [ ] Define secret rotation policy
 - [ ] Document secret access patterns
 
 #### 2.2 Implement Reference-based System ⬜
+**Relevant Documentation:**
+- [AWS Referencing](../../lld/secrets-manager/aws-referencing-v1.0.md) - Reference system implementation
+
 - [ ] Create utility for reference generation
 - [ ] Implement reference parsing and validation
 - [ ] Build credential resolution mechanism
 - [ ] Create access control for credentials
 
 #### 2.3 Set Up Initial Secrets ⬜
+**Relevant Documentation:**
+- [AWS Referencing](../../lld/secrets-manager/aws-referencing-v1.0.md) - Initial secrets setup
+- [WA Company Data DB Schema](../../lld/db/wa-company-data-db-schema-v1.0.md) - Credential references in company data
+
 - [ ] Create test company credentials
 - [ ] Set up OpenAI API key secret
 - [ ] Configure Twilio credentials secret
 - [ ] Implement email service credentials
 
 #### 2.4 Implement Secrets Testing ⬜
+**Relevant Documentation:**
+- [AWS Referencing](../../lld/secrets-manager/aws-referencing-v1.0.md) - Testing considerations
+
 - [ ] Create mock Secrets Manager for testing
 - [ ] Develop integration tests with actual Secrets Manager
 - [ ] Test credential rotation
@@ -73,18 +114,28 @@ This document outlines the detailed implementation steps for Phase 1 of the AI M
 ### 3. Context Object Structure
 
 #### 3.1 Define Context Object Schema ⬜
+**Relevant Documentation:**
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Complete context object structure
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.2 Context Object Flow
+
 - [ ] Create TypeScript interfaces for context object
 - [ ] Implement validation for context object
 - [ ] Define context object serialization/deserialization
 - [ ] Document context object structure
 
 #### 3.2 Implement Context Utilities ⬜
+**Relevant Documentation:**
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Context object utilities
+
 - [ ] Create context object factory
 - [ ] Build context enrichment utilities
 - [ ] Implement context validation
 - [ ] Create helper functions for context access
 
 #### 3.3 Test Context Implementation ⬜
+**Relevant Documentation:**
+- [Context Object](../../lld/context-object/context-object-v1.0.md) - Testing considerations
+
 - [ ] Create unit tests for context creation
 - [ ] Test context validation edge cases
 - [ ] Verify serialization/deserialization
@@ -93,30 +144,45 @@ This document outlines the detailed implementation steps for Phase 1 of the AI M
 ### 4. Shared Utilities Implementation
 
 #### 4.1 Error Handling Framework ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.3 Error Handling Strategy
+
 - [ ] Design error categorization system
 - [ ] Create custom error classes
 - [ ] Implement error logging mechanism
 - [ ] Build error response formatting
 
 #### 4.2 Circuit Breaker Pattern ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.3 Error Handling Strategy (Circuit Breaker Pattern)
+
 - [ ] Design circuit breaker implementation
 - [ ] Create circuit state management
 - [ ] Implement circuit breaker configuration
 - [ ] Build recovery mechanism
 
 #### 4.3 SQS Heartbeat Pattern ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 5.1 Message Processing Flow (Heartbeat Mechanism)
+
 - [ ] Design heartbeat implementation
 - [ ] Create visibility timeout extension mechanism
 - [ ] Implement heartbeat configuration
 - [ ] Build heartbeat monitoring
 
 #### 4.4 Logging Utilities ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 10.3 Logging Strategy
+
 - [ ] Create structured logging framework
 - [ ] Implement log level configuration
 - [ ] Build request ID tracking
 - [ ] Implement sensitive data redaction
 
 #### 4.5 Test Shared Utilities ⬜
+**Relevant Documentation:**
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 7 Testing Requirements
+
 - [ ] Create unit tests for error handling
 - [ ] Test circuit breaker state transitions
 - [ ] Validate heartbeat functionality
@@ -125,24 +191,38 @@ This document outlines the detailed implementation steps for Phase 1 of the AI M
 ### 5. Monitoring Configuration
 
 #### 5.1 Define CloudWatch Metrics ⬜
+**Relevant Documentation:**
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Metrics configuration
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 10.1 CloudWatch Dashboards
+
 - [ ] Design custom metrics structure
 - [ ] Create metric namespaces
 - [ ] Define dimensions for metrics
 - [ ] Document metric usage
 
 #### 5.2 Configure CloudWatch Alarms ⬜
+**Relevant Documentation:**
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Alarm configuration
+- [AI Multi-Communications Engine HLD](../multi-comms-engine-hld-v1.0.md) - Section 10.2 Alarms and Notifications
+
 - [ ] Define alarm thresholds
 - [ ] Create alarm actions
 - [ ] Configure alarm notification channels
 - [ ] Implement alarm testing
 
 #### 5.3 Create Metric Publishing Utilities ⬜
+**Relevant Documentation:**
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Metric publishing
+
 - [ ] Build metric publishing client
 - [ ] Implement batch metric publishing
 - [ ] Create metric tagging system
 - [ ] Build metric aggregation helpers
 
 #### 5.4 Test Monitoring Implementation ⬜
+**Relevant Documentation:**
+- [CloudWatch Dashboard Setup](../../lld/cloudwatch-dashboard/cloudwatch-dashboard-setup-v1.0.md) - Testing considerations
+
 - [ ] Validate metric publishing
 - [ ] Test alarm triggering
 - [ ] Verify metric dimensions

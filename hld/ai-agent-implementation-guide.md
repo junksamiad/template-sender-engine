@@ -119,12 +119,16 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
 **CRITICAL: IMPLEMENT ONE SECTION AT A TIME**
 
 1. Work on a single section of the current phase plan at a time (e.g., Section 1.1, then 1.2, etc.)
-2. Before starting implementation:
+2. Begin with a thorough review:
+   - Review previous phase's notes (hld/notes/phase<N-1>-notes.md)
+   - Review deployed AWS resources (hld/notes/phase<N-1>-aws-resources.md)
+   - Check for any dependencies or components needed in the current phase
+3. Before starting implementation:
    - **Ensure the virtual environment is activated** (see Virtual Environment Requirement section)
    - Study the credential architecture in `lld/secrets-manager/aws-referencing-v1.0.md`
    - Request any necessary test credentials from the human supervisor
    - Set up mock data that follows the same structure for local testing
-3. For each section, complete the full implementation cycle before moving to the next section:
+4. For each section, complete the full implementation cycle before moving to the next section:
 
    1. Setup the functionality locally
    2. Create and run local tests
@@ -139,7 +143,7 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
    8. Update AWS documentation
    9. Make final Git commits for the section
 
-4. After completing a section:
+5. After completing a section:
    - Summarize what was accomplished
    - Identify any challenges or deviations
    - **ALWAYS REQUEST HUMAN AUTHORIZATION before proceeding to the next section**
@@ -151,6 +155,8 @@ This order ensures the WhatsApp processing engine is fully implemented before ex
 Every phase should follow these git practices to maintain a clean and traceable development history:
 
 1. **Branch Management**:
+   - **IMPORTANT: Branches function as sequential snapshots, like "Save As" operations**
+   - Each phase has its own dedicated branch that represents a complete, working snapshot of the system at that phase
    - Create a dedicated branch for each phase from the previous phase branch, not from main
    - Always branch off the most recent phase branch:
    ```bash
@@ -175,12 +181,12 @@ Every phase should follow these git practices to maintain a clean and traceable 
 
 3. **Phase Completion Process**:
    - When the phase is complete, ensure all changes are committed
-   - Push the branch to the remote repository
+   - Push the branch to the remote repository as a complete snapshot of that phase
    ```bash
    git push -u origin phase-N
    ```
-   - Create a pull request for merging into the previous phase branch
-   - Notify the human supervisor that the phase is ready for review
+   - **DO NOT create pull requests or merge branches back** - each branch exists as an independent, complete snapshot
+   - Notify the human supervisor that the phase is complete and the branch has been pushed
 
 4. **Preparing for Next Phase**:
    - DO NOT check out the main branch - each phase builds on the previous phase
@@ -191,7 +197,10 @@ Every phase should follow these git practices to maintain a clean and traceable 
    ```
 
 This branching strategy means:
-- Each phase's code is built on the previous phase
+- Each branch represents a complete, working snapshot of the system at a specific phase
+- Branches function like "Save As" operations, creating a linear progression of development
+- Each phase's code is built directly on the previous phase
+- We maintain a clear historical record of each phase's implementation
 - The main branch is only updated at major milestones
 - Code is always developed incrementally
 - We avoid losing work by never pulling down potentially outdated code
@@ -232,10 +241,9 @@ When all tasks in a phase are complete:
 - Ensure all items are marked with green ticks (✅)
 - Verify all tests are passing
 - Confirm all documentation is updated
-- Push all changes to the git repository
-- Create a pull request for the phase branch
-- Request phase review from the human supervisor
-- Upon approval, prepare for the next phase
+- Push all changes to the git repository (to the phase branch only, no merge requests)
+- Notify the human supervisor that the phase is complete
+- Upon approval, prepare for the next phase by creating a new branch from the current phase branch
 
 ## Begin Implementation
 
