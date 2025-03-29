@@ -28,9 +28,29 @@ No GSIs added for the wa_company_data table yet, as the primary key structure sa
 
 ## AWS Secrets Manager
 
-| Secret Name | Purpose | Rotation Policy | Region | Cost Estimate |
-|-------------|---------|----------------|--------|---------------|
-| | | | | |
+The following secrets are created as part of the Phase 1 implementation:
+
+### Global Secrets
+
+- `ai-api-key/global`: Global AI API key used across all channels and companies
+
+### Template Secrets
+
+These are template secrets that serve as references for company-specific secrets:
+
+- `whatsapp-credentials/template/template/twilio`: Template for WhatsApp credentials
+- `sms-credentials/template/template/twilio`: Template for SMS credentials
+- `email-credentials/template/template/sendgrid`: Template for Email credentials
+- `auth/template/template/auth`: Template for authentication credentials
+
+### Company-Specific Secrets
+
+For each company and project, the following secrets can be created:
+
+- `whatsapp-credentials/{company_id}/{project_id}/twilio`: WhatsApp credentials for a specific company/project
+- `sms-credentials/{company_id}/{project_id}/twilio`: SMS credentials for a specific company/project
+- `email-credentials/{company_id}/{project_id}/sendgrid`: Email credentials for a specific company/project
+- `auth/{company_id}/{project_id}/auth`: Authentication credentials for a specific company/project
 
 ## CloudWatch Resources
 

@@ -12,6 +12,7 @@ app = App()
 from src.infrastructure.vpc_stack import VpcStack
 from src.infrastructure.base_services_stack import BaseServicesStack
 from src.infrastructure.database_stack import DatabaseStack
+from src.infrastructure.secrets_stack import SecretsStack
 
 # Define environment
 env = Environment(
@@ -29,6 +30,9 @@ base_services_stack = BaseServicesStack(
 )
 database_stack = DatabaseStack(
     app, "AiMultiCommsDatabaseStack", env_name=env_name, env=env
+)
+secrets_stack = SecretsStack(
+    app, "AiMultiCommsSecretsStack", env=env
 )
 
 app.synth() 
