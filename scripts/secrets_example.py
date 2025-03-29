@@ -60,9 +60,9 @@ def use_mock_secrets():
     # Create mock credentials
     logger.info("Creating mock WhatsApp credentials...")
     whatsapp_creds = mock_whatsapp_credentials(
-        account_sid="AC9876543210fedcba9876543210fedcba",
-        auth_token="z9y8x7w6v5u4t3s2r1q0p9o8n7m6l5k4",
-        template_sid="HX9876543210fedcba9876543210fedcba"
+        account_sid="ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        auth_token="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        template_sid="HXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXFAKE"
     )
     
     secrets_manager.create_secret(
@@ -73,10 +73,10 @@ def use_mock_secrets():
     
     logger.info("Creating mock Email credentials...")
     email_creds = mock_email_credentials(
-        auth_value="SG.9876543210fedcba9876543210fedcba",
+        auth_value="SG.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXFAKE",
         from_email="cv-analysis@cucumber-recruitment.example.com",
         from_name="Cucumber Recruitment CV Analysis",
-        template_id="d-9876543210fedcba9876543210fedcba"
+        template_id="d-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXFAKE"
     )
     
     secrets_manager.create_secret(
@@ -87,7 +87,7 @@ def use_mock_secrets():
     
     logger.info("Creating mock AI credentials...")
     ai_creds = mock_ai_credentials(
-        api_key="sk-9876543210fedcba9876543210fedcba"
+        api_key="sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXFAKE"
     )
     
     secrets_manager.create_secret(
@@ -111,9 +111,9 @@ def use_mock_secrets():
     # Update WhatsApp credentials
     logger.info("Updating WhatsApp credentials...")
     updated_whatsapp = mock_whatsapp_credentials(
-        account_sid="AC1111222233334444555566667777888",
-        auth_token="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
-        template_sid="HX1111222233334444555566667777888"
+        account_sid="ACYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
+        auth_token="yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        template_sid="HXYYYYYYYYYYYYYYYYYYYYYYYYYYYYFAKE"
     )
     
     secrets_manager.update_secret(whatsapp_ref, updated_whatsapp)
