@@ -23,7 +23,7 @@ Parameters:
     Description: Memory allocation for the WhatsApp processor Lambda.
   WhatsAppProcessorTimeout:
     Type: Number
-    Default: 900 # Current value, consider reducing later for optimization
+    Default: 900 # Revert to original 15 minutes
     Description: Timeout in seconds for the WhatsApp processor Lambda.
 
 Resources:
@@ -38,7 +38,7 @@ Resources:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub '${ProjectPrefix}-whatsapp-queue-${EnvironmentName}'
-      VisibilityTimeout: 600 # 10 minutes, matching LLD and default heartbeat interval
+      VisibilityTimeout: 905 # Set higher than Lambda timeout (900s)
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt WhatsAppQueueDLQ.Arn
         maxReceiveCount: 3
