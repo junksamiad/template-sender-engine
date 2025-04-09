@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Local SAM template for testing the AI Multi-Comms Engine WhatsApp Processor
+
+Resources:
+  # Define the Lambda function resource
+  whatsappChannelProcessorFunctionDev:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: whatsapp-channel-processor-dev-local # Use a distinct local name
+      CodeUri: src_dev/channel-processor/whatsapp/lambda/ # Path to the Lambda source code
+      Handler: index.lambda_handler # Matches the handler in the code
+      Runtime: python3.11
+      Timeout: 900 # Match deployed timeout
+      MemorySize: 1024 # Match deployed memory
+      # Environment variables (can be overridden using sam local invoke -n env.json)
+      Environment:
+        Variables:
+          CONVERSATIONS_TABLE: "conversations-dev-local" # Use a placeholder/local name
+          WHATSAPP_QUEUE_URL: "local-queue-url" # Placeholder
+          SECRETS_MANAGER_REGION: "eu-north-1" # Keep actual region for potential boto3 init
+          LOG_LEVEL: "DEBUG" # Set to DEBUG for local testing
+          VERSION: "processor-1.0.0-local"
+          SQS_HEARTBEAT_INTERVAL_MS: "300000"
+    Metadata:
+      BuildMethod: python3.11 # Specify build method if needed (e.g., for compiling dependencies)
+
+Outputs:
+  # Optional: Outputs can be defined if needed, but not essential for local invoke
+  WhatsAppProcessorFunction: 
+    Description: "WhatsApp Channel Processor Lambda Function ARN (local definition)"
+    Value: !GetAtt whatsappChannelProcessorFunctionDev.Arn 

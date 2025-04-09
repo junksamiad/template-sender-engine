@@ -1,0 +1,57 @@
+# Node.js dependencies
+node_modules/
+
+# Environment variables
+.env
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Build output
+/dist
+/build
+/.next
+/out
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor/IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# AWS credentials file - contains sensitive information
+hld/aws-production-credentials.md
+
+# Local development
+.local/
+
+# AWS
+cdk.out/
+cdk.context.json
+.aws-sam/ 
