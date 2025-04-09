@@ -15,14 +15,14 @@ logger.setLevel(logging.INFO)
 # Initialize DynamoDB resource and table object
 try:
     # The env var will be set in the Lambda function configuration
-    company_table_name = os.environ.get('COMPANY_TABLE_NAME_DEV')
+    company_data_table_name = os.environ.get('COMPANY_DATA_TABLE')
     
-    if company_table_name:
+    if company_data_table_name:
         dynamodb = boto3.resource('dynamodb')
-        company_table = dynamodb.Table(company_table_name)
-        logger.info(f"Successfully initialized DynamoDB table: {company_table_name}")
+        company_table = dynamodb.Table(company_data_table_name)
+        logger.info(f"Successfully initialized DynamoDB table: {company_data_table_name}")
     else:
-        logger.warning("COMPANY_TABLE_NAME_DEV environment variable not set.")
+        logger.warning("COMPANY_DATA_TABLE environment variable not set.")
         company_table = None
 
 except Exception as e:

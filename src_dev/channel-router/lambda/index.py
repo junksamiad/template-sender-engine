@@ -32,21 +32,21 @@ logger.info(f"Logger initialized with level: {log_level_name}")
 
 # Load environment variables
 # --- Core Configuration ---
-COMPANY_TABLE_NAME = os.environ.get('COMPANY_TABLE_NAME_DEV')
-WHATSAPP_QUEUE_URL = os.environ.get('WHATSAPP_QUEUE_URL_DEV')
-EMAIL_QUEUE_URL = os.environ.get('EMAIL_QUEUE_URL_DEV') # TODO: Add when email channel is implemented
-SMS_QUEUE_URL = os.environ.get('SMS_QUEUE_URL_DEV')     # TODO: Add when SMS channel is implemented
+COMPANY_DATA_TABLE = os.environ.get('COMPANY_DATA_TABLE')
+WHATSAPP_QUEUE_URL = os.environ.get('WHATSAPP_QUEUE_URL')
+EMAIL_QUEUE_URL = os.environ.get('EMAIL_QUEUE_URL') # TODO: Add when email channel is implemented
+SMS_QUEUE_URL = os.environ.get('SMS_QUEUE_URL')     # TODO: Add when SMS channel is implemented
 VERSION = os.environ.get('VERSION', '0.0.0-dev') # Default version if not set
 
 # Log warnings if essential configuration is missing
-if not COMPANY_TABLE_NAME:
-    logger.warning("COMPANY_TABLE_NAME_DEV environment variable not set!")
+if not COMPANY_DATA_TABLE:
+    logger.warning("COMPANY_DATA_TABLE environment variable not set!")
 if not WHATSAPP_QUEUE_URL:
-    logger.warning("WHATSAPP_QUEUE_URL_DEV environment variable not set!")
+    logger.warning("WHATSAPP_QUEUE_URL environment variable not set!")
 # Add similar warnings for EMAIL/SMS queues when implemented
 
 logger.info(f"Channel Router Version: {VERSION}")
-logger.info(f"Using DynamoDB Table: {COMPANY_TABLE_NAME}")
+logger.info(f"Using DynamoDB Table: {COMPANY_DATA_TABLE}")
 logger.info(f"Using WhatsApp Queue: {WHATSAPP_QUEUE_URL}")
 
 # Boto3 clients are initialized within their respective service modules.
