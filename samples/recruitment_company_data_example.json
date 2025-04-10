@@ -3,14 +3,13 @@
   "project_id": "pi-aaa-001",
   "company_name": "Cucumber Recruitment",
   "project_name": "Clarify CV",
-  "api_key_reference": "secrets/api-keys/ci-aaa-001/pi-aaa-001",
   "allowed_channels": ["whatsapp"],
   "auto_queue_initial_message": false,
-  "auto_queue_initial_message_from_number": ["+447835065013"],
-  "auto_queue_initial_message_from_email": ["junksamiad@gmail.com"],
+  "auto_queue_initial_message_from_number": [],
+  "auto_queue_initial_message_from_email": [],
   "auto_queue_reply_message": false,
-  "auto_queue_reply_message_from_number": ["+447835065013"],
-  "auto_queue_reply_message_from_email": ["junksamiad@gmail.com"],
+  "auto_queue_reply_message_from_number": [],
+  "auto_queue_reply_message_from_email": [],
   "rate_limits": {
     "requests_per_minute": 60,
     "requests_per_day": 2000,
@@ -29,8 +28,8 @@
     "openai_config": {
       "whatsapp": {
         "api_key_reference": "openai-api-key/whatsapp",
-        "assistant_id_template_sender": "asst_cv_clarification_abc123",
-        "assistant_id_replies": "asst_recruitment_replies_xyz789",
+        "assistant_id_template_sender": "asst_Mdf1Z1tqwFWBeeloOzzb9Vgu",
+        "assistant_id_replies": "",
         "assistant_id_3": "",
         "assistant_id_4": "",
         "assistant_id_5": ""

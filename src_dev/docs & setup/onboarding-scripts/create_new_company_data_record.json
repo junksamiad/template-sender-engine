@@ -3,7 +3,6 @@
     "project_id": "pi-aaa-001",
     "company_name": "Cucumber Recruitment",
     "project_name": "Clarify CV",
-    "api_key_reference": "api_key_reference",
     "allowed_channels": ["whatsapp", "sms", "email"],
     "auto_queue_initial_message": false,
     "auto_queue_initial_message_from_number": [],
@@ -28,15 +27,15 @@
     "ai_config": {
       "openai_config": {
         "whatsapp": {
-          "api_key_reference": "openai-api-key/whatsapp",
-          "assistant_id_template_sender": "asst_Mdf1Z1tqwFWBeeloOzzb9Vgu",
+          "api_key_reference": "ai-multi-comms/openai-api-key/whatsapp-prod",
+          "assistant_id_template_sender": "asst_B4jqDfEI6P0bBSOVZqK1UBMH",
           "assistant_id_replies": "",
           "assistant_id_3": "",
           "assistant_id_4": "",
           "assistant_id_5": ""
         },
         "sms": {
-          "api_key_reference": "openai-api-key/sms",
+          "api_key_reference": "ai-multi-comms/openai-api-key/sms-prod",
           "assistant_id_template_sender": "",
           "assistant_id_replies": "",
           "assistant_id_3": "",
@@ -44,7 +43,7 @@
           "assistant_id_5": ""
         },
         "email": {
-          "api_key_reference": "openai-api-key/email",
+          "api_key_reference": "ai-multi-comms/openai-api-key/email-prod",
           "assistant_id_template_sender": "",
           "assistant_id_replies": "",
           "assistant_id_3": "",
@@ -56,15 +55,15 @@
     "channel_config": {
       "whatsapp": {
         "company_whatsapp_number": "+447588713814",
-        "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio"
+        "whatsapp_credentials_id": "ai-multi-comms/whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio-prod"
       },
       "email": {
-        "company_email": "replies@cucumber-recruitment.com",
-        "email_credentials_id": "email-credentials/cucumber-recruitment/cv-analysis/sendgrid"
+        "company_email": "lee.hayton@adaptixinnovation.co.uk",
+        "email_credentials_id": "ai-multi-comms/email-credentials/cucumber-recruitment/cv-analysis/sendgrid-prod"
       },
       "sms": {
           "company_sms_number": "+447588713814",
-          "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio"
+          "sms_credentials_id": "ai-multi-comms/sms-credentials/cucumber-recruitment/cv-analysis/twilio-prod"
         }
     },
     "created_at": "2023-10-27T10:00:00Z",

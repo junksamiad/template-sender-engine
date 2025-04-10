@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # --- Replace placeholders below! ---
-API_GATEWAY_URL="https://302fd6rbg3.execute-api.eu-north-1.amazonaws.com/dev/initiate-conversation"
-API_KEY="JPeCbzB4mM5MOfdZHvjBS3i1GfMwaN0p97eTRwo2"
+API_GATEWAY_URL="https://8fk1qcr7tc.execute-api.eu-north-1.amazonaws.com/prod/initiate-conversation"
+API_KEY="2h4xSf5VKtyWeCjQ4nPA4fQyW0mhVOe2EQBVyMzc"
 # ---------------------------------
 
 # Use a Here Document for the request body to handle quotes safely

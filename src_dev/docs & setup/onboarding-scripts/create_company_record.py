@@ -4,10 +4,19 @@ import argparse
 import os
 from datetime import datetime, timezone
 from decimal import Decimal
+import sys
 
 # --- Configuration ---
-# Use environment variable or default for table name
-TABLE_NAME = os.environ.get("COMPANY_DATA_TABLE", "company-data-dev")
+# Get target environment (dev or prod), default to dev
+DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "prod").lower()
+if DEPLOY_ENV not in ['dev', 'prod']:
+    print(f"Error: Invalid DEPLOY_ENV specified: {DEPLOY_ENV}. Must be 'dev' or 'prod'.")
+    sys.exit(1)
+
+# Construct table name based on environment
+PROJECT_PREFIX = "ai-multi-comms" # Define prefix
+TABLE_NAME = f"{PROJECT_PREFIX}-company-data-{DEPLOY_ENV}"
+
 # Use environment variable or default for region
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "eu-north-1")
 
@@ -29,7 +38,7 @@ def validate_record(record):
     """Performs basic validation on the input record."""
     required_keys = [
         "company_id", "project_id", "company_name", "project_name",
-        "api_key_reference", "allowed_channels", "rate_limits",
+        "allowed_channels", "rate_limits",
         "project_status", "channel_config"
     ]
     missing_keys = [key for key in required_keys if key not in record]
@@ -87,14 +96,16 @@ def create_dynamodb_record(record_path):
         print(f"Error interacting with DynamoDB: {e}")
         print("Please check the company_id/project_id combination doesn't already exist and AWS credentials/permissions are correct.")
 
-
+# Main execution block - removed argparse
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Create a new company/project record in the DynamoDB table.")
-    parser.add_argument("input_file", help="Path to the JSON file containing the record data.")
-    args = parser.parse_args()
+    # Determine the directory where the script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Construct the path to the JSON file relative to the script directory
+    input_json_file = os.path.join(script_dir, "create_new_company_data_record.json")
 
-    print(f"--- Starting Company Record Creation --- ")
-    print(f"Using Table: {TABLE_NAME}")
+    print(f"--- Starting Company Record Creation for environment: {DEPLOY_ENV.upper()} ---")
+    print(f"Target Table: {TABLE_NAME}")
     print(f"Using Region: {AWS_REGION}")
-    create_dynamodb_record(args.input_file)
+    print(f"Using Input File: {input_json_file}")
+    create_dynamodb_record(input_json_file)
     print("--- Script Finished ---") 

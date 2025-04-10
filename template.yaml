@@ -1,33 +1,545 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Local SAM template for testing the AI Multi-Comms Engine WhatsApp Processor
+  SAM template for the AI Multi-Comms Engine, defining Lambda functions,
+  API Gateway, DynamoDB tables, SQS queues, IAM roles, and other resources.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+    Description: The environment name (e.g., dev, prod) used as a suffix for resource names.
+  LogLevel:
+    Type: String
+    Default: INFO
+    Description: Log level for Lambda functions (DEBUG, INFO, WARNING, ERROR).
+  ProjectPrefix:
+    Type: String
+    Default: ai-multi-comms
+    Description: Prefix for resource names.
+  WhatsAppProcessorMemory:
+    Type: Number
+    Default: 1024 # Current value, consider reducing later for optimization
+    Description: Memory allocation for the WhatsApp processor Lambda.
+  WhatsAppProcessorTimeout:
+    Type: Number
+    Default: 900 # Revert to original 15 minutes
+    Description: Timeout in seconds for the WhatsApp processor Lambda.
 
 Resources:
-  # Define the Lambda function resource
-  whatsappChannelProcessorFunctionDev:
+  # --- SQS Queues (WhatsApp) ---
+  WhatsAppQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectPrefix}-whatsapp-dlq-${EnvironmentName}'
+      MessageRetentionPeriod: 1209600 # 14 days in seconds
+
+  WhatsAppQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectPrefix}-whatsapp-queue-${EnvironmentName}'
+      VisibilityTimeout: 905 # Set higher than Lambda timeout (900s)
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt WhatsAppQueueDLQ.Arn
+        maxReceiveCount: 3
+      # Tags:
+      #   - Key: Environment
+      #     Value: !Ref EnvironmentName
+
+  # --- SQS Queues (Email) ---
+  EmailQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectPrefix}-email-dlq-${EnvironmentName}'
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  EmailQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectPrefix}-email-queue-${EnvironmentName}'
+      VisibilityTimeout: 600 # Adjust if Email processing time differs
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EmailQueueDLQ.Arn
+        maxReceiveCount: 3
+
+  # --- SQS Queues (SMS) ---
+  SmsQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectPrefix}-sms-dlq-${EnvironmentName}'
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  SmsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectPrefix}-sms-queue-${EnvironmentName}'
+      VisibilityTimeout: 600 # Adjust if SMS processing time differs
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SmsQueueDLQ.Arn
+        maxReceiveCount: 3
+
+  # --- DynamoDB Table (Conversations) ---
+  ConversationsTable:
+    Type: AWS::DynamoDB::Table # Using base CloudFormation type for more control over indexes
+    Properties:
+      TableName: !Sub '${ProjectPrefix}-conversations-${EnvironmentName}'
+      AttributeDefinitions:
+        - AttributeName: primary_channel # PK
+          AttributeType: S
+        - AttributeName: conversation_id # SK
+          AttributeType: S
+        - AttributeName: company_id # GSI PK
+          AttributeType: S
+        - AttributeName: project_id # GSI SK
+          AttributeType: S
+        - AttributeName: created_at # LSI SK 1
+          AttributeType: S # Assuming ISO String based on code
+        - AttributeName: task_complete # LSI SK 2
+          AttributeType: N # Number (0 or 1)
+        - AttributeName: conversation_status # LSI SK 3
+          AttributeType: S
+        - AttributeName: channel_method # LSI SK 4
+          AttributeType: S
+      KeySchema:
+        - AttributeName: primary_channel
+          KeyType: HASH # Partition key
+        - AttributeName: conversation_id
+          KeyType: RANGE # Sort key
+      BillingMode: PAY_PER_REQUEST # On-Demand
+      GlobalSecondaryIndexes:
+        - IndexName: company-id-project-id-index
+          KeySchema:
+            - AttributeName: company_id
+              KeyType: HASH
+            - AttributeName: project_id
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL # Project all attributes
+      LocalSecondaryIndexes:
+        - IndexName: created-at-index
+          KeySchema:
+            - AttributeName: primary_channel
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL # Project all attributes
+        - IndexName: task-complete-index
+          KeySchema:
+            - AttributeName: primary_channel
+              KeyType: HASH
+            - AttributeName: task_complete
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: conversation-status-index
+          KeySchema:
+            - AttributeName: primary_channel
+              KeyType: HASH
+            - AttributeName: conversation_status
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: channel-method-index
+          KeySchema:
+            - AttributeName: primary_channel
+              KeyType: HASH
+            - AttributeName: channel_method
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      # PointInTimeRecoverySpecification:
+      #   PointInTimeRecoveryEnabled: false # Keep disabled for dev/testing unless needed
+      # Tags:
+      #   - Key: Environment
+      #     Value: !Ref EnvironmentName
+
+  # --- DynamoDB Table (Company Data) ---
+  CompanyDataTable:
+    Type: AWS::DynamoDB::Table # Or AWS::Serverless::SimpleTable if only PK/SK needed
+    Properties:
+      TableName: !Sub '${ProjectPrefix}-company-data-${EnvironmentName}'
+      AttributeDefinitions:
+        - AttributeName: company_id # PK
+          AttributeType: S
+        - AttributeName: project_id # SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: company_id
+          KeyType: HASH # Partition key
+        - AttributeName: project_id
+          KeyType: RANGE # Sort key
+      BillingMode: PAY_PER_REQUEST # On-Demand
+      # PointInTimeRecoverySpecification:
+      #   PointInTimeRecoveryEnabled: false
+      # Tags:
+      #   - Key: Environment
+      #     Value: !Ref EnvironmentName
+
+  # --- IAM Role & Policy (WhatsApp Processor) ---
+  WhatsAppProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-whatsapp-channel-processor-role-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${ProjectPrefix}-whatsapp-channel-processor-policy-${EnvironmentName}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Basic Lambda Execution (CloudWatch Logs)
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-whatsapp-channel-processor-${EnvironmentName}:*'
+              # SQS Permissions (Specific Queue)
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt WhatsAppQueue.Arn # Reference the specific Queue ARN
+              # DynamoDB Permissions (Specific Table)
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query # Needed if querying indexes
+                Resource:
+                  - !GetAtt ConversationsTable.Arn # Table ARN
+                  - !Sub '${ConversationsTable.Arn}/index/*' # ARN for all indexes
+              # Secrets Manager Permissions (Based on LLD Naming Convention)
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  # WhatsApp channel credentials (Twilio)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/whatsapp-credentials/*/*/twilio-*'
+                  # OpenAI channel-specific API key (WhatsApp)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/openai-api-key/whatsapp-*'
+                  # OpenAI channel-specific API key (SMS)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/openai-api-key/sms-*'
+                  # OpenAI channel-specific API key (Email)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/openai-api-key/email-*'
+                  # SMS channel credentials (Twilio)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/sms-credentials/*/*/twilio-*'
+                  # Email channel credentials (SendGrid)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/email-credentials/*/*/sendgrid-*'
+      # Tags:
+      #   - Key: Environment
+      #     Value: !Ref EnvironmentName
+
+  # Define the WhatsApp Channel Processor Lambda function resource
+  WhatsAppProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: whatsapp-channel-processor-dev-local # Use a distinct local name
-      CodeUri: src_dev/channel-processor/whatsapp/lambda/ # Path to the Lambda source code
-      Handler: index.lambda_handler # Matches the handler in the code
+      FunctionName: !Sub '${ProjectPrefix}-whatsapp-channel-processor-${EnvironmentName}'
+      CodeUri: src_dev/channel-processor/whatsapp/lambda/
+      Handler: index.lambda_handler
       Runtime: python3.11
-      Timeout: 900 # Match deployed timeout
-      MemorySize: 1024 # Match deployed memory
-      # Environment variables (can be overridden using sam local invoke -n env.json)
+      Timeout: !Ref WhatsAppProcessorTimeout
+      MemorySize: !Ref WhatsAppProcessorMemory
+      Role: !GetAtt WhatsAppProcessorRole.Arn # Assign the Role ARN
       Environment:
         Variables:
-          CONVERSATIONS_TABLE: "conversations-dev-local" # Use a placeholder/local name
-          WHATSAPP_QUEUE_URL: "local-queue-url" # Placeholder
-          SECRETS_MANAGER_REGION: "eu-north-1" # Keep actual region for potential boto3 init
-          LOG_LEVEL: "DEBUG" # Set to DEBUG for local testing
-          VERSION: "processor-1.0.0-local"
-          SQS_HEARTBEAT_INTERVAL_MS: "300000"
+          CONVERSATIONS_TABLE: !Sub '${ProjectPrefix}-conversations-${EnvironmentName}' # Reference Table Name
+          WHATSAPP_QUEUE_URL: !Ref WhatsAppQueue # Reference the Queue URL
+          SECRETS_MANAGER_REGION: !Ref AWS::Region # Use intrinsic function for region
+          LOG_LEVEL: !Ref LogLevel
+          VERSION: !Sub 'processor-${EnvironmentName}-1.0.0' # Example versioning
+          SQS_HEARTBEAT_INTERVAL_MS: "300000" # Keep as is or Parameterize
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt WhatsAppQueue.Arn # Get the ARN of the Queue
+            BatchSize: 1
+            Enabled: true
     Metadata:
       BuildMethod: python3.11 # Specify build method if needed (e.g., for compiling dependencies)
 
+  # --- IAM Role & Policy (Channel Router) ---
+  ChannelRouterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectPrefix}-channel-router-role-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${ProjectPrefix}-channel-router-policy-${EnvironmentName}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Basic Lambda Execution (CloudWatch Logs)
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup # Still need CreateLogGroup in case of race conditions/manual deletion
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt ChannelRouterLogGroup.Arn # Use ARN of the defined Log Group
+              # DynamoDB Permissions (Specific Table)
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: !GetAtt CompanyDataTable.Arn # Reference Company Data table
+              # SQS Permissions (Specific Queues - Add others if needed)
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource:
+                  - !GetAtt WhatsAppQueue.Arn
+                  - !GetAtt EmailQueue.Arn # Add Email Queue ARN
+                  - !GetAtt SmsQueue.Arn # Add SMS Queue ARN
+      # Tags:
+      #   - Key: Environment
+      #     Value: !Ref EnvironmentName
+
+  # --- Log Group for Channel Router ---
+  ChannelRouterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectPrefix}-channel-router-${EnvironmentName}'
+      RetentionInDays: 14 # Match other log group retention
+
+  # --- Channel Router Lambda Function ---
+  ChannelRouterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ProjectPrefix}-channel-router-${EnvironmentName}'
+      CodeUri: src_dev/channel-router/lambda/
+      Handler: index.lambda_handler
+      Runtime: python3.11
+      Role: !GetAtt ChannelRouterRole.Arn # Assign the Channel Router Role
+      Timeout: 30 # Default, adjust if needed
+      MemorySize: 128 # Default, adjust if needed
+      Environment:
+        Variables:
+          COMPANY_DATA_TABLE: !Ref CompanyDataTable # Reference the Company Data Table Name
+          WHATSAPP_QUEUE_URL: !Ref WhatsAppQueue # Reference the WhatsApp Queue URL
+          EMAIL_QUEUE_URL: !Ref EmailQueue # Add Email Queue URL
+          SMS_QUEUE_URL: !Ref SmsQueue # Add SMS Queue URL
+          LOG_LEVEL: !Ref LogLevel
+          VERSION: !Sub 'router-${EnvironmentName}-1.0.1' # Example versioning
+      Events:
+        ApiEvent:
+          Type: Api # API Gateway trigger
+          Properties:
+            Path: /initiate-conversation
+            Method: POST
+            RestApiId: !Ref ApiGateway # Link to the API Gateway resource
+            # Auth: # Auth is handled globally/via DefinitionBody in ApiGateway resource
+            #   ApiKeyRequired: true 
+    Metadata:
+      BuildMethod: python3.11
+
+  # --- API Gateway ---
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub '${ProjectPrefix}-api-${EnvironmentName}'
+      StageName: !Ref EnvironmentName # Use environment name for stage (e.g., dev, prod)
+      DefinitionBody:
+        swagger: '2.0'
+        info:
+          title: !Sub '${ProjectPrefix}-api-${EnvironmentName}'
+        paths:
+          /initiate-conversation:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ChannelRouterFunction.Arn}/invocations'
+              security:
+                - api_key: [] # Require API Key for this method
+              responses: {}
+            options: # Add CORS OPTIONS method
+              summary: CORS support
+              description: Enable CORS by returning correct headers
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              tags:
+                - CORS
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'" # Be more specific for production
+                    responseTemplates:
+                      application/json: ''
+              responses:
+                "200":
+                  description: CORS configuration response
+                  headers:
+                    Access-Control-Allow-Headers:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Origin:
+                      type: string
+        securityDefinitions:
+          api_key:
+            type: apiKey
+            name: x-api-key # Header name for API Key
+            in: header
+      # Enable Detailed CloudWatch Logs for the API stage
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          LoggingLevel: INFO # Or ERROR
+          DataTraceEnabled: true
+          MetricsEnabled: true
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayLogGroup.Arn
+        Format: '$context.identity.sourceIp $context.identity.caller $context.identity.user [$context.requestTime] "$context.httpMethod $context.resourcePath $context.protocol" $context.status $context.responseLength $context.requestId'
+      # ApiKeySourceType: HEADER # Default is HEADER
+      Auth:
+        ApiKeyRequired: true # Enforce API Key globally, can override per method
+        # UsagePlan: # Define Usage Plan separately if needed for rate limiting/quotas
+        #   CreateUsagePlan: PER_API
+        #   UsagePlanName: !Sub '${ProjectPrefix}-usage-plan-${EnvironmentName}'
+
+  # --- Log Group for API Gateway Access Logs ---
+  ApiGatewayLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+          LogGroupName: !Sub '/aws/apigateway/${ProjectPrefix}-api-${EnvironmentName}'
+          RetentionInDays: 14 # Optional: Set retention policy
+
+  # --- API Gateway Usage Plan ---
+  StandardUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub '${ProjectPrefix}-standard-usage-plan-${EnvironmentName}'
+      Description: !Sub 'Standard usage plan for ${EnvironmentName} environment'
+      ApiStages:
+        - ApiId: !Ref ApiGateway # Reference the API Gateway resource
+          Stage: !Ref ApiGateway.Stage # Reference the Stage created by Serverless::Api
+      Throttle:
+        RateLimit: 10 # Requests per second
+        BurstLimit: 20 # Burst capacity
+      # Quota: # Optional: Define quota limits if needed
+      #   Limit: 10000
+      #   Period: DAY
+      #   Offset: 0
+      # Tags:
+      #   - Key: Environment
+      #     Value: !Ref EnvironmentName
+
+  # --- SNS Topic for Alerts ---
+  CriticalAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectPrefix}-critical-alerts-${EnvironmentName}'
+      # Subscription: # Add subscriptions (e.g., email) here or manage them separately
+      #   - Endpoint: your-email@example.com
+      #     Protocol: email
+      # Tags:
+      #   - Key: Environment
+      #     Value: !Ref EnvironmentName
+
+  # --- CloudWatch Monitoring for Critical DB Failure ---
+  WhatsAppProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectPrefix}-whatsapp-channel-processor-${EnvironmentName}'
+      RetentionInDays: 14 # Match other log group retention
+
+  CriticalDbUpdateFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref WhatsAppProcessorLogGroup # Reference the Log Group defined above
+      FilterPattern: '"CRITICAL:" "final DynamoDB update failed"' # Pattern to match the critical log message
+      MetricTransformations:
+        - MetricValue: "1"
+          MetricNamespace: !Sub 'AIComms/${EnvironmentName}' # Custom namespace
+          MetricName: WhatsAppProcessorFinalDbUpdateFailureCount
+          Unit: Count
+
+  CriticalDbUpdateFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectPrefix}-WhatsAppProcessor-FinalDbUpdateFailure-${EnvironmentName}'
+      AlarmDescription: 'Alarm triggers if the final DynamoDB update fails after message send in WhatsApp Processor'
+      Namespace: !Sub 'AIComms/${EnvironmentName}'
+      MetricName: WhatsAppProcessorFinalDbUpdateFailureCount
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      Period: 300 # 5 minutes
+      Statistic: Sum
+      Threshold: 1
+      ActionsEnabled: true
+      AlarmActions:
+        - !Ref CriticalAlertsTopic # Send notification to the SNS topic
+      TreatMissingData: notBreaching # Don't alarm if there are no logs/data points
+
 Outputs:
-  # Optional: Outputs can be defined if needed, but not essential for local invoke
-  WhatsAppProcessorFunction: 
-    Description: "WhatsApp Channel Processor Lambda Function ARN (local definition)"
-    Value: !GetAtt whatsappChannelProcessorFunctionDev.Arn 
+  WhatsAppProcessorFunctionName:
+    Description: "WhatsApp Channel Processor Lambda Function Name"
+    Value: !Ref WhatsAppProcessorFunction
+  WhatsAppProcessorFunctionArn:
+    Description: "WhatsApp Channel Processor Lambda Function ARN"
+    Value: !GetAtt WhatsAppProcessorFunction.Arn
+
+  ConversationsTableName:
+    Description: "Name of the Conversations DynamoDB Table"
+    Value: !Ref ConversationsTable
+
+  WhatsAppProcessorRoleArn:
+      Description: "ARN of the IAM Role for the WhatsApp Processor Lambda"
+      Value: !GetAtt WhatsAppProcessorRole.Arn
+
+  ChannelRouterRoleArn:
+    Description: "ARN of the IAM Role for the Channel Router Lambda"
+    Value: !GetAtt ChannelRouterRole.Arn
+
+  ChannelRouterFunctionName:
+    Description: "Channel Router Lambda Function Name"
+    Value: !Ref ChannelRouterFunction
+  ChannelRouterFunctionArn:
+    Description: "Channel Router Lambda Function ARN"
+    Value: !GetAtt ChannelRouterFunction.Arn
+
+  ApiGatewayUrl:
+    Description: "Invoke URL for the API Gateway stage"
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}'
+
+  # --- Add Outputs for new Queues ---
+  EmailQueueUrl:
+    Description: "URL of the Email SQS Queue"
+    Value: !Ref EmailQueue
+  EmailQueueArn:
+    Description: "ARN of the Email SQS Queue"
+    Value: !GetAtt EmailQueue.Arn
+  SmsQueueUrl:
+    Description: "URL of the SMS SQS Queue"
+    Value: !Ref SmsQueue
+  SmsQueueArn:
+    Description: "ARN of the SMS SQS Queue"
+    Value: !GetAtt SmsQueue.Arn
+
+  CriticalAlertsTopicArn:
+    Description: "ARN of the SNS topic for critical alerts"
+    Value: !Ref CriticalAlertsTopic # Use !Ref to get the ARN for SNS Topics
+
+  # --- Define other resources (e.g., other SQS Queues) below --- 

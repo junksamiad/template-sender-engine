@@ -2,28 +2,40 @@
 node_modules/
 
 # Environment variables
-.env
-venv/
+.env*
+!.env.example
+
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Build artifacts
+.aws-sam/
+*.zip
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Virtual environment
+venv/
+.venv/
 env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
+.env/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Build output
 /dist
