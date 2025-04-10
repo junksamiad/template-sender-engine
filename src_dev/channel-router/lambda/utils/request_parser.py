@@ -34,6 +34,8 @@ def parse_request_body(event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             logger.warning("Request body is an empty string.")
             return None
 
+        # Log the raw string before attempting to parse
+        logger.debug(f"Attempting to parse body string: {body_str}") 
         body = json.loads(body_str)
         logger.debug("Successfully parsed request body.") # Use debug level for success
         return body
