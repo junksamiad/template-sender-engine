@@ -224,8 +224,16 @@ Resources:
                 Resource:
                   # WhatsApp channel credentials (Twilio)
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/whatsapp-credentials/*/*/twilio-*'
-                  # OpenAI channel-specific API key
+                  # OpenAI channel-specific API key (WhatsApp)
                   - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/openai-api-key/whatsapp-*'
+                  # OpenAI channel-specific API key (SMS)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/openai-api-key/sms-*'
+                  # OpenAI channel-specific API key (Email)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/openai-api-key/email-*'
+                  # SMS channel credentials (Twilio)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/sms-credentials/*/*/twilio-*'
+                  # Email channel credentials (SendGrid)
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectPrefix}/email-credentials/*/*/sendgrid-*'
       # Tags:
       #   - Key: Environment
       #     Value: !Ref EnvironmentName
