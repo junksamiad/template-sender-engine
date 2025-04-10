@@ -287,10 +287,10 @@ Resources:
               # Basic Lambda Execution (CloudWatch Logs)
               - Effect: Allow
                 Action:
-                  - logs:CreateLogGroup
+                  - logs:CreateLogGroup # Still need CreateLogGroup in case of race conditions/manual deletion
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ProjectPrefix}-channel-router-${EnvironmentName}:*'
+                Resource: !GetAtt ChannelRouterLogGroup.Arn # Use ARN of the defined Log Group
               # DynamoDB Permissions (Specific Table)
               - Effect: Allow
                 Action:
@@ -306,6 +306,13 @@ Resources:
       # Tags:
       #   - Key: Environment
       #     Value: !Ref EnvironmentName
+
+  # --- Log Group for Channel Router ---
+  ChannelRouterLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectPrefix}-channel-router-${EnvironmentName}'
+      RetentionInDays: 14 # Match other log group retention
 
   # --- Channel Router Lambda Function ---
   ChannelRouterFunction:
