@@ -333,7 +333,15 @@ Resources:
           SMS_QUEUE_URL: !Ref SmsQueue # Add SMS Queue URL
           LOG_LEVEL: !Ref LogLevel
           VERSION: !Sub 'router-${EnvironmentName}-1.0.1' # Example versioning
-      # API Gateway trigger will be implicitly created by Api resource below
+      Events:
+        ApiEvent:
+          Type: Api # API Gateway trigger
+          Properties:
+            Path: /initiate-conversation
+            Method: POST
+            RestApiId: !Ref ApiGateway # Link to the API Gateway resource
+            # Auth: # Auth is handled globally/via DefinitionBody in ApiGateway resource
+            #   ApiKeyRequired: true 
     Metadata:
       BuildMethod: python3.11
 
