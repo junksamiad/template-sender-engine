@@ -403,6 +403,26 @@ Resources:
           LogGroupName: !Sub '/aws/apigateway/${ProjectPrefix}-api-${EnvironmentName}'
           RetentionInDays: 14 # Optional: Set retention policy
 
+  # --- API Gateway Usage Plan ---
+  StandardUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub '${ProjectPrefix}-standard-usage-plan-${EnvironmentName}'
+      Description: !Sub 'Standard usage plan for ${EnvironmentName} environment'
+      ApiStages:
+        - ApiId: !Ref ApiGateway # Reference the API Gateway resource
+          Stage: !Ref ApiGateway.Stage # Reference the Stage created by Serverless::Api
+      Throttle:
+        RateLimit: 10 # Requests per second
+        BurstLimit: 20 # Burst capacity
+      # Quota: # Optional: Define quota limits if needed
+      #   Limit: 10000
+      #   Period: DAY
+      #   Offset: 0
+      # Tags:
+      #   - Key: Environment
+      #     Value: !Ref EnvironmentName
+
   # --- SNS Topic for Alerts ---
   CriticalAlertsTopic:
     Type: AWS::SNS::Topic
