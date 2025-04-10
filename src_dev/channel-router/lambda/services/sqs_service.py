@@ -1,0 +1,145 @@
+"""
+SQS Service Module
+
+Handles sending messages to AWS SQS queues.
+"""
+
+import json
+import logging
+import time
+import random
+from datetime import datetime, timezone
+from typing import Dict, Any
+
+import boto3
+import botocore
+
+# Initialize logger
+logger = logging.getLogger()
+
+# Initialize SQS client
+# It's generally recommended to initialize clients outside the handler/function
+# for potential reuse across invocations.
+sqs = boto3.client('sqs')
+
+def send_message_to_queue(queue_url: str, context_object: Dict[str, Any], channel_method: str) -> bool:
+    """
+    Sends the context object to the specified SQS queue with retry logic.
+
+    Args:
+        queue_url: The URL of the target SQS queue.
+        context_object: The context object dictionary to send.
+        channel_method: The communication channel method (e.g., 'whatsapp').
+
+    Returns:
+        True if the message was sent successfully, False otherwise.
+    """
+    if not queue_url:
+        logger.error("Queue URL is not provided or is empty.")
+        return False
+
+    # Extract relevant information for message attributes
+    # Use .get() for safe access in case keys are missing
+    frontend_payload = context_object.get('frontend_payload', {})
+    conversation_data = context_object.get('conversation_data', {})
+    recipient_data = frontend_payload.get('recipient_data', {})
+
+    # Use explicit defaults to highlight if expected keys are missing
+    conversation_id = conversation_data.get('conversation_id', 'MISSING_conversation_id')
+
+    # Prepare message attributes
+    message_attributes = {
+        'channelMethod': {
+            'DataType': 'String',
+            'StringValue': channel_method
+        },
+        'conversationId': {
+            'DataType': 'String',
+            'StringValue': conversation_id
+        },
+        'routerTimestamp': {
+            'DataType': 'String',
+            'StringValue': datetime.now(timezone.utc).isoformat()
+        }
+    }
+
+    # Add channel-specific recipient identifier attributes if available and valid
+    if channel_method.lower() in ['whatsapp', 'sms']:
+        recipient_tel = recipient_data.get('recipient_tel', 'MISSING_recipient_tel')
+        if recipient_tel != 'MISSING_recipient_tel' and recipient_tel: # Check not default and not empty
+            message_attributes['recipientTel'] = {
+                'DataType': 'String',
+                'StringValue': recipient_tel
+            }
+    elif channel_method.lower() == 'email':
+        recipient_email = recipient_data.get('recipient_email', 'MISSING_recipient_email')
+        if recipient_email != 'MISSING_recipient_email' and recipient_email: # Check not default and not empty
+            message_attributes['recipientEmail'] = {
+                'DataType': 'String',
+                'StringValue': recipient_email
+            }
+
+    # --- Retry Logic Configuration --- 
+    max_retries = 3
+    # Define exceptions considered transient for retry purposes
+    retry_exceptions = (
+        botocore.exceptions.ClientError,  # Includes ServiceQuotaExceeded, ProvisionedThroughputExceeded etc.
+        botocore.exceptions.ConnectTimeoutError,
+        botocore.exceptions.ReadTimeoutError,
+        botocore.exceptions.ConnectionError,
+        # Add other specific transient error codes from ClientError if needed
+    )
+    base_delay = 0.5  # Base delay in seconds
+    # ---------------------------------
+
+    # Try sending the message with retries for transient errors
+    for attempt in range(max_retries):
+        try:
+            # Prepare message parameters for each attempt
+            message_body = json.dumps(context_object)
+            message_params = {
+                'QueueUrl': queue_url,
+                'MessageBody': message_body,
+                'MessageAttributes': message_attributes
+            }
+
+            # Note: MessageGroupId and MessageDeduplicationId are for FIFO queues.
+            # If using standard queues, these are not needed.
+            # if queue_url.endswith('.fifo'):
+            #     # Ensure conversation_id is suitable or adapt grouping strategy
+            #     message_params['MessageGroupId'] = conversation_id 
+            #     # Use a unique identifier for deduplication, request_id is often suitable if available
+            #     # request_id_for_fifo = frontend_payload.get('request_data', {}).get('request_id', conversation_id)
+            #     # message_params['MessageDeduplicationId'] = request_id_for_fifo 
+
+            # Send message to SQS queue
+            response = sqs.send_message(**message_params)
+            
+            # Log success details
+            logger.info(f"Message sent to {channel_method} queue. MessageId: {response.get('MessageId')}, ConversationId: {conversation_id}")
+            return True # Success!
+
+        except retry_exceptions as e:
+            # Check if it's the last attempt
+            if attempt < max_retries - 1:
+                # Calculate delay with exponential backoff and jitter
+                delay = (base_delay * (2 ** attempt)) + (random.random() * 0.1)
+                logger.warning(f"Transient error sending to {queue_url} (Attempt {attempt + 1}/{max_retries}). Retrying in {delay:.2f}s. Error: {str(e)}")
+                time.sleep(delay)
+            else:
+                # Last attempt failed
+                logger.error(f"Failed to send message to {queue_url} after {max_retries} attempts. Final Error: {str(e)}")
+                return False # Final failure after retries
+        
+        except json.JSONDecodeError as e:
+            # Error serializing the context_object - non-retryable
+            logger.error(f"Failed to serialize context_object to JSON for queue {queue_url}. Error: {str(e)}")
+            return False # Cannot proceed
+
+        except Exception as e:
+            # Catch any other unexpected exceptions - non-retryable
+            logger.error(f"Unexpected error sending message to {queue_url}. Error: {str(e)}", exc_info=True)
+            return False # Failed
+
+    # This line should technically not be reached if max_retries > 0, but included for safety.
+    return False 
