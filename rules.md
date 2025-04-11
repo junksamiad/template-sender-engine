@@ -1,0 +1,2 @@
+1. Do not execute any commands without checking with the user.
+2. If the user states you don't have to check before executing, then you can follow the specific instructions given and override point 1 above.
