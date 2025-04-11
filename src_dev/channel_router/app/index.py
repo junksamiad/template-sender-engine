@@ -13,13 +13,13 @@ import logging
 import uuid
 from typing import Dict, Any
 
-# Import core modules
-from .utils.request_parser import parse_request_body
-from .utils.validators import validate_initiate_request
-from .services import dynamodb_service
-from .services import sqs_service
-from .core.context_builder import build_context_object
-from .utils.response_builder import create_success_response, create_error_response
+# Import core modules (reverted to non-relative)
+from utils.request_parser import parse_request_body
+from utils.validators import validate_initiate_request
+from services import dynamodb_service # Keep as module import
+from services import sqs_service # Keep as module import
+from core.context_builder import build_context_object
+from utils.response_builder import create_success_response, create_error_response
 
 # Initialize logger
 logger = logging.getLogger()
