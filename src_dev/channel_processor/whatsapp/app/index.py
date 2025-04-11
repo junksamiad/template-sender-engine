@@ -433,8 +433,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             if not update_successful:
                 logger.error(f"Failed to update DynamoDB record for conversation {conv_id} in Step 8.")
-                # Fail the SQS message processing if DB update fails
-                raise RuntimeError(f"DynamoDB final update failed for {conv_id}")
+                # Fail the SQS message processing if DB update fails - REMOVED as per LLD
+                # raise RuntimeError(f"DynamoDB final update failed for {conv_id}")
                 # Log CRITICALLY, but DO NOT raise an error. Allow SQS message deletion
                 # to prevent duplicate Twilio sends.
                 logger.critical(

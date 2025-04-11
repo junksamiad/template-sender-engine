@@ -75,20 +75,19 @@ class SQSHeartbeat:
             except ClientError as e:
                 error_code = e.response.get('Error', {}).get('Code', 'Unknown')
                 logger.error(f"Heartbeat failed for ...{self.receipt_handle[-10:]}. Error: {error_code} - {e}")
-                # Store the first error encountered
                 with self._lock:
                     if self._error is None:
                        self._error = e
-                # Stop the heartbeat on error to prevent repeated failures/logs
-                self.stop() # Signal the thread to terminate itself
-                break # Exit the loop immediately after stopping
+                # Only set the stop event, don't call stop() from within the thread
+                self._stop_event.set()
+                break # Exit the loop immediately after setting stop event
             except Exception as e:
-                # Catch any other unexpected errors
                 logger.exception(f"Unexpected error in heartbeat thread for ...{self.receipt_handle[-10:]}: {e}")
                 with self._lock:
                     if self._error is None:
                        self._error = e
-                self.stop()
+                # Only set the stop event
+                self._stop_event.set()
                 break
 
         logger.info(f"Heartbeat thread stopped for receipt handle: ...{self.receipt_handle[-10:]}")
@@ -124,14 +123,16 @@ class SQSHeartbeat:
             logger.info(f"Stopping heartbeat thread for ...{self.receipt_handle[-10:]}...")
             self._stop_event.set() # Signal the thread to stop waiting
 
-        # Wait for the thread to finish
-        # Add a timeout to prevent blocking indefinitely in weird edge cases
-        if self._thread.is_alive():
+        # Wait for the thread to finish, but don't join if it's the current thread
+        current_thread = threading.current_thread()
+        if self._thread is not current_thread and self._thread.is_alive():
             self._thread.join(timeout=self.interval_sec + 5) # Wait a bit longer than the interval
             if self._thread.is_alive():
                  logger.warning(f"Heartbeat thread for ...{self.receipt_handle[-10:]} did not terminate gracefully after stop signal.")
             else:
                  logger.debug(f"Heartbeat thread for ...{self.receipt_handle[-10:]} joined successfully.")
+        elif self._thread is current_thread:
+             logger.debug("Stop called from within the heartbeat thread itself; join skipped.")
         else:
             logger.debug(f"Stop called but heartbeat thread for ...{self.receipt_handle[-10:]} was already finished.")
 

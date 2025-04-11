@@ -189,6 +189,7 @@ Initial context:
             elif run.status == 'requires_action':
                 # This example doesn't use function calling, so this status indicates an issue.
                 logger.error(f"Run {run_id} requires action, but function calling is not implemented. Status: {run.status}")
+                # Ensure we return None here to indicate failure/stop processing
                 return None
             
             # If still in progress or queued, wait and poll again
