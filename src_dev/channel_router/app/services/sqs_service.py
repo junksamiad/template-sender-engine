@@ -83,7 +83,7 @@ def send_message_to_queue(queue_url: str, context_object: Dict[str, Any], channe
     max_retries = 3
     # Define exceptions considered transient for retry purposes
     retry_exceptions = (
-        botocore.exceptions.ClientError,  # Includes ServiceQuotaExceeded, ProvisionedThroughputExceeded etc.
+        # botocore.exceptions.ClientError, # Catching broadly retries non-transient errors too
         botocore.exceptions.ConnectTimeoutError,
         botocore.exceptions.ReadTimeoutError,
         botocore.exceptions.ConnectionError,

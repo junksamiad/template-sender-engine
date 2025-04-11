@@ -14,12 +14,12 @@ import uuid
 from typing import Dict, Any
 
 # Import core modules
-from utils.request_parser import parse_request_body
-from utils.validators import validate_initiate_request
-from services.dynamodb_service import get_company_config
-from services.sqs_service import send_message_to_queue
-from core.context_builder import build_context_object
-from utils.response_builder import create_success_response, create_error_response
+from .utils.request_parser import parse_request_body
+from .utils.validators import validate_initiate_request
+from .services import dynamodb_service
+from .services import sqs_service
+from .core.context_builder import build_context_object
+from .utils.response_builder import create_success_response, create_error_response
 
 # Initialize logger
 logger = logging.getLogger()
@@ -29,25 +29,6 @@ log_level_name = os.environ.get('LOG_LEVEL', 'INFO').upper()
 log_level = getattr(logging, log_level_name, logging.INFO)
 logger.setLevel(log_level)
 logger.info(f"Logger initialized with level: {log_level_name}")
-
-# Load environment variables
-# --- Core Configuration ---
-COMPANY_DATA_TABLE = os.environ.get('COMPANY_DATA_TABLE')
-WHATSAPP_QUEUE_URL = os.environ.get('WHATSAPP_QUEUE_URL')
-EMAIL_QUEUE_URL = os.environ.get('EMAIL_QUEUE_URL') # TODO: Add when email channel is implemented
-SMS_QUEUE_URL = os.environ.get('SMS_QUEUE_URL')     # TODO: Add when SMS channel is implemented
-VERSION = os.environ.get('VERSION', '0.0.0-dev') # Default version if not set
-
-# Log warnings if essential configuration is missing
-if not COMPANY_DATA_TABLE:
-    logger.warning("COMPANY_DATA_TABLE environment variable not set!")
-if not WHATSAPP_QUEUE_URL:
-    logger.warning("WHATSAPP_QUEUE_URL environment variable not set!")
-# Add similar warnings for EMAIL/SMS queues when implemented
-
-logger.info(f"Channel Router Version: {VERSION}")
-logger.info(f"Using DynamoDB Table: {COMPANY_DATA_TABLE}")
-logger.info(f"Using WhatsApp Queue: {WHATSAPP_QUEUE_URL}")
 
 # Boto3 clients are initialized within their respective service modules.
 
@@ -62,6 +43,28 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns:
         API Gateway Lambda Proxy Integration response object.
     """
+    # --- Load Environment Variables INSIDE handler ---
+    # This ensures mocks work correctly during testing
+    company_data_table = os.environ.get('COMPANY_DATA_TABLE')
+    whatsapp_queue_url = os.environ.get('WHATSAPP_QUEUE_URL')
+    email_queue_url = os.environ.get('EMAIL_QUEUE_URL')
+    sms_queue_url = os.environ.get('SMS_QUEUE_URL')
+    router_version = os.environ.get('VERSION', '0.0.0-dev')
+
+    # Check essential config loaded inside handler
+    if not company_data_table:
+        logger.error("FATAL: COMPANY_DATA_TABLE environment variable not set!")
+        # Cannot proceed without table name, return generic internal error
+        # Note: request_id might not be known yet if parsing fails later
+        # Returning a simple generic error here.
+        return create_error_response(
+            error_code='CONFIGURATION_ERROR',
+            error_message='Server configuration error (missing table info).',
+            request_id=str(uuid.uuid4()), # Generate a default UUID for this specific error case
+            status_code_hint=500
+        )
+    logger.info(f"Router Version: {router_version}") # Log version inside handler
+
     # Default request ID, might be updated from payload later
     request_id = str(uuid.uuid4())
     
@@ -113,7 +116,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Request body validation successful for request_id: {request_id}")
 
         # 4. Fetch Company Configuration from DynamoDB
-        company_config_result = get_company_config(company_id, project_id)
+        company_config_result = dynamodb_service.get_company_config(company_id, project_id)
         if isinstance(company_config_result, tuple):
             error_code, error_message = company_config_result
             logger.error(f"Failed to get company config: {error_code} - {error_message} (Request ID: {request_id})")
@@ -146,14 +149,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.info(f"Requested channel '{requested_channel}' is allowed for {company_id}/{project_id}.")
 
         # 6. Build Context Object for SQS Message
-        context_object = build_context_object(frontend_payload_dict, company_data_dict, VERSION)
+        context_object = build_context_object(frontend_payload_dict, company_data_dict, router_version)
         logger.info(f"Context object built for request {request_id}")
 
         # 7. Route Context Object to Appropriate SQS Queue
         queue_url_map = {
-            'whatsapp': WHATSAPP_QUEUE_URL,
-            'email': EMAIL_QUEUE_URL, # Will be None if not set
-            'sms': SMS_QUEUE_URL,     # Will be None if not set
+            'whatsapp': whatsapp_queue_url,
+            'email': email_queue_url,
+            'sms': sms_queue_url,
         }
         queue_url = queue_url_map.get(requested_channel)
         if not queue_url:
@@ -166,7 +169,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
               )
 
         # Send the message using the SQS service
-        send_result = send_message_to_queue(queue_url, context_object, requested_channel)
+        send_result = sqs_service.send_message_to_queue(queue_url, context_object, requested_channel)
         if not send_result:
              # Error already logged within sqs_service
              return create_error_response(
