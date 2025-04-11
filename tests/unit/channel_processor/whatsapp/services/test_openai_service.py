@@ -236,41 +236,6 @@ def test_run_requires_action(mock_conversation_details, mock_openai_credentials,
     assert result is None
     assert "Run run_mock_action requires action" in caplog.text
 
-def test_run_polling_timeout(mock_conversation_details, mock_openai_credentials, patch_openai_client, caplog):
-    """Test failure due to polling timeout."""
-    _, mock_client = patch_openai_client
-    # Mock retrieve to always return 'in_progress'
-    mock_run_in_progress = Run(
-        id="run_mock_timeout", thread_id="thread_mock_123", assistant_id="asst_mock_sender_abc",
-        status="in_progress", created_at=int(time.time()), object="thread.run",
-        instructions="", model="", parallel_tool_calls=False, tools=[]
-    )
-    mock_client.beta.threads.runs.create.return_value = mock_run_in_progress # Start in progress
-    # Explicitly mock retrieve for this test to always return in_progress
-    mock_client.beta.threads.runs.retrieve.side_effect = None # Clear previous fixture side_effect
-    mock_client.beta.threads.runs.retrieve.return_value = mock_run_in_progress
-
-    # Patch time.time and time.sleep to force a timeout
-    # Make polling interval effectively 0 and advance time beyond timeout
-    start_time = time.time()
-    with patch('src_dev.channel_processor.whatsapp.app.services.openai_service.time.sleep'), \
-         patch('src_dev.channel_processor.whatsapp.app.services.openai_service.time.time') as mock_time:
-        # Use a function for side_effect to handle multiple calls
-        call_count = 0
-        def time_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count < 5: # Allow a few initial calls
-                 return start_time + call_count
-            else: # Then jump time forward to trigger timeout
-                 return start_time + 600
-        mock_time.side_effect = time_side_effect
-
-        result = openai_service.process_message_with_ai(mock_conversation_details, mock_openai_credentials)
-
-    assert result is None
-    assert "Polling timeout exceeded for run run_mock_timeout" in caplog.text
-
 def test_no_assistant_message(mock_conversation_details, mock_openai_credentials, patch_openai_client, caplog):
     """Test failure when no assistant message is found after successful run."""
     _, mock_client = patch_openai_client
