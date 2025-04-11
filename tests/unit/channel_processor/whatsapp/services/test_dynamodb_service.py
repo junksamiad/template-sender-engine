@@ -1,7 +1,7 @@
 import pytest
 import boto3
 import os
-from moto import mock_aws
+from moto import mock_dynamodb
 from unittest.mock import patch
 import datetime
 from botocore.exceptions import ClientError
@@ -31,7 +31,7 @@ def aws_credentials():
 @pytest.fixture(scope="function")
 def dynamodb_table(aws_credentials):
     """Creates a mock DynamoDB table for the tests."""
-    with mock_aws():
+    with mock_dynamodb():
         dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
         dynamodb.create_table(
             TableName=DUMMY_TABLE_NAME,

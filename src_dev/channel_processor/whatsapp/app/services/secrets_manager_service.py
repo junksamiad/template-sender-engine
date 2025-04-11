@@ -6,7 +6,11 @@ import logging
 import os
 import json
 from botocore.exceptions import ClientError
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING # Import TYPE_CHECKING
+
+# Import boto3 types for type hinting if available
+if TYPE_CHECKING:
+    from mypy_boto3_secretsmanager.client import SecretsManagerClient
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -14,27 +18,41 @@ logger = logging.getLogger(__name__)
 # Constants from environment variables or defaults
 SECRETS_MANAGER_REGION = os.environ.get("SECRETS_MANAGER_REGION", "eu-north-1") # Default same as index.py
 
-# Initialize Secrets Manager client
-secrets_manager_client = None
-try:
-    secrets_manager_client = boto3.client("secretsmanager", region_name=SECRETS_MANAGER_REGION)
-    logger.info(f"Successfully initialized Secrets Manager client in region: {SECRETS_MANAGER_REGION}")
-except Exception as e:
-    logger.exception("Failed to initialize Secrets Manager client.")
-    # Depending on requirements, might want to raise this error.
+# Remove module-level client initialization
+# secrets_manager_client = None
+# try:
+#     secrets_manager_client = boto3.client("secretsmanager", region_name=SECRETS_MANAGER_REGION)
+#     logger.info(f"Successfully initialized Secrets Manager client in region: {SECRETS_MANAGER_REGION}")
+# except Exception as e:
+#     logger.exception("Failed to initialize Secrets Manager client.")
 
-def get_secret(secret_name_or_arn: str) -> Optional[Dict[str, Any]]:
+def get_secret(
+    secret_name_or_arn: str,
+    # Add optional client argument for DI
+    sm_client: Optional['SecretsManagerClient'] = None
+) -> Optional[Dict[str, Any]]:
     """
     Retrieves a secret from AWS Secrets Manager and parses it as JSON.
 
     Args:
         secret_name_or_arn: The name or ARN of the secret to retrieve.
+        sm_client: Optional boto3 SecretsManager client for testing/injection.
 
     Returns:
         A dictionary representing the parsed JSON secret, or None if retrieval fails.
     """
-    if not secrets_manager_client:
-        logger.error("Secrets Manager client is not initialized. Cannot retrieve secret.")
+    # Initialize client inside function if not provided
+    if sm_client is None:
+        try:
+            sm_client = boto3.client("secretsmanager", region_name=SECRETS_MANAGER_REGION)
+            logger.debug(f"Initialized default Secrets Manager client in region: {SECRETS_MANAGER_REGION}")
+        except Exception as e:
+            logger.exception("Failed to initialize default Secrets Manager client.")
+            return None
+
+    # Check again after attempting initialization
+    if sm_client is None:
+        logger.error("Secrets Manager client could not be initialized. Cannot retrieve secret.")
         return None
 
     if not secret_name_or_arn:
@@ -44,8 +62,8 @@ def get_secret(secret_name_or_arn: str) -> Optional[Dict[str, Any]]:
     logger.debug(f"Attempting to retrieve secret: {secret_name_or_arn}")
 
     try:
-        # Call secrets_manager_client.get_secret_value
-        get_secret_value_response = secrets_manager_client.get_secret_value(
+        # Use the provided or initialized client
+        get_secret_value_response = sm_client.get_secret_value(
             SecretId=secret_name_or_arn
         )
 
