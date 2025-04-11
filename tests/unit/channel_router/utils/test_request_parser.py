@@ -5,10 +5,10 @@ import json
 import base64
 import sys
 import os
+from unittest.mock import patch, MagicMock
 
-# Import the function to test
-# Assuming the source code is now in src_dev/channel_router/app/...
-from src_dev.channel_router.app.utils.request_parser import parse_request_body
+# Update the import path to reflect the new code structure
+from src_dev.channel_router.app.lambda_pkg.utils.request_parser import parse_request_body
 
 # --- Test Data ---
 VALID_PAYLOAD_DICT = {"key": "value", "number": 123}

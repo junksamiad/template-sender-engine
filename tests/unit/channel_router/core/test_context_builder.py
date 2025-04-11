@@ -2,12 +2,13 @@
 
 import pytest
 import uuid
+from datetime import datetime, timezone
 
-# Assuming the source code is now in src_dev/channel_router/app/...
-from src_dev.channel_router.app.core.context_builder import (
-    build_context_object,
+# Update the import path to reflect the new code structure
+from src_dev.channel_router.app.lambda_pkg.core.context_builder import (
+    create_conversation_id,
     generate_conversation_data_dict,
-    create_conversation_id
+    build_context_object
 )
 
 # --- Test Data Fixtures ---

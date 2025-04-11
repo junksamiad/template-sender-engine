@@ -7,24 +7,26 @@ import boto3
 from moto import mock_dynamodb # Use specific decorator for moto 4.x
 from decimal import Decimal
 # import sys # Removed
-from unittest.mock import patch # Keep patch for env var test
+from unittest.mock import patch, MagicMock # Keep patch for env var test
 from botocore.exceptions import ClientError # Import ClientError
+from importlib import reload
 
 # Add src_dev parent directory to sys.path - REMOVED
-# PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../..'))
-# if PROJECT_ROOT not in sys.path:
-#     sys.path.insert(0, PROJECT_ROOT)
+# Need to ensure pytest can find the src_dev module structure - REMOVED
+# module_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))))
+# if module_dir not in sys.path:
+#     sys.path.insert(0, module_dir)
 
 # Now import the module/functions to test
-# Need to import AFTER potentially modifying sys.path and setting env vars - REMOVED
-from src_dev.channel_router.app.services import dynamodb_service
-# Import error constants directly if needed
-from src_dev.channel_router.app.services.dynamodb_service import (
-    get_company_config,
+# Import AFTER potentially modifying sys.path and setting env vars - REMOVED
+from src_dev.channel_router.app.lambda_pkg.services import dynamodb_service # Updated path
+# Import error constants directly if needed, using the updated path
+from src_dev.channel_router.app.lambda_pkg.services.dynamodb_service import (
     replace_decimals,
-    DATABASE_ERROR,
-    COMPANY_NOT_FOUND,
-    PROJECT_INACTIVE,
+    get_company_config,
+    COMPANY_NOT_FOUND, # Example error code
+    PROJECT_INACTIVE, # Example error code
+    DATABASE_ERROR, # Example error code
     CONFIGURATION_ERROR
 )
 

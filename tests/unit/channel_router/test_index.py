@@ -9,11 +9,11 @@ import uuid # Import uuid for mock fixture
 # --- Path Setup Removed --- # Handled by pytest.ini
 
 # Import the handler function directly
-from src_dev.channel_router.app.index import lambda_handler
+from src_dev.channel_router.app.lambda_pkg.index import lambda_handler
 
 # Import specific error codes for assertions (if needed)
 # Note: These might not be needed if we mock the db_service correctly
-from src_dev.channel_router.app.services import dynamodb_service
+from src_dev.channel_router.app.lambda_pkg.services import dynamodb_service
 
 # --- Test Fixtures ---
 

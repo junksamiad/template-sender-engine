@@ -2,15 +2,15 @@
 
 import pytest
 import os
-import boto3
-from moto import mock_sqs
-import json
-from botocore.exceptions import ClientError
 from unittest.mock import patch, MagicMock
-import time
+from moto import mock_sqs # Updated import for moto > 2.0
+import boto3
+import json
+from botocore.exceptions import ClientError, WaiterError
 
-# Import the function to test
-from src_dev.channel_router.app.services.sqs_service import send_message_to_queue
+# Update the import path to reflect the new code structure
+from src_dev.channel_router.app.lambda_pkg.services.sqs_service import send_message_to_queue
+from importlib import reload
 
 # --- Test Constants ---
 QUEUE_NAME = 'test-channel-queue'

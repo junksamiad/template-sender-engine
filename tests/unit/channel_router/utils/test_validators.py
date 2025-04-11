@@ -6,8 +6,8 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-# Assuming the source code is now in src_dev/channel_router/app/...
-from src_dev.channel_router.app.utils.validators import validate_initiate_request, SUPPORTED_CHANNELS
+# Update the import path to reflect the new code structure
+from src_dev.channel_router.app.lambda_pkg.utils.validators import validate_initiate_request, SUPPORTED_CHANNELS
 # Import any specific custom exceptions if defined in validators.py
 # from src_dev.channel_router.app.utils.validators import ValidationFailedError # Example
 

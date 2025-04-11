@@ -4,8 +4,8 @@ import json
 from unittest.mock import patch, MagicMock
 from twilio.base.exceptions import TwilioRestException
 
-# Module to test
-from src_dev.channel_processor.whatsapp.app.services import twilio_service
+# Update the import path to reflect the new code structure
+from src_dev.channel_processor.whatsapp.app.lambda_pkg.services import twilio_service
 # Reload the module to ensure mocks are applied correctly
 from importlib import reload
 reload(twilio_service)
@@ -40,7 +40,7 @@ def mock_twilio_message():
 @pytest.fixture
 def patch_twilio_client(mock_twilio_message):
     # Patch the Client constructor within the twilio_service module
-    with patch('src_dev.channel_processor.whatsapp.app.services.twilio_service.Client') as MockTwilioClient:
+    with patch('src_dev.channel_processor.whatsapp.app.lambda_pkg.services.twilio_service.Client') as MockTwilioClient:
         # Configure the instance returned by the constructor
         mock_client_instance = MockTwilioClient.return_value
         # Configure the messages.create method on the instance

@@ -1,6 +1,6 @@
 import pytest
 import json
-from src_dev.channel_processor.whatsapp.app.utils.context_utils import (
+from src_dev.channel_processor.whatsapp.app.lambda_pkg.utils.context_utils import (
     deserialize_context,
     validate_context,
 )

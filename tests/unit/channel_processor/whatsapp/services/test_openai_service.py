@@ -4,16 +4,18 @@ import json
 import time
 # Import openai for exception types
 import openai
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock, call, ANY
 from openai.types.beta.thread import Thread
 from openai.types.beta.threads.message import Message as ThreadMessage
 from openai.types.beta.threads.message_content import TextContentBlock
 # Import Run, Usage, and LastError
 from openai.types.beta.threads.run import Run, Usage, LastError
 from openai.pagination import SyncCursorPage # For mocking list responses
+from botocore.exceptions import ClientError
 
-# Module to test
-from src_dev.channel_processor.whatsapp.app.services import openai_service
+# Update the import path to reflect the new code structure
+from src_dev.channel_processor.whatsapp.app.lambda_pkg.services import openai_service
+from src_dev.channel_processor.whatsapp.app.lambda_pkg.utils.sqs_heartbeat import SQSHeartbeat # Assuming heartbeat is also used/mocked here
 # Reload the module to re-initialize client with mocked env vars/moto
 from importlib import reload
 
@@ -111,7 +113,7 @@ def mock_openai_client():
 # --- Auto-used Patch for OpenAI Client ---
 @pytest.fixture(autouse=True)
 def patch_openai_client(mock_openai_client):
-    with patch('src_dev.channel_processor.whatsapp.app.services.openai_service.openai.OpenAI') as mock_openai_constructor:
+    with patch('src_dev.channel_processor.whatsapp.app.lambda_pkg.services.openai_service.openai.OpenAI') as mock_openai_constructor:
         mock_openai_constructor.return_value = mock_openai_client
         yield mock_openai_constructor, mock_openai_client
 

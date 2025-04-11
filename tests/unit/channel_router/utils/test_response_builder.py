@@ -3,12 +3,14 @@
 import pytest
 import json
 from datetime import datetime, timezone
+from unittest.mock import patch
 
-# Assuming the source code is now in src_dev/channel_router/app/...
-from src_dev.channel_router.app.utils.response_builder import (
+# Update the import path to reflect the new code structure
+from src_dev.channel_router.app.lambda_pkg.utils.response_builder import (
     create_success_response,
     create_error_response,
     COMMON_HEADERS
+    # ERROR_CODE_MAP is defined inside the function, cannot be imported
 )
 
 # --- Test Cases for create_success_response ---

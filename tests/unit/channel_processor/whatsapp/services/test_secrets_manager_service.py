@@ -4,13 +4,13 @@ import os
 import json
 # from moto import mock_aws
 from moto import mock_secretsmanager # Use specific decorator for moto 4.x
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from botocore.exceptions import ClientError
 
 # Module to test
-from src_dev.channel_processor.whatsapp.app.services import secrets_manager_service
+from src_dev.channel_processor.whatsapp.app.lambda_pkg.services import secrets_manager_service
 # Reload the module to re-initialize client with mocked env vars/moto - REMOVED
-# from importlib import reload
+from importlib import reload
 
 # --- Constants ---
 DUMMY_SECRET_NAME = "test/my/secret"
