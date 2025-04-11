@@ -1,0 +1,69 @@
+# Node.js dependencies
+node_modules/
+
+# Environment variables
+.env*
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Build artifacts
+.aws-sam/
+*.zip
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Virtual environment
+venv/
+.venv/
+env/
+.env/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build output
+/dist
+/build
+/.next
+/out
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor/IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# AWS credentials file - contains sensitive information
+hld/aws-production-credentials.md
+
+# Local development
+.local/
+
+# AWS
+cdk.out/
+cdk.context.json
+.aws-sam/ 

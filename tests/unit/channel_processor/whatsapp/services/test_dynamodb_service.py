@@ -5,9 +5,15 @@ from moto import mock_dynamodb
 from unittest.mock import patch
 import datetime
 from botocore.exceptions import ClientError
+from typing import TYPE_CHECKING
+
+# Import boto3 types for type hinting if available
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb.service_resource import Table
 
 # Module to test
-from src_dev.channel_processor.whatsapp.app.services import dynamodb_service
+# from src_dev.channel_processor.whatsapp.app.services import dynamodb_service
+from channel_processor.whatsapp.app.services import dynamodb_service
 # Reload the module to re-initialize client/table with mocked env vars/moto
 from importlib import reload
 

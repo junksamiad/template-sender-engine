@@ -5,7 +5,9 @@ import time
 from unittest.mock import patch, MagicMock, ANY
 
 # Module to test (main handler)
-from src_dev.channel_processor.whatsapp.app.index import lambda_handler
+# Import the handler function directly, assuming src_dev is the package root
+# from src_dev.channel_processor.whatsapp.app.index import lambda_handler
+from channel_processor.whatsapp.app.index import lambda_handler
 
 # --- Constants ---
 DUMMY_TABLE_NAME = "test-conversations-table"
