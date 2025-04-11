@@ -1,0 +1,6 @@
+# requirements-dev.txt
+# Dependencies for running tests and local development
+
+pytest
+moto[all]
+boto3 
