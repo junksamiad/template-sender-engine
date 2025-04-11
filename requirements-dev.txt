@@ -1,3 +1,0 @@
-pytest
-moto[all]
-boto3 # Often needed in tests too 
