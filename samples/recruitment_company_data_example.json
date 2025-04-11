@@ -58,11 +58,11 @@
       "whatsapp_credentials_id": "whatsapp-credentials/cucumber-recruitment/cv-analysis/twilio"
     },
     "email": {
-      "company_email": "replies@cucumber-recruitment.com",
+      "company_email": "lee.hayton@adaptixinnovation.co.uk",
       "email_credentials_id": "email-credentials/cucumber-recruitment/cv-analysis/sendgrid"
     },
     "sms": {
-        "company_sms_number": "+447700900444",
+        "company_sms_number": "+447588713814",
         "sms_credentials_id": "sms-credentials/cucumber-recruitment/cv-analysis/twilio"
       }
   },
