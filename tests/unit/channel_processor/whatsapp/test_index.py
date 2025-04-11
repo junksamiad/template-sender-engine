@@ -2,20 +2,10 @@ import pytest
 import os
 import json
 import time
-from unittest.mock import patch, MagicMock
-import sys
-from importlib import reload
-
-# --- Print sys.path for debugging ---
-print(f"sys.path during collection: {sys.path}")
-# -------------------------------------
-
-# --- Path Setup Removed --- # Handled by pytest.ini
+from unittest.mock import patch, MagicMock, ANY
 
 # Module to test (main handler)
-from src_dev.channel_processor.whatsapp.app import index
-# Keep reload to ensure env vars are picked up by the module
-reload(index)
+from src_dev.channel_processor.whatsapp.app.index import lambda_handler
 
 # --- Constants ---
 DUMMY_TABLE_NAME = "test-conversations-table"
@@ -27,8 +17,7 @@ DUMMY_HEARTBEAT_MS = "30000"
 
 @pytest.fixture(scope="function", autouse=True)
 def set_environment_variables():
-    """Set required environment variables for the handler."""
-    original_env = os.environ.copy()
+    """Set required environment variables for the handler using patch.dict."""
     env_vars = {
         "CONVERSATIONS_TABLE": DUMMY_TABLE_NAME,
         "WHATSAPP_QUEUE_URL": DUMMY_QUEUE_URL,
@@ -37,96 +26,106 @@ def set_environment_variables():
         "VERSION": "test-processor-0.1",
         "LOG_LEVEL": "DEBUG"
     }
-    os.environ.update(env_vars)
-    # Reload index module AFTER setting env vars
-    reload(index)
-    yield
-    os.environ.clear()
-    os.environ.update(original_env)
-    # Reload again to restore
-    reload(index)
+    # Use patch.dict to temporarily modify os.environ
+    with patch.dict(os.environ, env_vars, clear=True) as patched_env:
+        yield patched_env # Yield the patched dictionary if needed, otherwise just yield
+    # Environment is automatically restored after the with block
 
-# --- Mocks for Service Functions and Utilities ---
+# --- Mocks for Injected Dependencies ---
 
 @pytest.fixture
-def mock_context_utils():
-    # Patching the functions where they are imported into index
-    with patch('src_dev.channel_processor.whatsapp.app.index.deserialize_context') as mock_deserialize, \
-         patch('src_dev.channel_processor.whatsapp.app.index.validate_context') as mock_validate:
-        mock_deserialize.return_value = {"key": "value"} # Default return
-        mock_validate.return_value = [] # Default return (no errors)
-        yield {'deserialize_context': mock_deserialize, 'validate_context': mock_validate}
+def mock_ctx_utils():
+    """Provides a mock context_utils module."""
+    mock = MagicMock()
+    mock.deserialize_context.return_value = {"key": "value"} # Default
+    mock.validate_context.return_value = [] # Default (no errors)
+    return mock
 
 @pytest.fixture
-def mock_sqs_heartbeat():
+def mock_heartbeat_class():
+    """Provides a mock SQSHeartbeat class and its instance."""
     mock_instance = MagicMock()
     mock_instance.running = True
     mock_instance.check_for_errors.return_value = None
-    with patch('src_dev.channel_processor.whatsapp.app.index.SQSHeartbeat') as MockSQSHeartbeat:
-        MockSQSHeartbeat.return_value = mock_instance
-        yield MockSQSHeartbeat, mock_instance
+    mock_class = MagicMock(return_value=mock_instance)
+    return mock_class, mock_instance # Return both for easier assertions
 
 @pytest.fixture
-def mock_dynamodb_service():
-    # Patch the functions where they are imported into index
-    with patch('src_dev.channel_processor.whatsapp.app.index.create_initial_conversation_record') as mock_create, \
-         patch('src_dev.channel_processor.whatsapp.app.index.update_conversation_after_send') as mock_update:
-        mock_create.return_value = True # Default success
-        mock_update.return_value = True # Default success
-        # Yield dict mapping original function names to mocks
-        yield {'create_initial_conversation_record': mock_create, 'update_conversation_after_send': mock_update}
+def mock_db_service():
+    """Provides a mock dynamodb_service module."""
+    mock = MagicMock()
+    mock.create_initial_conversation_record.return_value = True # Default success
+    mock.update_conversation_after_send.return_value = True # Default success
+    return mock
 
 @pytest.fixture
-def mock_secrets_manager_service():
-    # Keep full path for patch target module
-    with patch('src_dev.channel_processor.whatsapp.app.index.get_secret') as mock_get_secret:
-        def side_effect(secret_ref):
-            if "openai" in secret_ref:
-                return {"ai_api_key": "sk-dummykey"}
-            elif "channel" in secret_ref:
-                return {"twilio_account_sid": "ACdummy", "twilio_auth_token": "authdummy", "twilio_template_sid": "HXdummy"}
-            return None
-        mock_get_secret.side_effect = side_effect
-        yield mock_get_secret
+def mock_sm_service():
+    """Provides a mock secrets_manager_service module."""
+    mock = MagicMock()
+    def side_effect(secret_ref):
+        if "openai" in secret_ref:
+            return {"ai_api_key": "sk-dummykey"}
+        elif "channel" in secret_ref:
+            return {"twilio_account_sid": "ACdummy", "twilio_auth_token": "authdummy", "twilio_template_sid": "HXdummy"}
+        return None
+    mock.get_secret.side_effect = side_effect
+    return mock
 
 @pytest.fixture
-def mock_openai_service():
-    # Keep full path for patch target module
-    with patch('src_dev.channel_processor.whatsapp.app.index.process_message_with_ai') as mock_process:
-        mock_process.return_value = {
-            "content_variables": {"1": "Mock Name", "2": "Mock Offer"},
-            "thread_id": "th_mockopenai123",
-            "prompt_tokens": 50,
-            "completion_tokens": 25,
-            "total_tokens": 75
-        }
-        yield mock_process
+def mock_ai_service():
+    """Provides a mock openai_service module."""
+    mock = MagicMock()
+    mock.process_message_with_ai.return_value = {
+        "content_variables": {"1": "Mock Name", "2": "Mock Offer"},
+        "thread_id": "th_mockopenai123",
+        "prompt_tokens": 50,
+        "completion_tokens": 25,
+        "total_tokens": 75
+    }
+    return mock
 
 @pytest.fixture
-def mock_twilio_service():
-    # Keep full path for patch target module
-    with patch('src_dev.channel_processor.whatsapp.app.index.send_whatsapp_template_message') as mock_send:
-        mock_send.return_value = {
-            "message_sid": "SMmocktwilio123",
-            "body": "Mock rendered message."
-        }
-        yield mock_send
+def mock_msg_service():
+    """Provides a mock twilio_service module."""
+    mock = MagicMock()
+    mock.send_whatsapp_template_message.return_value = {
+        "message_sid": "SMmocktwilio123",
+        "body": "Mock rendered message."
+    }
+    return mock
+
+@pytest.fixture
+def mock_logger():
+    """Provides a mock logger."""
+    return MagicMock()
 
 # --- Helper to create SQS Event ---
 
-def create_sqs_event(message_body: dict, message_id="msg1", receipt_handle="handle1"):
+def create_sqs_event(message_body, message_id="msg1", receipt_handle="handle1"):
+    """Helper to create a consistent SQS event structure."""
+    # Ensure body is always a JSON string
+    if isinstance(message_body, dict):
+        body_str = json.dumps(message_body)
+    else:
+        body_str = str(message_body) # Ensure it's a string
+
     return {
         "Records": [
             {
                 "messageId": message_id,
                 "receiptHandle": receipt_handle,
-                "body": json.dumps(message_body),
-                "attributes": {},
+                "body": body_str,
+                "attributes": {
+                    "ApproximateReceiveCount": "1",
+                    "SentTimestamp": str(int(time.time() * 1000)),
+                    "SenderId": "123456789012",
+                    "ApproximateFirstReceiveTimestamp": str(int(time.time() * 1000))
+                },
                 "messageAttributes": {},
-                "md5OfBody": "dummy",
+                "md5OfBody": "dummy", # Calculate properly if needed
                 "eventSource": "aws:sqs",
-                "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:test-queue",
-                "awsRegion": "us-east-1"
+                "eventSourceARN": f"arn:aws:sqs:{DUMMY_REGION}:123456789012:{DUMMY_QUEUE_URL.split('/')[-1]}",
+                "awsRegion": DUMMY_REGION
             }
         ]
     }
@@ -134,13 +133,13 @@ def create_sqs_event(message_body: dict, message_id="msg1", receipt_handle="hand
 # --- Test Cases for lambda_handler ---
 
 def test_lambda_handler_success_path(
-    mock_context_utils, mock_sqs_heartbeat, mock_dynamodb_service,
-    mock_secrets_manager_service, mock_openai_service, mock_twilio_service
+    mock_ctx_utils, mock_heartbeat_class, mock_db_service,
+    mock_sm_service, mock_ai_service, mock_msg_service, mock_logger
 ):
-    """Test the main success path through the handler."""
+    """Test the main success path through the handler using injected mocks."""
     # Setup: Provide a valid context object
     valid_context = {
-        'metadata': {}, # Added missing metadata key
+        'metadata': {},
         'frontend_payload': {
             'request_data': {'request_id': 'req_1', 'channel_method': 'whatsapp'},
             'recipient_data': {'recipient_tel': '+123'},
@@ -152,85 +151,113 @@ def test_lambda_handler_success_path(
             'ai_config': {'openai_config': {'whatsapp': {'api_key_reference': 'openai_secret_ref', 'assistant_id_template_sender': 'asst_1'}}}
         }
     }
-    mock_context_utils['deserialize_context'].return_value = valid_context
-    MockSQSHeartbeat, mock_heartbeat_instance = mock_sqs_heartbeat
+    mock_ctx_utils.deserialize_context.return_value = valid_context
+    mock_hb_class, mock_hb_instance = mock_heartbeat_class
 
     # Create event
-    event = create_sqs_event(valid_context) # Body is the context itself for test clarity
+    event = create_sqs_event(valid_context)
 
-    # Execute
-    response = index.lambda_handler(event, None)
+    # Execute with injected mocks
+    response = lambda_handler(
+        event, None,
+        ctx_utils=mock_ctx_utils,
+        HeartbeatClass=mock_hb_class,
+        db_service=mock_db_service,
+        sm_service=mock_sm_service,
+        ai_service=mock_ai_service,
+        msg_service=mock_msg_service,
+        log=mock_logger
+    )
 
     # Assertions
-    assert response == {"batchItemFailures": []} # No failures expected
+    assert response == {"batchItemFailures": []}
 
-    # Check mocks were called
-    mock_context_utils['deserialize_context'].assert_called_once_with(json.dumps(valid_context))
-    mock_context_utils['validate_context'].assert_called_once_with(valid_context)
-    MockSQSHeartbeat.assert_called_once()
-    mock_heartbeat_instance.start.assert_called_once()
-    mock_dynamodb_service['create_initial_conversation_record'].assert_called_once_with(valid_context)
-    assert mock_secrets_manager_service.call_count == 2
-    mock_secrets_manager_service.assert_any_call('openai_secret_ref')
-    mock_secrets_manager_service.assert_any_call('channel_secret_ref')
-    mock_openai_service.assert_called_once()
-    # Check key details passed to OpenAI service
-    openai_call_args = mock_openai_service.call_args[0]
+    # Check mocks were called correctly
+    mock_ctx_utils.deserialize_context.assert_called_once_with(json.dumps(valid_context))
+    mock_ctx_utils.validate_context.assert_called_once_with(valid_context)
+    mock_hb_class.assert_called_once_with(
+        queue_url=DUMMY_QUEUE_URL,
+        receipt_handle='handle1',
+        interval_sec=int(int(DUMMY_HEARTBEAT_MS) / 1000)
+    )
+    mock_hb_instance.start.assert_called_once()
+    mock_db_service.create_initial_conversation_record.assert_called_once_with(valid_context)
+    assert mock_sm_service.get_secret.call_count == 2
+    mock_sm_service.get_secret.assert_any_call('openai_secret_ref')
+    mock_sm_service.get_secret.assert_any_call('channel_secret_ref')
+    mock_ai_service.process_message_with_ai.assert_called_once()
+    openai_call_args, openai_call_kwargs = mock_ai_service.process_message_with_ai.call_args
     assert openai_call_args[0]['conversation_id'] == 'conv_1'
     assert openai_call_args[0]['assistant_id'] == 'asst_1'
-    assert openai_call_args[1] == {"ai_api_key": "sk-dummykey"} # Credentials
-    mock_twilio_service.assert_called_once()
-    # Check key details passed to Twilio service using kwargs
-    twilio_call_kwargs = mock_twilio_service.call_args.kwargs
+    assert openai_call_args[1] == {"ai_api_key": "sk-dummykey"}
+    mock_msg_service.send_whatsapp_template_message.assert_called_once()
+    twilio_call_args, twilio_call_kwargs = mock_msg_service.send_whatsapp_template_message.call_args
     assert twilio_call_kwargs['twilio_config'] == {"twilio_account_sid": "ACdummy", "twilio_auth_token": "authdummy", "twilio_template_sid": "HXdummy"}
     assert twilio_call_kwargs['recipient_tel'] == '+123'
     assert twilio_call_kwargs['twilio_sender_number'] == '+456'
     assert twilio_call_kwargs['content_variables'] == {"1": "Mock Name", "2": "Mock Offer"}
-    mock_dynamodb_service['update_conversation_after_send'].assert_called_once()
-    mock_heartbeat_instance.stop.assert_called_once()
+    mock_db_service.update_conversation_after_send.assert_called_once()
+    db_update_args, db_update_kwargs = mock_db_service.update_conversation_after_send.call_args
+    assert db_update_kwargs['primary_channel_pk'] == '+123'
+    assert db_update_kwargs['conversation_id_sk'] == 'conv_1'
+    assert db_update_kwargs['thread_id'] == 'th_mockopenai123'
+    assert db_update_kwargs['message_to_append']['message_id'] == 'SMmocktwilio123'
 
-def test_lambda_handler_deserialize_fails(mock_context_utils):
+    mock_hb_instance.stop.assert_called_once()
+    mock_logger.error.assert_not_called()
+    mock_logger.critical.assert_not_called()
+
+def test_lambda_handler_deserialize_fails(mock_ctx_utils, mock_logger):
     """Test failure when context deserialization fails."""
-    mock_context_utils['deserialize_context'].side_effect = ValueError("Bad JSON")
-    event = create_sqs_event({"malformed": "json"})
+    mock_ctx_utils.deserialize_context.side_effect = ValueError("Bad JSON")
+    # Fix: Pass a simple invalid string, or correctly formatted JSON string if testing valid JSON
+    # For testing deserialize failure, pass a string that is NOT valid JSON
+    # event = create_sqs_event("{\\\"malformed\\\": \"json\\\"}") # Pass raw string
+    event = create_sqs_event("{'malformed': True}") # Use single quotes, or ensure it's invalid JSON
 
-    response = index.lambda_handler(event, None)
+    response = lambda_handler(event, None, ctx_utils=mock_ctx_utils, log=mock_logger)
 
     assert response["batchItemFailures"] == [{"itemIdentifier": "msg1"}]
-    mock_context_utils['validate_context'].assert_not_called()
+    mock_ctx_utils.validate_context.assert_not_called()
+    mock_logger.exception.assert_called_once()
 
-def test_lambda_handler_validate_fails(mock_context_utils):
+def test_lambda_handler_validate_fails(mock_ctx_utils, mock_logger):
     """Test failure when context validation fails."""
-    mock_context_utils['deserialize_context'].return_value = {'metadata': {}, "key": "value"}
-    mock_context_utils['validate_context'].return_value = ["Missing field X"]
+    mock_ctx_utils.deserialize_context.return_value = {'metadata': {}, "key": "value"}
+    mock_ctx_utils.validate_context.return_value = ["Missing field X"]
     event = create_sqs_event({"key": "value"})
 
-    response = index.lambda_handler(event, None)
+    response = lambda_handler(event, None, ctx_utils=mock_ctx_utils, log=mock_logger)
 
     assert response["batchItemFailures"] == [{"itemIdentifier": "msg1"}]
-    mock_context_utils['deserialize_context'].assert_called_once()
+    mock_ctx_utils.deserialize_context.assert_called_once()
+    mock_logger.exception.assert_called_once()
 
-def test_lambda_handler_dynamodb_create_fails(mock_context_utils, mock_dynamodb_service):
+def test_lambda_handler_dynamodb_create_fails(mock_ctx_utils, mock_db_service, mock_logger):
     """Test failure when initial DynamoDB record creation fails."""
     valid_context = {
-        'metadata': {}, # Added!
+        'metadata': {},
         'frontend_payload': {'request_data': {'request_id': 'req_1', 'channel_method': 'whatsapp'}, 'recipient_data': {}},
         'conversation_data': {'conversation_id': 'conv_1'},
         'company_data_payload': {'channel_config': {}, 'ai_config': {}}
     }
-    mock_context_utils['deserialize_context'].return_value = valid_context
-    mock_dynamodb_service['create_initial_conversation_record'].return_value = False # Simulate failure
+    mock_ctx_utils.deserialize_context.return_value = valid_context
+    mock_db_service.create_initial_conversation_record.return_value = False # Simulate failure
     event = create_sqs_event(valid_context)
 
-    response = index.lambda_handler(event, None)
+    response = lambda_handler(event, None, ctx_utils=mock_ctx_utils, db_service=mock_db_service, log=mock_logger)
 
     assert response["batchItemFailures"] == [{"itemIdentifier": "msg1"}]
-    mock_dynamodb_service['update_conversation_after_send'].assert_not_called()
+    mock_db_service.update_conversation_after_send.assert_not_called()
+    mock_logger.exception.assert_called_once()
 
-def test_lambda_handler_secrets_fetch_fails(mock_context_utils, mock_dynamodb_service, mock_secrets_manager_service):
+def test_lambda_handler_secrets_fetch_fails(
+    mock_ctx_utils, mock_heartbeat_class, mock_db_service,
+    mock_sm_service, mock_logger
+):
     """Test failure when fetching secrets fails."""
     valid_context = {
-        'metadata': {}, # Added!
+        'metadata': {},
         'frontend_payload': {'request_data': {'request_id': 'req_1', 'channel_method': 'whatsapp'}, 'recipient_data': {}},
         'conversation_data': {'conversation_id': 'conv_1'},
         'company_data_payload': {
@@ -238,18 +265,32 @@ def test_lambda_handler_secrets_fetch_fails(mock_context_utils, mock_dynamodb_se
             'ai_config': {'openai_config': {'whatsapp': {'api_key_reference': 'openai_ref'}}}
         }
     }
-    mock_context_utils['deserialize_context'].return_value = valid_context
-    mock_secrets_manager_service.side_effect = ValueError("Secrets Error") # Simulate failure
+    mock_ctx_utils.deserialize_context.return_value = valid_context
+    mock_sm_service.get_secret.side_effect = ValueError("Secrets Error") # Simulate failure
+    mock_hb_class, _ = mock_heartbeat_class # Unpack mock class
     event = create_sqs_event(valid_context)
 
-    response = index.lambda_handler(event, None)
+    response = lambda_handler(
+        event, None,
+        ctx_utils=mock_ctx_utils,
+        HeartbeatClass=mock_hb_class,
+        db_service=mock_db_service,
+        sm_service=mock_sm_service,
+        log=mock_logger
+    )
 
     assert response["batchItemFailures"] == [{"itemIdentifier": "msg1"}]
+    # mock_logger.exception.assert_called_once()
+    # Check that *an* exception was logged, not necessarily just one
+    assert mock_logger.exception.call_count > 0
 
-def test_lambda_handler_openai_fails(mock_context_utils, mock_dynamodb_service, mock_secrets_manager_service, mock_openai_service):
+def test_lambda_handler_openai_fails(
+    mock_ctx_utils, mock_heartbeat_class, mock_db_service,
+    mock_sm_service, mock_ai_service, mock_logger
+):
     """Test failure during OpenAI processing."""
     valid_context = {
-        'metadata': {}, # Added!
+        'metadata': {},
         'frontend_payload': {
             'request_data': {'request_id': 'req_1', 'channel_method': 'whatsapp'},
             'recipient_data': {'recipient_tel': '+123'},
@@ -261,18 +302,31 @@ def test_lambda_handler_openai_fails(mock_context_utils, mock_dynamodb_service, 
             'ai_config': {'openai_config': {'whatsapp': {'api_key_reference': 'openai_secret_ref', 'assistant_id_template_sender': 'asst_1'}}}
         }
     }
-    mock_context_utils['deserialize_context'].return_value = valid_context
-    mock_openai_service.return_value = None # Simulate OpenAI failure
+    mock_ctx_utils.deserialize_context.return_value = valid_context
+    mock_ai_service.process_message_with_ai.return_value = None # Simulate OpenAI failure
+    mock_hb_class, _ = mock_heartbeat_class # Unpack mock class
     event = create_sqs_event(valid_context)
 
-    response = index.lambda_handler(event, None)
+    response = lambda_handler(
+        event, None,
+        ctx_utils=mock_ctx_utils,
+        HeartbeatClass=mock_hb_class,
+        db_service=mock_db_service,
+        sm_service=mock_sm_service,
+        ai_service=mock_ai_service,
+        log=mock_logger
+    )
 
     assert response["batchItemFailures"] == [{"itemIdentifier": "msg1"}]
+    mock_logger.exception.assert_called_once()
 
-def test_lambda_handler_twilio_fails(mock_context_utils, mock_dynamodb_service, mock_secrets_manager_service, mock_openai_service, mock_twilio_service):
+def test_lambda_handler_twilio_fails(
+    mock_ctx_utils, mock_heartbeat_class, mock_db_service,
+    mock_sm_service, mock_ai_service, mock_msg_service, mock_logger
+):
     """Test failure during Twilio send."""
     valid_context = {
-        'metadata': {}, # Added!
+        'metadata': {},
         'frontend_payload': {
             'request_data': {'request_id': 'req_1', 'channel_method': 'whatsapp'},
             'recipient_data': {'recipient_tel': '+123'},
@@ -284,22 +338,33 @@ def test_lambda_handler_twilio_fails(mock_context_utils, mock_dynamodb_service, 
             'ai_config': {'openai_config': {'whatsapp': {'api_key_reference': 'openai_secret_ref', 'assistant_id_template_sender': 'asst_1'}}}
         }
     }
-    mock_context_utils['deserialize_context'].return_value = valid_context
-    mock_twilio_service.return_value = None # Simulate Twilio failure
+    mock_ctx_utils.deserialize_context.return_value = valid_context
+    mock_msg_service.send_whatsapp_template_message.return_value = None # Simulate Twilio failure
+    mock_hb_class, _ = mock_heartbeat_class # Unpack mock class
     event = create_sqs_event(valid_context)
 
-    response = index.lambda_handler(event, None)
+    response = lambda_handler(
+        event, None,
+        ctx_utils=mock_ctx_utils,
+        HeartbeatClass=mock_hb_class,
+        db_service=mock_db_service,
+        sm_service=mock_sm_service,
+        ai_service=mock_ai_service,
+        msg_service=mock_msg_service,
+        log=mock_logger
+    )
 
     assert response["batchItemFailures"] == [{"itemIdentifier": "msg1"}]
-    # Crucially, the final DB update should NOT be called if Twilio fails
-    mock_dynamodb_service['update_conversation_after_send'].assert_not_called()
+    mock_db_service.update_conversation_after_send.assert_not_called()
+    mock_logger.exception.assert_called_once()
 
-# Test case for when final DB update fails (should NOT cause batch failure)
-# Modified based on LLD: Failure here is logged critically but allows SQS message deletion
-def test_lambda_handler_final_db_update_fails(mock_context_utils, mock_dynamodb_service, mock_secrets_manager_service, mock_openai_service, mock_twilio_service, caplog):
+def test_lambda_handler_final_db_update_fails(
+    mock_ctx_utils, mock_heartbeat_class, mock_db_service,
+    mock_sm_service, mock_ai_service, mock_msg_service, mock_logger
+):
     """Test that failure during final DB update logs critically but doesn't fail SQS message."""
     valid_context = {
-        'metadata': {}, # Added!
+        'metadata': {},
         'frontend_payload': {
             'request_data': {'request_id': 'req_1', 'channel_method': 'whatsapp'},
             'recipient_data': {'recipient_tel': '+123'},
@@ -311,23 +376,33 @@ def test_lambda_handler_final_db_update_fails(mock_context_utils, mock_dynamodb_
             'ai_config': {'openai_config': {'whatsapp': {'api_key_reference': 'openai_secret_ref', 'assistant_id_template_sender': 'asst_1'}}}
         }
     }
-    mock_context_utils['deserialize_context'].return_value = valid_context
-    mock_dynamodb_service['update_conversation_after_send'].return_value = False # Simulate final update failure
+    mock_ctx_utils.deserialize_context.return_value = valid_context
+    mock_db_service.update_conversation_after_send.return_value = False # Simulate final update failure
+    mock_hb_class, mock_hb_instance = mock_heartbeat_class
     event = create_sqs_event(valid_context)
 
-    response = index.lambda_handler(event, None)
+    response = lambda_handler(
+        event, None,
+        ctx_utils=mock_ctx_utils,
+        HeartbeatClass=mock_hb_class,
+        db_service=mock_db_service,
+        sm_service=mock_sm_service,
+        ai_service=mock_ai_service,
+        msg_service=mock_msg_service,
+        log=mock_logger
+    )
 
-    # Expect NO batch item failures despite DB error
     assert response == {"batchItemFailures": []}
-    # Check for critical log message
-    assert "CRITICAL:" in caplog.text
-    assert "final DynamoDB update failed" in caplog.text
-    assert "Manual intervention required" in caplog.text
-    assert "conv_1" in caplog.text
-    assert "SMmocktwilio123" in caplog.text # Ensure message SID logged
+    mock_logger.critical.assert_called_once()
+    log_args, log_kwargs = mock_logger.critical.call_args
+    assert "CRITICAL:" in log_args[0]
+    assert "final DynamoDB update failed" in log_args[0]
+    assert "Manual intervention required" in log_args[0]
+    assert "conv_1" in log_args[0]
+    assert "SMmocktwilio123" in log_args[0]
 
-    # Ensure all preceding steps were called
-    mock_dynamodb_service['create_initial_conversation_record'].assert_called_once()
-    mock_openai_service.assert_called_once()
-    mock_twilio_service.assert_called_once()
-    mock_dynamodb_service['update_conversation_after_send'].assert_called_once() 
+    mock_db_service.create_initial_conversation_record.assert_called_once()
+    mock_ai_service.process_message_with_ai.assert_called_once()
+    mock_msg_service.send_whatsapp_template_message.assert_called_once()
+    mock_db_service.update_conversation_after_send.assert_called_once()
+    mock_hb_instance.stop.assert_called_once()
