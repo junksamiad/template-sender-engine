@@ -2,6 +2,8 @@ import pytest
 import boto3
 import json
 import os
+import logging
+from botocore.exceptions import ClientError
 
 # --- Configuration (Shared) ---
 REGION = "eu-north-1"
@@ -97,4 +99,166 @@ def setup_e2e_company_data(dynamodb_client, request):
     # Yield the IDs in case a test needs them
     yield company_id, project_id
 
-# Add other shared fixtures or helpers below if needed 
+# Add other shared fixtures or helpers below if needed
+
+@pytest.fixture(scope="function")
+def modify_company_data_inactive_project(setup_e2e_company_data, dynamodb_client, request):
+    """
+    Pytest fixture to temporarily modify the project_status to 'inactive'
+    in the company-data-dev table for the standard test item.
+    Depends on setup_e2e_company_data to ensure the item exists.
+    Restores the original value during teardown.
+    """
+    # setup_e2e_company_data yielded the IDs, but we can also use the constants
+    company_id, project_id = setup_e2e_company_data # Get IDs yielded by dependent fixture
+    logger = logging.getLogger(__name__) # Get logger instance
+    logger.info(f"FIXTURE SETUP: Modifying project_status to inactive for {company_id}/{project_id}")
+    
+    # Use the client yielded by dynamodb_client fixture
+    # Note: boto3 client API uses different methods than resource API
+    table_name = DYNAMODB_COMPANY_TABLE_NAME # From constants defined in conftest
+    original_status = None
+    key = {
+        "company_id": {"S": company_id},
+        "project_id": {"S": project_id}
+    }
+
+    try:
+        # 1. Get current item to store original status
+        response = dynamodb_client.get_item(TableName=table_name, Key=key)
+        item = response.get('Item')
+        if not item:
+            pytest.fail(f"Test item {key} not found in {table_name} during inactive_project fixture setup.")
+
+        original_status = item.get('project_status', {}).get('S')
+        if not original_status:
+             pytest.fail(f"Could not find 'project_status'(S) in item: {key}")
+
+        logger.info(f"Original project_status: '{original_status}'")
+
+        # Avoid modification if already inactive (e.g., leftover from failed teardown)
+        if original_status == "inactive":
+            logger.warning("Item project_status is already inactive. Skipping update.")
+        else:
+            # 2. Update item status to inactive
+            logger.info(f"Updating item {key} setting project_status to 'inactive'")
+            dynamodb_client.update_item(
+                TableName=table_name,
+                Key=key,
+                UpdateExpression="SET project_status = :inactive_status",
+                ExpressionAttributeValues={":inactive_status": {"S": "inactive"}},
+                ReturnValues="UPDATED_NEW"
+            )
+            logger.info("Item project_status updated successfully to inactive.")
+
+    except ClientError as e:
+        pytest.fail(f"DynamoDB error during inactive_project fixture setup: {e}")
+    except Exception as e:
+        pytest.fail(f"Unexpected error during inactive_project fixture setup: {e}")
+
+    # Teardown function
+    def teardown():
+        logger.info(f"FIXTURE TEARDOWN: Restoring project_status for {company_id}/{project_id}")
+        if original_status is not None and original_status != "inactive":
+            try:
+                logger.info(f"Restoring original project_status: '{original_status}'")
+                dynamodb_client.update_item(
+                    TableName=table_name,
+                    Key=key,
+                    UpdateExpression="SET project_status = :original_status",
+                    ExpressionAttributeValues={":original_status": {"S": original_status}}
+                )
+                logger.info("Item project_status restored successfully.")
+            except ClientError as e:
+                 logger.error(f"DynamoDB error during inactive_project fixture teardown: {e}")
+            except Exception as e:
+                 logger.error(f"Unexpected error during inactive_project fixture teardown: {e}")
+        elif original_status == "inactive":
+             logger.warning("Original status was inactive; no restore needed.")
+        else:
+             logger.error("Original project_status was not stored correctly; cannot restore.")
+
+    request.addfinalizer(teardown)
+    # Yield control to the test function
+    yield # No specific value needed, just setup/teardown 
+
+@pytest.fixture(scope="function")
+def modify_company_data_disallowed_channel(setup_e2e_company_data, dynamodb_client, request):
+    """
+    Pytest fixture to temporarily modify the allowed_channels list to exclude 'whatsapp'
+    in the company-data-dev table for the standard test item.
+    Depends on setup_e2e_company_data to ensure the item exists.
+    Restores the original value during teardown.
+    """
+    company_id, project_id = setup_e2e_company_data
+    logger = logging.getLogger(__name__)
+    logger.info(f"FIXTURE SETUP: Modifying allowed_channels to exclude 'whatsapp' for {company_id}/{project_id}")
+
+    table_name = DYNAMODB_COMPANY_TABLE_NAME
+    original_channels = None
+    # Assuming the expected channels without whatsapp
+    modified_channels = [{"S": "sms"}, {"S": "email"}] # DynamoDB List of Strings format
+    key = {
+        "company_id": {"S": company_id},
+        "project_id": {"S": project_id}
+    }
+
+    try:
+        # 1. Get current item to store original channels
+        response = dynamodb_client.get_item(TableName=table_name, Key=key)
+        item = response.get('Item')
+        if not item:
+            pytest.fail(f"Test item {key} not found in {table_name} during disallowed_channel fixture setup.")
+
+        original_channels = item.get('allowed_channels', {}).get('L') # Get List attribute
+        if original_channels is None: # Check for None explicitly
+             pytest.fail(f"Could not find 'allowed_channels'(L) in item: {key}")
+
+        logger.info(f"Original allowed_channels: {original_channels}")
+
+        # Avoid modification if already modified (e.g., leftover from failed teardown)
+        # Simple check: see if whatsapp is already missing
+        if not any(d.get('S') == 'whatsapp' for d in original_channels):
+            logger.warning("Item allowed_channels already excludes 'whatsapp'. Skipping update.")
+        else:
+            # 2. Update item with modified channels list
+            logger.info(f"Updating item {key} setting allowed_channels to {modified_channels}")
+            dynamodb_client.update_item(
+                TableName=table_name,
+                Key=key,
+                UpdateExpression="SET allowed_channels = :modified_list",
+                ExpressionAttributeValues={":modified_list": {"L": modified_channels}},
+                ReturnValues="UPDATED_NEW"
+            )
+            logger.info("Item allowed_channels updated successfully.")
+
+    except ClientError as e:
+        pytest.fail(f"DynamoDB error during disallowed_channel fixture setup: {e}")
+    except Exception as e:
+        pytest.fail(f"Unexpected error during disallowed_channel fixture setup: {e}")
+
+    # Teardown function
+    def teardown():
+        logger.info(f"FIXTURE TEARDOWN: Restoring allowed_channels for {company_id}/{project_id}")
+        # Check if original_channels was captured and if it actually contained whatsapp
+        if original_channels is not None and any(d.get('S') == 'whatsapp' for d in original_channels):
+            try:
+                logger.info(f"Restoring original allowed_channels: {original_channels}")
+                dynamodb_client.update_item(
+                    TableName=table_name,
+                    Key=key,
+                    UpdateExpression="SET allowed_channels = :original_list",
+                    ExpressionAttributeValues={":original_list": {"L": original_channels}}
+                )
+                logger.info("Item allowed_channels restored successfully.")
+            except ClientError as e:
+                 logger.error(f"DynamoDB error during disallowed_channel fixture teardown: {e}")
+            except Exception as e:
+                 logger.error(f"Unexpected error during disallowed_channel fixture teardown: {e}")
+        elif original_channels is not None:
+             logger.warning("Original allowed_channels list did not contain whatsapp; no restore needed.")
+        else:
+             logger.error("Original allowed_channels was not stored correctly; cannot restore.")
+
+    request.addfinalizer(teardown)
+    yield # No specific value needed, just setup/teardown 

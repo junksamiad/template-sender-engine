@@ -30,6 +30,10 @@ TEST_PROJECT_ID = "pi-aaa-001"
 INVALID_SECRET_REF = "invalid/secret/ref/for/e2e/testing"
 # Assumed GSI name for polling conversations by request_id
 CONVERSATIONS_REQUEST_ID_GSI = "request_id-index" # Adjust if GSI name is different
+# Define the LSI name as a constant
+CONVERSATIONS_CREATED_AT_LSI = "created-at-index" # LSI defined in template.yaml
+# DLQ Name (from template.yaml: ${ProjectPrefix}-whatsapp-dlq-${EnvironmentName})
+DLQ_NAME = "ai-multi-comms-whatsapp-dlq-dev"
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO) # Configure basic logging for visibility
@@ -38,6 +42,22 @@ logging.basicConfig(level=logging.INFO) # Configure basic logging for visibility
 
 # Consider moving helpers to tests/e2e/conftest.py if reused across test files
 _dynamodb_resource = None
+_sqs_client = None
+_account_id = None
+_aws_region = "eu-north-1" # Assuming same region as API
+
+def get_aws_account_id():
+    """Gets AWS Account ID using STS."""
+    global _account_id
+    if _account_id is None:
+        try:
+            sts_client = boto3.client("sts")
+            _account_id = sts_client.get_caller_identity()["Account"]
+            logger.info(f"Fetched AWS Account ID: {_account_id}")
+        except Exception as e:
+            logger.warning(f"Could not fetch AWS Account ID: {e}. Using placeholder.")
+            _account_id = "YOUR_ACCOUNT_ID_HERE" # Placeholder
+    return _account_id
 
 def get_dynamodb_resource():
     """Gets a cached DynamoDB resource."""
@@ -50,6 +70,20 @@ def get_dynamodb_table(table_name):
     """Gets a DynamoDB table object."""
     dynamodb = get_dynamodb_resource()
     return dynamodb.Table(table_name)
+
+def get_sqs_client():
+    """Gets a cached SQS client."""
+    global _sqs_client
+    if _sqs_client is None:
+        _sqs_client = boto3.client('sqs', region_name=_aws_region)
+    return _sqs_client
+
+# Construct DLQ URL
+ACCOUNT_ID = get_aws_account_id()
+DLQ_URL = f"https://sqs.{_aws_region}.amazonaws.com/{ACCOUNT_ID}/{DLQ_NAME}" if ACCOUNT_ID != "YOUR_ACCOUNT_ID_HERE" else None
+if not DLQ_URL:
+    logger.warning(f"Could not construct DLQ URL automatically. Set manually or ensure AWS credentials are configured.")
+    DLQ_URL = "YOUR_DLQ_URL_HERE" # Placeholder
 
 # --- Fixtures ---
 
@@ -131,9 +165,6 @@ def modify_company_data_invalid_openai_secret(request):
     yield
 
 # --- Polling Function ---
-
-# Define the LSI name as a constant
-CONVERSATIONS_CREATED_AT_LSI = "created-at-index" # LSI defined in template.yaml
 
 def poll_conversation_status(primary_channel_key, request_id, expected_status, test_start_time_iso, timeout=90, interval=10):
     """
@@ -220,6 +251,84 @@ def poll_conversation_status(primary_channel_key, request_id, expected_status, t
 
     logger.error(f"Timeout ({timeout}s) reached waiting for status '{expected_status}' for request_id '{request_id}' on primary_channel '{primary_channel_key}'")
     return None
+
+def poll_dlq_and_verify_message(dlq_url, expected_request_id, timeout=60, interval=10):
+    """
+    Polls the specified SQS DLQ, looking for a message containing the expected request_id.
+    Deletes the message if found.
+
+    Args:
+        dlq_url (str): The URL of the Dead Letter Queue.
+        expected_request_id (str): The request_id expected within the message body.
+        timeout (int): Maximum time to poll in seconds.
+        interval (int): Time to wait between polls in seconds.
+
+    Returns:
+        bool: True if a matching message was found and deleted, False otherwise.
+    """
+    if not dlq_url or dlq_url == "YOUR_DLQ_URL_HERE":
+        logger.warning("DLQ URL is not configured. Skipping DLQ check.")
+        pytest.skip("DLQ URL not configured, skipping DLQ check.")
+        return False # Should be skipped by pytest.skip, but return for safety
+
+    logger.info(f"Polling DLQ '{dlq_url}' for message containing request_id: '{expected_request_id}'")
+    sqs = get_sqs_client()
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            response = sqs.receive_message(
+                QueueUrl=dlq_url,
+                MaxNumberOfMessages=10, # Receive up to 10 messages at once
+                WaitTimeSeconds=5 # Use long polling
+            )
+
+            messages = response.get('Messages', [])
+            if not messages:
+                logger.debug(f"No messages received from DLQ. Waiting {interval}s...")
+                time.sleep(interval)
+                continue
+
+            logger.info(f"Received {len(messages)} message(s) from DLQ.")
+            for message in messages:
+                receipt_handle = message.get('ReceiptHandle')
+                body = message.get('Body', '')
+                logger.debug(f"DLQ Message Body: {body[:500]}...") # Log truncated body
+
+                # Check if the expected request_id is in the body
+                # Assuming the SQS message body pushed by Lambda (on failure/retry)
+                # is the original Context Object JSON string.
+                if expected_request_id in body:
+                    logger.info(f"Found message in DLQ containing request_id '{expected_request_id}'. Deleting message...")
+                    try:
+                        sqs.delete_message(
+                            QueueUrl=dlq_url,
+                            ReceiptHandle=receipt_handle
+                        )
+                        logger.info(f"Successfully deleted message {message.get('MessageId')} from DLQ.")
+                        return True # Found and deleted
+                    except ClientError as del_e:
+                        logger.error(f"Failed to delete message {message.get('MessageId')} from DLQ: {del_e}")
+                        # Don't return False yet, maybe another message matches
+                        continue # Continue checking other messages
+                else:
+                    # Message didn't match, ideally leave it for manual inspection or
+                    # make the check more robust if needed.
+                    # For now, we just ignore non-matching messages in this poll cycle.
+                    logger.debug(f"DLQ message {message.get('MessageId')} did not contain expected request_id.")
+
+            # If no matching message found in this batch, wait and retry
+            time.sleep(interval)
+
+        except ClientError as e:
+            logger.error(f"Error receiving messages from DLQ '{dlq_url}': {e}. Retrying...")
+            time.sleep(interval)
+        except Exception as e:
+            logger.error(f"Unexpected error during DLQ polling: {e}. Retrying...")
+            time.sleep(interval)
+
+    logger.error(f"Timeout ({timeout}s) reached waiting for message with request_id '{expected_request_id}' in DLQ '{dlq_url}'")
+    return False
 
 # --- Test Cases ---
 
@@ -318,8 +427,17 @@ def test_processor_failure_missing_secret(setup_e2e_company_data, modify_company
     assert final_status == "failed_secrets_fetch", \
         f"Final conversation_status was '{final_status}', expected 'failed_secrets_fetch'. Item: {final_item}"
 
-    # --- Optional: Add DLQ check here if desired ---
-    # logger.info("Skipping DLQ check for now.")
+    # --- DLQ Check (Commented out due to long SQS retry delays) ---
+    # logger.info(f"Verifying message for request_id '{request_id}' reached DLQ '{DLQ_URL}'")
+    # dlq_found = poll_dlq_and_verify_message(
+    #     dlq_url=DLQ_URL,
+    #     expected_request_id=request_id,
+    #     timeout=90, # Needs to be > maxReceiveCount * VisibilityTimeout (e.g., 3 * 905s = ~45 min)
+    #     interval=15
+    # )
+    # assert dlq_found, f"Message for request_id '{request_id}' not found in DLQ after timeout."
+    # logger.info("Successfully verified message in DLQ.")
+    logger.info("Skipping DLQ check due to potentially long SQS retry delays.")
 
     logger.info(f"--- Test Passed: test_processor_failure_missing_secret (Request ID: {request_id}) ---")
     print(f"\nMANUAL CHECK REQUIRED: Verify NO WhatsApp message was received for test {request_id}")
@@ -412,8 +530,17 @@ def test_processor_failure_invalid_twilio_number(setup_e2e_company_data):
     assert final_status == "failed_to_send_message", \
         f"Final conversation_status was '{final_status}', expected 'failed_to_send_message'. Item: {final_item}"
 
-    # --- Optional: Add DLQ check here if desired ---
-    # logger.info("Skipping DLQ check for now.")
+    # --- DLQ Check (Commented out due to long SQS retry delays) ---
+    # logger.info(f"Verifying message for request_id '{request_id}' reached DLQ '{DLQ_URL}'")
+    # dlq_found = poll_dlq_and_verify_message(
+    #     dlq_url=DLQ_URL,
+    #     expected_request_id=request_id,
+    #     timeout=90, # Needs to be > maxReceiveCount * VisibilityTimeout
+    #     interval=15
+    # )
+    # assert dlq_found, f"Message for request_id '{request_id}' not found in DLQ after timeout."
+    # logger.info("Successfully verified message in DLQ.")
+    logger.info("Skipping DLQ check due to potentially long SQS retry delays.")
 
     logger.info(f"--- Test Passed: test_processor_failure_invalid_twilio_number (Request ID: {request_id}) ---")
     print(f"\nMANUAL CHECK REQUIRED: Verify NO WhatsApp message was received for test {request_id}")
@@ -557,4 +684,346 @@ def test_idempotency_e2e(setup_e2e_company_data):
     logger.info("Verified exactly one conversation record exists for the request_id.")
 
     logger.info(f"--- Test Passed: test_idempotency_e2e (Request ID: {request_id}) ---")
-    print(f"\nMANUAL CHECK REQUIRED: Verify ONLY ONE WhatsApp message was received for test {request_id} on {recipient_tel}") 
+    print(f"\nMANUAL CHECK REQUIRED: Verify ONLY ONE WhatsApp message was received for test {request_id} on {recipient_tel}")
+
+# --- API/Router Validation Tests ---
+
+def test_api_invalid_key():
+    """
+    E2E Test: Verify API Gateway rejects requests with an invalid API key.
+    - Sends a request with an incorrect 'x-api-key' header.
+    - Asserts the API response status code is 403 Forbidden.
+    """
+    request_id = str(uuid.uuid4())
+    logger.info(f"--- Starting Test: test_api_invalid_key (Request ID: {request_id}) ---")
+
+    # Prepare minimal payload (content doesn't matter much)
+    payload = {
+      "company_data": {"company_id": TEST_COMPANY_ID, "project_id": TEST_PROJECT_ID},
+      "recipient_data": {"recipient_tel": "+447000000000", "comms_consent": True},
+      "project_data": {"jobID": "api-test-job-001"},
+      "request_data": {
+        "request_id": request_id,
+        "channel_method": "whatsapp",
+        "initial_request_timestamp": datetime.now(timezone.utc).isoformat()
+      }
+    }
+
+    # Use an INVALID API Key
+    invalid_api_key = "invalid-api-key-for-testing-12345"
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": invalid_api_key
+    }
+
+    api_response = None
+    try:
+        logger.info(f"Sending POST request to {API_URL} with INVALID API Key")
+        api_response = requests.post(API_URL, headers=headers, json=payload, timeout=10)
+        logger.info(f"API Response Status Code: {api_response.status_code}")
+        # We EXPECT this to fail, so raise_for_status() should trigger the HTTPError
+        api_response.raise_for_status()
+
+        # If raise_for_status() doesn't raise an error (e.g., 2xx), the test failed
+        pytest.fail(f"API request unexpectedly succeeded with status {api_response.status_code} when 403 was expected.")
+
+    except requests.exceptions.HTTPError as e:
+        # This is the expected path
+        logger.info(f"Received expected HTTPError: {e}")
+        assert e.response.status_code == 403, \
+            f"Expected status code 403 Forbidden, but got {e.response.status_code}. Response: {e.response.text}"
+        # Optional: Check response body for specific message if API Gateway provides one
+        # response_body = e.response.json()
+        # assert response_body.get("message") == "Forbidden", "Expected Forbidden message in response body"
+        logger.info("Successfully verified API returned 403 Forbidden.")
+
+    except requests.exceptions.RequestException as e:
+        # Catch other potential request errors (timeout, connection error)
+        logger.error(f"API Request failed unexpectedly (non-HTTPError): {e}")
+        pytest.fail(f"API request failed unexpectedly (non-HTTPError): {e}")
+
+    logger.info(f"--- Test Passed: test_api_invalid_key ---")
+
+def test_api_missing_body_field():
+    """
+    E2E Test: Verify API/Router rejects requests with missing required fields.
+    - Sends a request with a valid API key but missing e.g. 'recipient_data'.
+    - Asserts the API response status code is 400 Bad Request.
+    """
+    request_id = str(uuid.uuid4())
+    logger.info(f"--- Starting Test: test_api_missing_body_field (Request ID: {request_id}) ---")
+
+    # Prepare payload missing 'recipient_data'
+    payload = {
+      "company_data": {"company_id": TEST_COMPANY_ID, "project_id": TEST_PROJECT_ID},
+      # "recipient_data": { ... } // MISSING!
+      "project_data": {"jobID": "api-test-job-002"},
+      "request_data": {
+        "request_id": request_id,
+        "channel_method": "whatsapp",
+        "initial_request_timestamp": datetime.now(timezone.utc).isoformat()
+      }
+    }
+
+    # Use the VALID API Key
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY # Valid key
+    }
+
+    api_response = None
+    try:
+        logger.info(f"Sending POST request to {API_URL} with missing 'recipient_data'")
+        api_response = requests.post(API_URL, headers=headers, json=payload, timeout=10)
+        logger.info(f"API Response Status Code: {api_response.status_code}")
+        # We EXPECT this to fail with 400
+        api_response.raise_for_status()
+
+        # If raise_for_status() doesn't raise an error (e.g., 2xx), the test failed
+        pytest.fail(f"API request unexpectedly succeeded with status {api_response.status_code} when 400 was expected.")
+
+    except requests.exceptions.HTTPError as e:
+        # This is the expected path
+        logger.info(f"Received expected HTTPError: {e}")
+        assert e.response.status_code == 400, \
+            f"Expected status code 400 Bad Request, but got {e.response.status_code}. Response: {e.response.text}"
+        
+        # Optional: Check response body for specific error code from router
+        try:
+            response_body = e.response.json()
+            # Based on router code, validation errors might return specific codes
+            # Check for common required fields; adjust if router validation logic is different
+            expected_error_code = "MISSING_RECIPIENT_DATA" # Specific code for missing recipient data
+            actual_error_code = response_body.get("error_code")
+            assert actual_error_code == expected_error_code, \
+                   f"Expected error_code '{expected_error_code}', but got '{actual_error_code}'"
+            # Check if the message still mentions the missing field
+            assert "recipient_data" in response_body.get("message", "").lower(), \
+                   f"Expected error message to mention 'recipient_data', but got: {response_body.get('message')}"
+            logger.info(f"Successfully verified API returned 400 Bad Request with code '{actual_error_code}'.")
+        except json.JSONDecodeError:
+            logger.warning("Could not parse response body as JSON to check error code/message.")
+        except KeyError:
+             logger.warning("Response body did not contain expected 'error_code' or 'message' keys.")
+
+    except requests.exceptions.RequestException as e:
+        # Catch other potential request errors (timeout, connection error)
+        logger.error(f"API Request failed unexpectedly (non-HTTPError): {e}")
+        pytest.fail(f"API request failed unexpectedly (non-HTTPError): {e}")
+
+    logger.info(f"--- Test Passed: test_api_missing_body_field ---")
+
+def test_api_non_existent_company_project_id():
+    """
+    E2E Test: Verify API/Router rejects requests for non-existent company/project IDs.
+    - Sends a request with a valid API key and valid structure.
+    - Uses company_id/project_id values that do not exist in the company-data table.
+    - Asserts the API response status code is 404 Not Found.
+    """
+    request_id = str(uuid.uuid4())
+    non_existent_company_id = "non-existent-company-id-123"
+    non_existent_project_id = "non-existent-project-id-456"
+    logger.info(f"--- Starting Test: test_api_non_existent_company_project_id (Request ID: {request_id}) ---")
+
+    # Prepare payload with non-existent company/project IDs
+    payload = {
+      "company_data": {
+          "company_id": non_existent_company_id,
+          "project_id": non_existent_project_id
+      },
+      "recipient_data": {
+          "recipient_first_name": "Test",
+          "recipient_last_name": "NotFound",
+          "recipient_tel": "+447111999888",
+          "comms_consent": True
+       },
+      "project_data": {"jobID": "api-test-job-003"},
+      "request_data": {
+        "request_id": request_id,
+        "channel_method": "whatsapp",
+        "initial_request_timestamp": datetime.now(timezone.utc).isoformat()
+      }
+    }
+
+    # Use the VALID API Key
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY # Valid key
+    }
+
+    api_response = None
+    try:
+        logger.info(f"Sending POST request to {API_URL} with non-existent company/project ID")
+        api_response = requests.post(API_URL, headers=headers, json=payload, timeout=10)
+        logger.info(f"API Response Status Code: {api_response.status_code}")
+        # We EXPECT this to fail with 404
+        api_response.raise_for_status()
+
+        pytest.fail(f"API request unexpectedly succeeded with status {api_response.status_code} when 404 was expected.")
+
+    except requests.exceptions.HTTPError as e:
+        logger.info(f"Received expected HTTPError: {e}")
+        assert e.response.status_code == 404, \
+            f"Expected status code 404 Not Found, but got {e.response.status_code}. Response: {e.response.text}"
+        
+        # Optional: Check response body for specific error code from router
+        try:
+            response_body = e.response.json()
+            expected_error_code = "COMPANY_NOT_FOUND" # Based on router logic review
+            actual_error_code = response_body.get("error_code")
+            assert actual_error_code == expected_error_code, \
+                   f"Expected error_code '{expected_error_code}', but got '{actual_error_code}'"
+            logger.info(f"Successfully verified API returned 404 Not Found with code '{actual_error_code}'.")
+        except json.JSONDecodeError:
+            logger.warning("Could not parse response body as JSON to check error code/message.")
+        except KeyError:
+             logger.warning("Response body did not contain expected 'error_code' key.")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"API Request failed unexpectedly (non-HTTPError): {e}")
+        pytest.fail(f"API request failed unexpectedly (non-HTTPError): {e}")
+
+    logger.info(f"--- Test Passed: test_api_non_existent_company_project_id ---")
+
+def test_api_inactive_project_id(modify_company_data_inactive_project):
+    """
+    E2E Test: Verify API/Router rejects requests for inactive project IDs.
+    - Uses a fixture to set the test project's status to 'inactive'.
+    - Sends a valid request payload targeting that project.
+    - Asserts the API response status code is 403 Forbidden.
+    """
+    # Use the fixture by including its name as an argument
+    # modify_company_data_inactive_project implicitly depends on setup_e2e_company_data
+    request_id = str(uuid.uuid4())
+    logger.info(f"--- Starting Test: test_api_inactive_project_id (Request ID: {request_id}) ---")
+
+    # Prepare payload targeting the now-inactive project
+    payload = {
+      "company_data": {
+          "company_id": TEST_COMPANY_ID, # Standard test company
+          "project_id": TEST_PROJECT_ID  # Standard test project (now inactive)
+      },
+      "recipient_data": {
+          "recipient_first_name": "Test",
+          "recipient_last_name": "Inactive",
+          "recipient_tel": "+447111777666",
+          "comms_consent": True
+       },
+      "project_data": {"jobID": "api-test-job-004"},
+      "request_data": {
+        "request_id": request_id,
+        "channel_method": "whatsapp",
+        "initial_request_timestamp": datetime.now(timezone.utc).isoformat()
+      }
+    }
+
+    # Use the VALID API Key
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY # Valid key
+    }
+
+    api_response = None
+    try:
+        logger.info(f"Sending POST request to {API_URL} for inactive project {TEST_PROJECT_ID}")
+        api_response = requests.post(API_URL, headers=headers, json=payload, timeout=10)
+        logger.info(f"API Response Status Code: {api_response.status_code}")
+        # We EXPECT this to fail with 403
+        api_response.raise_for_status()
+
+        pytest.fail(f"API request unexpectedly succeeded with status {api_response.status_code} when 403 was expected.")
+
+    except requests.exceptions.HTTPError as e:
+        logger.info(f"Received expected HTTPError: {e}")
+        assert e.response.status_code == 403, \
+            f"Expected status code 403 Forbidden, but got {e.response.status_code}. Response: {e.response.text}"
+        
+        # Optional: Check response body for specific error code from router
+        try:
+            response_body = e.response.json()
+            expected_error_code = "PROJECT_INACTIVE" # Based on router logic review
+            actual_error_code = response_body.get("error_code")
+            assert actual_error_code == expected_error_code, \
+                   f"Expected error_code '{expected_error_code}', but got '{actual_error_code}'"
+            logger.info(f"Successfully verified API returned 403 Forbidden with code '{actual_error_code}'.")
+        except json.JSONDecodeError:
+            logger.warning("Could not parse response body as JSON to check error code/message.")
+        except KeyError:
+             logger.warning("Response body did not contain expected 'error_code' key.")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"API Request failed unexpectedly (non-HTTPError): {e}")
+        pytest.fail(f"API request failed unexpectedly (non-HTTPError): {e}")
+
+    logger.info(f"--- Test Passed: test_api_inactive_project_id ---")
+
+def test_api_disallowed_channel(modify_company_data_disallowed_channel):
+    """
+    E2E Test: Verify API/Router rejects requests for disallowed channels.
+    - Uses a fixture to modify the project's allowed_channels to exclude 'whatsapp'.
+    - Sends a valid request payload specifying 'whatsapp' as the channel_method.
+    - Asserts the API response status code is 403 Forbidden.
+    """
+    # Use the fixture to modify allowed_channels
+    request_id = str(uuid.uuid4())
+    logger.info(f"--- Starting Test: test_api_disallowed_channel (Request ID: {request_id}) ---")
+
+    # Prepare payload targeting the project, requesting the now-disallowed 'whatsapp' channel
+    payload = {
+      "company_data": {
+          "company_id": TEST_COMPANY_ID, 
+          "project_id": TEST_PROJECT_ID
+      },
+      "recipient_data": {
+          "recipient_first_name": "Test",
+          "recipient_last_name": "Disallowed",
+          "recipient_tel": "+447111555444",
+          "comms_consent": True
+       },
+      "project_data": {"jobID": "api-test-job-005"},
+      "request_data": {
+        "request_id": request_id,
+        "channel_method": "whatsapp", # Request the disallowed channel
+        "initial_request_timestamp": datetime.now(timezone.utc).isoformat()
+      }
+    }
+
+    # Use the VALID API Key
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY # Valid key
+    }
+
+    api_response = None
+    try:
+        logger.info(f"Sending POST request to {API_URL} requesting disallowed channel 'whatsapp'")
+        api_response = requests.post(API_URL, headers=headers, json=payload, timeout=10)
+        logger.info(f"API Response Status Code: {api_response.status_code}")
+        # We EXPECT this to fail with 403
+        api_response.raise_for_status()
+
+        pytest.fail(f"API request unexpectedly succeeded with status {api_response.status_code} when 403 was expected.")
+
+    except requests.exceptions.HTTPError as e:
+        logger.info(f"Received expected HTTPError: {e}")
+        assert e.response.status_code == 403, \
+            f"Expected status code 403 Forbidden, but got {e.response.status_code}. Response: {e.response.text}"
+        
+        # Optional: Check response body for specific error code from router
+        try:
+            response_body = e.response.json()
+            expected_error_code = "CHANNEL_NOT_ALLOWED" # Based on router logic review
+            actual_error_code = response_body.get("error_code")
+            assert actual_error_code == expected_error_code, \
+                   f"Expected error_code '{expected_error_code}', but got '{actual_error_code}'"
+            logger.info(f"Successfully verified API returned 403 Forbidden with code '{actual_error_code}'.")
+        except json.JSONDecodeError:
+            logger.warning("Could not parse response body as JSON to check error code/message.")
+        except KeyError:
+             logger.warning("Response body did not contain expected 'error_code' key.")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"API Request failed unexpectedly (non-HTTPError): {e}")
+        pytest.fail(f"API request failed unexpectedly (non-HTTPError): {e}")
+
+    logger.info(f"--- Test Passed: test_api_disallowed_channel ---") 
