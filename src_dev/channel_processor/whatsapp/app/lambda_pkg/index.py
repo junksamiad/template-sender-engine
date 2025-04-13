@@ -511,6 +511,45 @@ def lambda_handler(
             else:
                  log.debug(f"No active SQS Heartbeat during error handling for {record_id}.") # Use injected logger
 
+            # --- ADDED: Attempt to update DynamoDB status on failure --- #
+            # We need primary_channel and conversation_id. These might not be set if
+            # parsing/validation failed early. Add checks.
+            primary_channel_val = None
+            conv_id_val = None
+            try:
+                # Try to get IDs if context_object was parsed
+                if 'context_object' in locals() and context_object:
+                    conv_id_val = context_object.get('conversation_data', {}).get('conversation_id')
+                    channel_method_val = context_object.get('frontend_payload', {}).get('request_data', {}).get('channel_method')
+                    if channel_method_val in ['whatsapp', 'sms']:
+                        primary_channel_val = context_object.get('frontend_payload', {}).get('recipient_data', {}).get('recipient_tel')
+                    elif channel_method_val == 'email':
+                         primary_channel_val = context_object.get('frontend_payload', {}).get('recipient_data', {}).get('recipient_email')
+            except Exception as id_ex:
+                log.warning(f"Could not reliably determine primary_channel/conversation_id during error handling: {id_ex}")
+
+            if primary_channel_val and conv_id_val:
+                failure_status_code = "failed_unknown"
+                # Crude check for specific failure types based on exception
+                if isinstance(e, ValueError) and ("credentials" in str(e).lower() or "secret" in str(e).lower()):
+                    failure_status_code = "failed_secrets_fetch"
+                elif isinstance(e, ValueError) and ("openai" in str(e).lower() or "ai process" in str(e).lower()):
+                     failure_status_code = "failed_to_process_ai"
+                elif isinstance(e, RuntimeError) and ("twilio" in str(e).lower() or "send message" in str(e).lower()):
+                    failure_status_code = "failed_to_send_message"
+                # Add more specific status codes based on potential exceptions
+
+                db_service.update_conversation_status_on_failure(
+                    primary_channel_pk=primary_channel_val,
+                    conversation_id_sk=conv_id_val,
+                    failure_status=failure_status_code,
+                    failure_reason=f"Unhandled exception: {type(e).__name__} - {str(e)[:200]}", # Truncate long errors
+                    log=log # Pass injected logger
+                )
+            else:
+                 log.error(f"Cannot update DynamoDB failure status for record {record_id} as identifiers could not be determined.")
+            # --- END ADDED SECTION --- #
+
     log.info(f"Processing complete. Successful: {len(successful_record_ids)}, Failed: {len(failed_record_ids)}") # Use injected logger
 
     # Return response indicating partial batch failure if any records failed

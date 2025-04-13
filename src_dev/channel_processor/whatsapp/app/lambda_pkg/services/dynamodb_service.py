@@ -6,6 +6,7 @@ import logging
 import os
 from botocore.exceptions import ClientError
 from typing import Dict, Any, Optional
+from datetime import datetime, timezone
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -117,8 +118,7 @@ def create_initial_conversation_record(context_object: Dict[str, Any]) -> bool:
         router_version = context_object.get('metadata', {}).get('router_version')
 
         # Generate Timestamps (use ISO 8601 format)
-        import datetime
-        now_iso = datetime.datetime.utcnow().isoformat() + 'Z'
+        now_iso = datetime.now(timezone.utc).isoformat() + 'Z'
 
         # Initial state values
         initial_status = 'processing'
@@ -316,3 +316,60 @@ def update_conversation_after_send(primary_channel_pk: str,
     except Exception as e:
         logger.exception(f"Unexpected error updating DynamoDB record for {conversation_id_sk}: {e}")
         return False 
+
+def update_conversation_status_on_failure(
+    primary_channel_pk: str,
+    conversation_id_sk: str,
+    failure_status: str,
+    failure_reason: str = "Processing failed due to an exception",
+    log=logger
+) -> bool:
+    """
+    Updates the conversation status and reason upon encountering a failure.
+    This performs a simple update without complex conditions.
+
+    Args:
+        primary_channel_pk: The primary channel identifier (PK).
+        conversation_id_sk: The conversation identifier (SK).
+        failure_status: The status string to set (e.g., 'failed_secrets_fetch').
+        failure_reason: A brief description of the failure.
+        log: Logger instance.
+
+    Returns:
+        True if the update API call was successful, False otherwise.
+    """
+    if not conversations_table:
+        log.error("DynamoDB conversations_table is not initialized.")
+        return False
+
+    table_name = conversations_table.name
+    key = {
+        "primary_channel": primary_channel_pk,
+        "conversation_id": conversation_id_sk
+    }
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    log.warning(f"Updating conversation {conversation_id_sk} status to {failure_status} due to error.")
+    try:
+        conversations_table.update_item(
+            Key=key,
+            UpdateExpression="SET conversation_status = :status, updated_at = :ts, failure_reason = :reason",
+            ExpressionAttributeValues={
+                ":status": failure_status,
+                ":ts": timestamp,
+                ":reason": failure_reason
+            },
+            # No condition expression here, we want to overwrite status even if processing started
+            ReturnValues="NONE"
+        )
+        log.info(f"Successfully updated status for {conversation_id_sk} to {failure_status}.")
+        return True
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code')
+        log.error(f"Failed to update conversation status to {failure_status} for {conversation_id_sk} in {table_name}. Error: {error_code} - {str(e)}")
+        return False
+    except Exception as e:
+        log.error(f"Unexpected error updating conversation status to {failure_status} for {conversation_id_sk} in {table_name}: {str(e)}", exc_info=True)
+        return False
+
+# --- Internal Helper Functions (Example) --- 
