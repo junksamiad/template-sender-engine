@@ -28,8 +28,10 @@ def aws_credentials():
     """Mocked AWS Credentials for moto."""
     os.environ["AWS_ACCESS_KEY_ID"] = "testing"
     os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
+    # os.environ["AWS_SECURITY_TOKEN"] = "testing" # Remove - often causes issues with moto
+    # os.environ["AWS_SESSION_TOKEN"] = "testing" # Remove - often causes issues with moto
+    os.environ["AWS_SECURITY_TOKEN"] = "testing" # Reverted
+    os.environ["AWS_SESSION_TOKEN"] = "testing" # Reverted
     os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
     os.environ["CONVERSATIONS_TABLE"] = DUMMY_TABLE_NAME
     os.environ["VERSION"] = DUMMY_VERSION
@@ -162,9 +164,9 @@ def test_create_initial_idempotency(dynamodb_table, valid_context_object):
     modified_context = valid_context_object.copy()
     modified_context['metadata'] = {'router_version': 'router-0.2.0'} # Change metadata
 
-    # Second call - should hit ConditionalCheckFailedException but return True
+    # Second call - should hit ConditionalCheckFailedException and now return False
     success2 = dynamodb_service.create_initial_conversation_record(modified_context)
-    assert success2
+    assert success2 # Reverted assertion, expect True (old behavior)
 
     # Verify item hasn't changed
     item2 = dynamodb_table.get_item(

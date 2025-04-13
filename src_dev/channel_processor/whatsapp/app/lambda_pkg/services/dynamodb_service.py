@@ -209,9 +209,12 @@ def create_initial_conversation_record(context_object: Dict[str, Any]) -> bool:
         return True
     except ClientError as e:
         if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-            logger.info(f"Record already exists for conversation_id: {conversation_id}. Proceeding (idempotency check passed).")
+            logger.info(f"Record already exists for conversation_id: {conversation_id}. Halting processing (idempotency check). ")
             # Returning True because the record exists, which is the desired state.
-            return True
+            # return True # INCORRECT: This allows duplicate processing!
+            # Return False to signal the calling function that this specific SQS message
+            # represents a duplicate request and should not be processed further.
+            return False
         else:
             # Handle other potential DynamoDB errors (e.g., ProvisionedThroughputExceededException, etc.)
             logger.error(f"DynamoDB ClientError creating record for conversation_id {conversation_id}: {e.response['Error']['Message']}")
