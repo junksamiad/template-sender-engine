@@ -170,7 +170,8 @@ def test_sqs_trigger_creates_dynamodb_record(sqs_client, dynamodb_client, sample
         initial_status = item.get("conversation_status", {}).get("S")
         print(f"Found item status: {initial_status}")
         # Allow for initial 'processing' or potentially 'failed' if external calls are not mocked and fail fast
-        assert initial_status in ["processing", "failed_to_process_ai", "failed_to_send_message"], f"Unexpected initial status: {initial_status}"
+        # Also allow for the new failure status if secrets don't exist
+        assert initial_status in ["processing", "failed_to_process_ai", "failed_to_send_message", "failed_secrets_fetch"], f"Unexpected initial status: {initial_status}"
         assert "created_at" in item # Check timestamp exists
         print("Basic item validation successful.")
 
@@ -261,7 +262,8 @@ def test_sqs_trigger_idempotency(sqs_client, dynamodb_client, logs_client, sampl
         status_after_second = item_after_second.get("conversation_status", {}).get("S")
         print(f"Found item status after second send: {status_after_second}")
         # Status should reflect the outcome of the FIRST processing run
-        assert status_after_second in ["processing", "failed_to_process_ai", "failed_to_send_message"], f"Unexpected status after second send: {status_after_second}"
+        # Also allow for the new failure status if secrets don't exist
+        assert status_after_second in ["processing", "failed_to_process_ai", "failed_to_send_message", "failed_secrets_fetch"], f"Unexpected status after second send: {status_after_second}"
 
         # # 5. Verify CloudWatch Logs for ConditionalCheckFailed or similar message
         # print(f"Checking CloudWatch logs ({PROCESSOR_LAMBDA_LOG_GROUP}) for idempotency evidence...")
