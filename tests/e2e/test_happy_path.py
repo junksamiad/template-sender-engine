@@ -132,6 +132,10 @@ def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
     Sends request, waits, verifies final DynamoDB state.
     Manual verification of received WhatsApp message is required separately.
     """
+    # Record test start time for querying later
+    test_start_timestamp = datetime.now(timezone.utc).isoformat()
+    time.sleep(0.1) # Ensure a slight delay before request timestamp
+
     # 1. Get Payload
     request_payload = parse_payload_from_curl_script(E2E_PAYLOAD_SAMPLE_PATH)
     # Update request_id and timestamp for uniqueness
@@ -157,79 +161,117 @@ def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
     assert response_data.get("request_id") == request_id
     print("API request successful.")
     
-    # 3. Wait initially for processing (API -> Router -> SQS -> Processor -> OpenAI -> Twilio -> DDB Update)
-    initial_wait_seconds = 30 # Reduced initial wait
-    print(f"Waiting initial {initial_wait_seconds} seconds for end-to-end processing...")
-    time.sleep(initial_wait_seconds)
+    # 3. Wait for processing
+    wait_seconds = 15 # Significantly reduced wait time
+    print(f"Waiting {wait_seconds} seconds for end-to-end processing...")
+    time.sleep(wait_seconds)
     
-    # 4. Verify Final State in Conversations DynamoDB with Retries
-    max_retries = 3
-    retry_delay_seconds = 10
-    verification_success = False
+    # 4. Verify Final State in Conversations DynamoDB (Single Attempt)
     conversation_record = None
-    final_exception = None
+    final_exception = None # Keep track of errors
 
-    for attempt in range(max_retries):
-        print(f"\n--- Verification Attempt {attempt + 1}/{max_retries} --- ")
-        print(f"Checking {DYNAMODB_CONVERSATIONS_TABLE_NAME} for final record state for recipient {recipient_tel}...")
-        try:
-            # Query using the primary channel (phone number)
-            query_response = dynamodb_client.query(
-                TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
-                KeyConditionExpression="primary_channel = :pk",
-                ExpressionAttributeValues={":pk": {"S": recipient_tel}},
-                ScanIndexForward=False, # Get newest items first
-                Limit=5 # Check the last few conversations for this recipient
-            )
-            
-            items = query_response.get('Items', [])
-            print(f"Found {len(items)} conversation items for recipient {recipient_tel}")
-            temp_conversation_record = None
-            for item in items:
-                # Check if this item matches our request_id (best match)
-                if item.get('request_id', {}).get('S') == request_id:
-                    temp_conversation_record = item
-                    print(f"Found matching record by request_id: {item.get('conversation_id', {}).get('S')}")
-                    break
+    # Record time *before* querying starts (approximate)
+    query_start_time_iso = datetime.fromtimestamp(time.time() - wait_seconds - 1, tz=timezone.utc).isoformat()
 
-            if temp_conversation_record is None:
-                 print(f"Conversation record for request_id {request_id} not found yet.")
-                 final_exception = AssertionError(f"Could not find conversation record for request_id {request_id}") # Store potential error
-            else:
-                conversation_record = temp_conversation_record # Store the found record
-                # Verify final status
-                final_status = conversation_record.get("conversation_status", {}).get("S")
-                print(f"Final conversation status: {final_status}")
-                assert final_status == "initial_message_sent"
-                
-                # Verify other expected fields exist
-                assert "thread_id" in conversation_record
-                assert "messages" in conversation_record
-                assert len(conversation_record.get("messages", {}).get("L", [])) > 0 
-                
-                print("DynamoDB final state verification successful.")
-                verification_success = True # Mark success
-                break # Exit retry loop on success
+    print(f"\n--- Verification Attempt --- ")
+    print(f"Checking {DYNAMODB_CONVERSATIONS_TABLE_NAME} for final record state for recipient {recipient_tel}...")
+    try:
+        # Query using the created-at-index
+        print(f"Querying created-at-index for items after {query_start_time_iso}")
+        query_response = dynamodb_client.query(
+            TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
+            IndexName='created-at-index', # Use the LSI
+            KeyConditionExpression="primary_channel = :pk AND created_at > :start_ts", # Query PK and SK range
+            ExpressionAttributeValues={
+                ":pk": {"S": recipient_tel},
+                ":start_ts": {"S": query_start_time_iso}
+            },
+            ScanIndexForward=False, # Get newest items first
+            Limit=5 
+        )
+        
+        items = query_response.get('Items', [])
+        print(f"Found {len(items)} conversation items using created-at-index.")
+        temp_conversation_record = None
+        for item in items:
+            # Check if this item matches our request_id (best match)
+            if item.get('request_id', {}).get('S') == request_id:
+                temp_conversation_record = item
+                print(f"Found matching record by request_id: {item.get('conversation_id', {}).get('S')}")
+                break
 
-        except AssertionError as ae: # Catch assertion errors specifically
-            print(f"Assertion failed on attempt {attempt+1}: {ae}")
-            final_exception = ae # Store the assertion error
-        except Exception as e:
-            print(f"Error querying or verifying conversations table on attempt {attempt+1}: {e}")
-            final_exception = e # Store other errors
-            # We might want to break immediately on unexpected Boto3 errors
-
-        # Wait before retrying if verification failed and not the last attempt
-        if not verification_success and attempt < max_retries - 1:
-            print(f"Verification failed, waiting {retry_delay_seconds}s before retry...")
-            time.sleep(retry_delay_seconds)
-            
-    # After the loop, assert that verification eventually succeeded
-    if not verification_success:
-        if final_exception:
-             raise final_exception # Re-raise the last encountered exception/assertion error
+        if temp_conversation_record is None:
+                print(f"Conversation record for request_id {request_id} not found.")
+                # Fail immediately if not found after the wait
+                pytest.fail(f"Could not find conversation record for request_id {request_id} after {wait_seconds}s wait.") 
         else:
-             pytest.fail("Verification failed after multiple retries for unknown reasons.")
+            conversation_record = temp_conversation_record # Store the found record
+            # Verify final status
+            final_status = conversation_record.get("conversation_status", {}).get("S")
+            print(f"Final conversation status: {final_status}")
+            assert final_status == "initial_message_sent", f"Expected final status 'initial_message_sent', but got '{final_status}'"
+
+            # --- Add more detailed assertions --- #
+            print("Performing detailed assertions on conversation record...")
+
+            # Check for OpenAI thread ID
+            thread_id = conversation_record.get("thread_id", {}).get("S")
+            assert thread_id is not None and thread_id.startswith("thread_"), f"Missing or invalid thread_id: {thread_id}"
+            print(f"Found thread_id: {thread_id}")
+
+            # Check messages list
+            messages_list = conversation_record.get("messages", {}).get("L", [])
+            assert len(messages_list) > 0, "Messages list should not be empty after successful send"
+            print(f"Found {len(messages_list)} message(s) in history.")
+            # Optional: Check first message details
+            first_message = messages_list[0].get("M", {})
+            assert first_message.get("role", {}).get("S") == "assistant", "First message role should be assistant"
+            message_id_val = first_message.get("message_id", {}).get("S", "")
+            assert message_id_val is not None and message_id_val != "", "First message should have a non-empty message_id"
+            print(f"Found first message_id: {message_id_val}")
+
+            # Check task_complete flag (should be 0 initially)
+            task_complete = conversation_record.get("task_complete", {}).get("N")
+            assert task_complete == "0", f"Expected task_complete to be 0 (Number), but got: {task_complete}"
+            print(f"Found task_complete: {task_complete}")
+
+            # Check processing_time_ms
+            processing_time = conversation_record.get("initial_processing_time_ms", {}).get("N") # Correct attribute name
+            assert processing_time is not None and int(processing_time) > 0, f"Invalid or missing processing_time_ms: {processing_time}"
+            print(f"Found processing_time_ms: {processing_time}")
+
+            # Check some key copied fields
+            assert conversation_record.get("company_id", {}).get("S") == request_payload["company_data"]["company_id"]
+            assert conversation_record.get("project_id", {}).get("S") == request_payload["company_data"]["project_id"]
+
+            # Verify channel_method and conditional recipient identifier
+            channel_method_in_record = conversation_record.get("channel_method", {}).get("S")
+            assert channel_method_in_record == "whatsapp", f"Expected channel_method 'whatsapp', got '{channel_method_in_record}'"
+            if channel_method_in_record in ["whatsapp", "sms"]:
+                assert conversation_record.get("recipient_tel", {}).get("S") == recipient_tel, "Recipient telephone number mismatch in record"
+                print("Verified recipient_tel matches payload.")
+            elif channel_method_in_record == "email":
+                # Add check for email if implementing email tests later
+                recipient_email = request_payload["recipient_data"]["recipient_email"]
+                assert conversation_record.get("recipient_email", {}).get("S") == recipient_email, "Recipient email mismatch in record"
+                print("Verified recipient_email matches payload.")
+
+            assert conversation_record.get("request_id", {}).get("S") == request_id # Check request id propagation
+            # --- End detailed assertions --- #
+                
+            print("DynamoDB final state verification successful.")
+            # verification_success = True # No longer needed
+            # break # No longer needed
+
+    except AssertionError as ae: # Catch assertion errors specifically
+        # print(f"Assertion failed on attempt {attempt+1}: {ae}")
+        # final_exception = ae # Store the assertion error
+        pytest.fail(f"Assertion failed during verification: {ae}") # Fail immediately on assertion error
+    except Exception as e:
+        # print(f"Error querying or verifying conversations table on attempt {attempt+1}: {e}")
+        # final_exception = e # Store other errors
+        pytest.fail(f"Error querying or verifying conversations table: {e}") # Fail immediately on other errors
+        # We might want to break immediately on unexpected Boto3 errors
 
     # Cleanup logic needs to be reliably executed
     cleanup_dynamodb_record(dynamodb_client, conversation_record, recipient_tel)
