@@ -13,8 +13,8 @@ read -r -d '' REQUEST_BODY <<'EOF'
     "project_id": "pi-aaa-001"
   },
   "recipient_data": {
-    "recipient_first_name": "Lee",
-    "recipient_last_name": "Hayton",
+    "recipient_first_name": "Leroy James",
+    "recipient_last_name": "Biggleton",
     "recipient_tel": "+447835065013",
     "recipient_email": "junksamiad@gmail.com",
     "comms_consent": true
@@ -51,7 +51,7 @@ read -r -d '' REQUEST_BODY <<'EOF'
     ]
   },
   "request_data": {
-    "request_id": "550e8400-e29b-41d4-a716-446655440001",
+    "request_id": "550e8400-e29b-41d4-a716-446655440002",
     "channel_method": "whatsapp",
     "initial_request_timestamp": "2023-09-15T11:45:32.789Z"
   }
