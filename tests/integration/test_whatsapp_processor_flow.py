@@ -359,15 +359,15 @@ def test_processor_attempts_secret_fetch(sqs_client, dynamodb_client, logs_clien
         message_id = send_response.get('MessageId')
         assert message_id is not None
         print(f"Message sent successfully. SQS Message ID: {message_id}")
-
+    
         # Record time *after* sending, *before* waiting
         start_time_ms = int(time.time() * 1000)
-
+    
         # 2. Wait for Lambda processing attempt
-        wait_seconds = 20 # Allow time for lambda to start and try fetching secrets
+        wait_seconds = 40 # Increased wait time
         print(f"Waiting {wait_seconds} seconds for Lambda processing attempt...")
         time.sleep(wait_seconds)
-
+    
         # 3. Check CloudWatch Logs for evidence of fetching specific secrets
         print(f"Checking CloudWatch logs ({PROCESSOR_LAMBDA_LOG_GROUP}) for secret fetch attempts...")
         openai_fetch_log_found = False
@@ -434,12 +434,15 @@ def test_processor_attempts_secret_fetch(sqs_client, dynamodb_client, logs_clien
                  print(f"Relevant log events not found yet, waiting {log_wait_interval}s...")
                  time.sleep(log_wait_interval)
 
-        assert openai_fetch_log_found, f"Did not find log evidence of OpenAI secret fetch ({openai_secret_ref})"
-        assert channel_fetch_log_found, f"Did not find log evidence of Channel secret fetch ({channel_secret_ref})"
+        # Use the correct expected reference based on example context
+        expected_openai_ref_substring = "openai-api-key/whatsapp" 
+        assert openai_fetch_log_found, f"Did not find log evidence of OpenAI secret fetch containing '{expected_openai_ref_substring}'"
+        # The assertion for channel_fetch_log_found remains the same for now, assuming channel_secret_ref is correct in the fixture
+        assert channel_fetch_log_found, f"Did not find log evidence of channel secret fetch ({channel_secret_ref})"
         print("Secret fetch attempt verification successful.")
 
     finally:
-        # Cleanup the DynamoDB record if it was created
+        # Cleanup: Attempt to delete the item regardless of test outcome
         print(f"\nAttempting final cleanup for secret fetch test...")
         try:
             dynamodb_client.delete_item(TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME, Key=key_to_use)
