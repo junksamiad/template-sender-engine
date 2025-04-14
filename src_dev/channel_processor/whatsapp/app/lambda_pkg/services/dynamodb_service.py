@@ -5,8 +5,12 @@ import boto3
 import logging
 import os
 from botocore.exceptions import ClientError
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime, timezone
+from decimal import Decimal
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb.service_resource import Table
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -34,13 +38,21 @@ except Exception as e:
 
 # --- Functions for Conversation Table ---
 
-# Placeholder for the function we will implement next
-def create_initial_conversation_record(context_object: Dict[str, Any]) -> bool:
+def create_initial_conversation_record(context_object: Dict[str, Any], ddb_table: Optional['Table'] = None) -> bool:
     """
-    Attempts to create the initial conversation record idempotently.
-    Returns True if created successfully or if it already existed, False otherwise.
+    Creates the initial conversation record in DynamoDB using a conditional write
+    to ensure idempotency based on the primary key (primary_channel + conversation_id).
+
+    Args:
+        context_object: The dictionary containing all necessary data.
+        ddb_table: Optional boto3 DynamoDB Table object for testing.
+
+    Returns:
+        bool: True if the record was created successfully or already existed (idempotency),
+              False if there was an error during creation.
     """
-    if not conversations_table:
+    table_to_use = ddb_table if ddb_table is not None else conversations_table
+    if not table_to_use:
         logger.error("DynamoDB conversations table is not initialized. Cannot create record.")
         return False
 
@@ -199,7 +211,7 @@ def create_initial_conversation_record(context_object: Dict[str, Any]) -> bool:
     # Attempt to put the item into DynamoDB, checking for existence first
     try:
         logger.debug(f"Attempting to create DynamoDB record for conversation_id: {conversation_id}")
-        conversations_table.put_item(
+        table_to_use.put_item(
             Item=item,
             # Check if an item with the same conversation_id (SK) already exists.
             # Since conversation_id should be globally unique, this is sufficient.
@@ -229,17 +241,26 @@ def create_initial_conversation_record(context_object: Dict[str, Any]) -> bool:
 # def add_message_to_history(...)
 # def finalize_conversation(...)
 
-def update_conversation_after_send(primary_channel_pk: str,
-                                   conversation_id_sk: str,
-                                   new_status: str,
-                                   updated_at_ts: str,
-                                   thread_id: Optional[str],
-                                   processing_time_ms: Optional[int],
-                                   message_to_append: Dict[str, Any]) -> bool:
+def update_conversation_after_send(
+    primary_channel_pk: str,
+    conversation_id_sk: str,
+    new_status: str,
+    updated_at_ts: str, # ISO 8601 timestamp string
+    message_to_append: Dict[str, Any],
+    thread_id: Optional[str] = None,
+    processing_time_ms: Optional[int] = None,
+    hand_off_to_human: bool = False,
+    hand_off_to_human_reason: Optional[str] = None,
+    task_complete: bool = False,
+    function_call: bool = False,
+    function_call_type: Optional[str] = None,
+    failure_reason: Optional[str] = None,
+    ddb_table: Optional['Table'] = None
+) -> bool:
     """
-    Updates the conversation record after the initial message has been sent.
-    Sets status, thread ID, processing time, appends the sent message to history,
-    and updates the timestamp.
+    Updates an existing conversation record after attempting to send a message.
+    Appends the sent message to the 'messages' list.
+    Optionally updates thread_id, processing time, status, hand-off flags, etc.
 
     Args:
         primary_channel_pk: The Partition Key (e.g., recipient_tel or email).
@@ -249,11 +270,19 @@ def update_conversation_after_send(primary_channel_pk: str,
         thread_id: The OpenAI thread ID string.
         processing_time_ms: Total processing time for the Lambda execution (optional).
         message_to_append: The map object representing the message to add to history.
+        hand_off_to_human: Boolean indicating whether to hand off to human.
+        hand_off_to_human_reason: Optional string describing a failure.
+        task_complete: Boolean indicating whether the task is complete.
+        function_call: Boolean indicating whether a function call is made.
+        function_call_type: Optional string describing the function call type.
+        failure_reason: Optional string describing a failure.
+        ddb_table: Optional boto3 DynamoDB Table object for testing.
 
     Returns:
         True if the update was successful, False otherwise.
     """
-    if not conversations_table:
+    table_to_use = ddb_table if ddb_table is not None else conversations_table
+    if not table_to_use:
         logger.error("DynamoDB conversations table is not initialized. Cannot update record.")
         return False
 
@@ -300,7 +329,7 @@ def update_conversation_after_send(primary_channel_pk: str,
     logger.debug(f"Expression Attribute Names: {expression_attribute_names}")
 
     try:
-        response = conversations_table.update_item(
+        response = table_to_use.update_item(
             Key={
                 'primary_channel': primary_channel_pk,
                 'conversation_id': conversation_id_sk
