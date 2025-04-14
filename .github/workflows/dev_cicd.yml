@@ -96,3 +96,30 @@ jobs:
             --parameter-overrides EnvironmentName=dev LogLevel=DEBUG \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset 
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install pytest and requests for integration/E2E tests
+          pip install pytest requests
+
+      - name: Get API Gateway Endpoint
+        id: get_api_endpoint # Give the step an ID to reference its output
+        run: |
+          # Query the CloudFormation stack output for the API Gateway URL
+          API_BASE_URL=$(aws cloudformation describe-stacks --stack-name ai-multi-comms-dev --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" --output text)
+          # Construct the full endpoint URL including the path
+          API_ENDPOINT="${API_BASE_URL}/initiate-conversation"
+          echo "API endpoint is: ${API_ENDPOINT}"
+          # Export the endpoint URL as a GitHub Actions environment variable for subsequent steps
+          echo "API_ENDPOINT=${API_ENDPOINT}" >> $GITHUB_ENV
+
+      - name: Run integration tests
+        run: |
+          # Pytest will automatically use the API_ENDPOINT environment variable if tests are set up to read it
+          pytest tests/integration/
+
+      - name: Run E2E tests
+        run: |
+          # Pytest will automatically use the API_ENDPOINT environment variable if tests are set up to read it
+          pytest tests/e2e/ 
