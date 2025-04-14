@@ -73,7 +73,7 @@ def sample_context_object() -> dict:
             "ai_config": { # Realistic AI config structure
                 "openai_config": { # Correct nesting based on LLD
                     "whatsapp": {
-                        "api_key_reference": "dev/openai/api_key", # Placeholder/dev secret name
+                        "api_key_reference": "openai-api-key/whatsapp", 
                         "assistant_id_template_sender": "asst_abc123xyz789" # Placeholder/dev Assistant ID
                     }
                  }
