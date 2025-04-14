@@ -41,7 +41,9 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Run unit tests
-        run: pytest tests/unit/
+        run: | # Add src_dev to PYTHONPATH
+          export PYTHONPATH=$PYTHONPATH:./src_dev
+          pytest tests/unit/
 
       - name: Build SAM application (Check Only)
         run: sam build --use-container
