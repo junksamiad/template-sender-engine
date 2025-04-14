@@ -183,7 +183,7 @@ def test_lambda_handler_success_path(
         interval_sec=int(int(DUMMY_HEARTBEAT_MS) / 1000)
     )
     mock_hb_instance.start.assert_called_once()
-    mock_db_service.create_initial_conversation_record.assert_called_once_with(valid_context)
+    mock_db_service.create_initial_conversation_record.assert_called_once_with(context_object=valid_context, ddb_table=ANY)
     assert mock_sm_service.get_secret.call_count == 2
     mock_sm_service.get_secret.assert_any_call('openai_secret_ref')
     mock_sm_service.get_secret.assert_any_call('channel_secret_ref')
