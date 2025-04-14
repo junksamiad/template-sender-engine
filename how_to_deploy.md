@@ -8,7 +8,7 @@ This document outlines the process for deploying the AI Multi-Comms Engine to ei
 *   **AWS SAM CLI:** Installed (`sam --version`).
 *   **Docker:** Installed and **running**. The build process uses Docker containers.
 *   **Git:** Project checked out, and you are on the correct branch (`develop` for deploying to `dev`, `main` for deploying to `prod`).
-*   **Project Root:** All commands should be run from the root directory of the `template-sender-engine` project.
+*   **Project Root:** All commands should be run from the root directory of the `template-sender-engine` project. Note: Use the venv.
 
 ## 2. Infrastructure Definition
 
