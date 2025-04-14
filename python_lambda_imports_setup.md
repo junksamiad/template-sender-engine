@@ -2,6 +2,8 @@
 
 ## 1. The Problem: Import Path Conflicts
 
+Python is sometimes regarded as not being a great fit for AWS. 
+
 When developing AWS Lambda functions in Python using AWS SAM and testing locally with tools like `pytest`, a common conflict arises regarding how Python modules are imported:
 
 *   **AWS Lambda Runtime:** When a Lambda function is deployed, AWS typically takes the contents of the directory specified in the `template.yaml` `CodeUri` and places them at the root of the execution environment's Python path. Lambda then executes the handler specified (e.g., `index.lambda_handler`). In this context, if `index.py` tries to use relative imports like `from .utils import ...`, it fails with an `ImportError: attempted relative import with no known parent package` because, from its perspective, it's being run as a top-level script, not part of a package.
@@ -11,7 +13,7 @@ This leads to a frustrating cycle: code that works locally fails when deployed, 
 
 ## 2. The Solution: Package Structure and SAM Configuration
 
-We resolved this by restructuring the Lambda code slightly and adjusting the SAM template configuration. This approach ensures imports work consistently in both environments without requiring helper scripts to toggle import styles.
+We resolved this by restructuring the Lambda code slightly and adjusting the SAM template configuration. This approach ensures imports work consistently in both environments without requiring helper scripts to toggle import styles. 
 
 **Key Components of the Solution:**
 
@@ -107,6 +109,8 @@ We resolved this by restructuring the Lambda code slightly and adjusting the SAM
 
 *   **Lambda:** By setting `Handler` to `lambda_pkg.index.lambda_handler`, Lambda imports `lambda_pkg` first. When `index.py` is executed, it knows it's part of the `lambda_pkg` package, so relative imports like `from .utils import ...` resolve correctly to other modules within `lambda_pkg`. The `CodeUri` pointing to the parent `app/` ensures `lambda_pkg` and `requirements.txt` are correctly packaged.
 *   **`pytest`:** When run from the project root, `pytest` can find the `src_dev` directory. Imports in test files like `from src_dev.channel_router.app.lambda_pkg...` work because `pytest` adds the project root to the Python path. The relative imports *within* the `lambda_pkg` code also work correctly in this testing context because `lambda_pkg` is treated as a package (due to `__init__.py`).
+
+This configuration (CodeUri: .../app/, Handler: lambda_pkg.index.lambda_handler) is the one commonly recommended for making relative imports work consistently.
 
 ## 4. Summary
 

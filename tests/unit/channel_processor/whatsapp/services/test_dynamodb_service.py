@@ -2,45 +2,63 @@ import pytest
 import boto3
 import os
 from moto import mock_dynamodb
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import datetime
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ParamValidationError
 from typing import TYPE_CHECKING
+from decimal import Decimal
+import json
+import time
 
 # Import boto3 types for type hinting if available
 if TYPE_CHECKING:
     from mypy_boto3_dynamodb.service_resource import Table
 
 # Module to test
-# from src_dev.channel_processor.whatsapp.app.services import dynamodb_service
-from channel_processor.whatsapp.app.services import dynamodb_service
-# Reload the module to re-initialize client/table with mocked env vars/moto
-from importlib import reload
+# Import using the correct lambda_pkg path
+from src_dev.channel_processor.whatsapp.app.lambda_pkg.services import dynamodb_service
+
+# Remove reload import
+# from importlib import reload
 
 # --- Constants ---
 DUMMY_TABLE_NAME = "test-conversations-table"
 DUMMY_VERSION = "processor-1.2.3"
 
+# Environment variable for the table name - Handled in fixture
+# TABLE_NAME = os.environ.get('CONVERSATIONS_TABLE_NAME_DEV', 'test-conversations-table')
+
 # --- Fixtures ---
 
-@pytest.fixture(scope="function", autouse=True)
-def aws_credentials():
-    """Mocked AWS Credentials for moto."""
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    os.environ["AWS_SECURITY_TOKEN"] = "testing"
-    os.environ["AWS_SESSION_TOKEN"] = "testing"
-    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-    os.environ["CONVERSATIONS_TABLE"] = DUMMY_TABLE_NAME
-    os.environ["VERSION"] = DUMMY_VERSION
+# Remove autouse=True - it's implicitly used via dynamodb_table fixture
+@pytest.fixture(scope="function")
+def aws_credentials(monkeypatch):
+    """Mocked AWS Credentials and env vars for moto using monkeypatch."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_SECURITY_TOKEN", "testing")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
+    # Use a consistent region, e.g., eu-north-1 if that's used elsewhere
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-north-1")
+    # Set the env vars needed by the service module
+    monkeypatch.setenv("CONVERSATIONS_TABLE", DUMMY_TABLE_NAME)
+    monkeypatch.setenv("VERSION", DUMMY_VERSION)
 
 @pytest.fixture(scope="function")
-def dynamodb_table(aws_credentials):
-    """Creates a mock DynamoDB table for the tests."""
+def dynamodb_table(aws_credentials): # aws_credentials fixture ensures env vars are set
+    """Creates a mock DynamoDB table for testing and yields the boto3 table object."""
     with mock_dynamodb():
-        dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-        dynamodb.create_table(
-            TableName=DUMMY_TABLE_NAME,
+        # Explicitly pass dummy credentials and region
+        dynamodb = boto3.resource(
+            'dynamodb',
+            # Use the region set by monkeypatch
+            region_name=os.environ['AWS_DEFAULT_REGION'],
+            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+            aws_session_token=os.environ['AWS_SESSION_TOKEN']
+        )
+        table = dynamodb.create_table(
+            TableName=DUMMY_TABLE_NAME, # Use the dummy name consistent with env var
             KeySchema=[
                 {'AttributeName': 'primary_channel', 'KeyType': 'HASH'}, # Partition key
                 {'AttributeName': 'conversation_id', 'KeyType': 'RANGE'}  # Sort key
@@ -51,11 +69,11 @@ def dynamodb_table(aws_credentials):
             ],
             ProvisionedThroughput={'ReadCapacityUnits': 5, 'WriteCapacityUnits': 5}
         )
-        # Reload the service module AFTER the table is created and env vars are set
-        reload(dynamodb_service)
-        table = dynamodb_service.conversations_table
-        assert table is not None
-        assert table.name == DUMMY_TABLE_NAME
+        # Remove reload and checks on service module's table
+        # reload(dynamodb_service)
+        # assert dynamodb_service.conversations_table is not None
+        # assert dynamodb_service.conversations_table.name == DUMMY_TABLE_NAME
+        # Yield the created table object directly
         yield table
 
 @pytest.fixture
@@ -111,10 +129,13 @@ def valid_context_object():
 
 def test_create_initial_success(dynamodb_table, valid_context_object):
     """Test successful creation of a new conversation record."""
-    success = dynamodb_service.create_initial_conversation_record(valid_context_object)
+    # Pass the mocked table object
+    success = dynamodb_service.create_initial_conversation_record(
+        context_object=valid_context_object, ddb_table=dynamodb_table
+    )
     assert success
 
-    # Verify item in DB
+    # Verify item in DB using the yielded table
     item = dynamodb_table.get_item(
         Key={
             'primary_channel': valid_context_object['frontend_payload']['recipient_data']['recipient_tel'],
@@ -145,9 +166,11 @@ def test_create_initial_success(dynamodb_table, valid_context_object):
     assert item['thread_id'] is None # Check value is None instead
 
 def test_create_initial_idempotency(dynamodb_table, valid_context_object):
-    """Test that calling create twice succeeds and doesn't overwrite (idempotency)."""
-    # First call - should create
-    success1 = dynamodb_service.create_initial_conversation_record(valid_context_object)
+    """Test that calling create twice doesn't overwrite (idempotency)."""
+    # First call - pass table
+    success1 = dynamodb_service.create_initial_conversation_record(
+        context_object=valid_context_object, ddb_table=dynamodb_table
+    )
     assert success1
     item1 = dynamodb_table.get_item(
         Key={
@@ -162,9 +185,12 @@ def test_create_initial_idempotency(dynamodb_table, valid_context_object):
     modified_context = valid_context_object.copy()
     modified_context['metadata'] = {'router_version': 'router-0.2.0'} # Change metadata
 
-    # Second call - should hit ConditionalCheckFailedException but return True
-    success2 = dynamodb_service.create_initial_conversation_record(modified_context)
-    assert success2
+    # Second call - pass table
+    success2 = dynamodb_service.create_initial_conversation_record(
+        context_object=modified_context, ddb_table=dynamodb_table
+    )
+    # Now expect False because the function returns False on ConditionalCheckFailedException
+    assert not success2
 
     # Verify item hasn't changed
     item2 = dynamodb_table.get_item(
@@ -181,7 +207,10 @@ def test_create_initial_missing_key(dynamodb_table, valid_context_object, caplog
     invalid_context = valid_context_object.copy()
     del invalid_context['conversation_data'] # Remove a required key
 
-    success = dynamodb_service.create_initial_conversation_record(invalid_context)
+    # Pass table even though it shouldn't be used before the KeyError
+    success = dynamodb_service.create_initial_conversation_record(
+        context_object=invalid_context, ddb_table=dynamodb_table
+    )
     assert not success
     assert "Missing expected key in context_object: 'conversation_data'" in caplog.text
 
@@ -193,7 +222,10 @@ def test_create_initial_email_channel(dynamodb_table, valid_context_object):
     email_context['company_data_payload']['channel_config']['email'] = {'email_credentials_id': 'cred_email_xyz'}
     email_context['company_data_payload']['ai_config']['openai_config']['email'] = {'api_key_reference': 'secret_email_key', 'assistant_id_template_sender': 'asst_email_456'}
 
-    success = dynamodb_service.create_initial_conversation_record(email_context)
+    # Pass table
+    success = dynamodb_service.create_initial_conversation_record(
+        context_object=email_context, ddb_table=dynamodb_table
+    )
     assert success
 
     item = dynamodb_table.get_item(
@@ -214,7 +246,10 @@ def test_create_initial_unsupported_channel(dynamodb_table, valid_context_object
     invalid_context = valid_context_object.copy()
     invalid_context['frontend_payload']['request_data']['channel_method'] = 'fax'
 
-    success = dynamodb_service.create_initial_conversation_record(invalid_context)
+    # Pass table
+    success = dynamodb_service.create_initial_conversation_record(
+        context_object=invalid_context, ddb_table=dynamodb_table
+    )
     assert not success
     assert "Unsupported channel_method 'fax' found." in caplog.text
 
@@ -223,19 +258,28 @@ def test_create_initial_missing_primary_identifier(dynamodb_table, valid_context
     invalid_context = valid_context_object.copy()
     del invalid_context['frontend_payload']['recipient_data']['recipient_tel']
 
-    success = dynamodb_service.create_initial_conversation_record(invalid_context)
+    # Pass table
+    success = dynamodb_service.create_initial_conversation_record(
+        context_object=invalid_context, ddb_table=dynamodb_table
+    )
     assert not success
     assert "Missing recipient_tel in context_object for whatsapp channel" in caplog.text
 
 def test_create_initial_no_table(valid_context_object, caplog):
     """Test failure if the table is not initialized (env var missing)."""
+    # This test still checks the global table behavior when env var is missing
     with patch.dict(os.environ, {"CONVERSATIONS_TABLE": ""}, clear=True):
-        reload(dynamodb_service) # Reload to pick up empty env var
+        # We need to reload here specifically for this test case
+        # because the global table is initialized at import time.
+        from importlib import reload
+        reload(dynamodb_service)
         assert dynamodb_service.conversations_table is None
+        # Call without passing table
         success = dynamodb_service.create_initial_conversation_record(valid_context_object)
         assert not success
         assert "DynamoDB conversations table is not initialized" in caplog.text
-    # Restore env var for other tests via aws_credentials fixture reloading
+    # Important: Reload again after the test to restore the table state for others
+    # This assumes aws_credentials sets the env var correctly before next reload
     reload(dynamodb_service)
 
 # --- Tests for update_conversation_after_send ---
@@ -269,12 +313,16 @@ def update_args(existing_record_params):
 
 def test_update_after_send_success(dynamodb_table, valid_context_object, update_args):
     """Test successful update of an existing record."""
-    # 1. Create the initial record first
-    create_success = dynamodb_service.create_initial_conversation_record(valid_context_object)
+    # 1. Create the initial record first - pass table
+    create_success = dynamodb_service.create_initial_conversation_record(
+        context_object=valid_context_object, ddb_table=dynamodb_table
+    )
     assert create_success
 
-    # 2. Perform the update
-    update_success = dynamodb_service.update_conversation_after_send(**update_args)
+    # 2. Perform the update - pass table
+    update_success = dynamodb_service.update_conversation_after_send(
+        **update_args, ddb_table=dynamodb_table
+    )
     assert update_success
 
     # 3. Verify the updated item in DB
@@ -297,14 +345,20 @@ def test_update_after_send_success(dynamodb_table, valid_context_object, update_
 
 def test_update_after_send_minimal_args(dynamodb_table, valid_context_object, existing_record_params, update_args):
     """Test successful update when optional args (thread_id, proc_time) are None."""
-    create_success = dynamodb_service.create_initial_conversation_record(valid_context_object)
+    # Create - pass table
+    create_success = dynamodb_service.create_initial_conversation_record(
+        context_object=valid_context_object, ddb_table=dynamodb_table
+    )
     assert create_success
 
     minimal_update_args = update_args.copy()
     minimal_update_args["thread_id"] = None
     minimal_update_args["processing_time_ms"] = None
 
-    update_success = dynamodb_service.update_conversation_after_send(**minimal_update_args)
+    # Update - pass table
+    update_success = dynamodb_service.update_conversation_after_send(
+        **minimal_update_args, ddb_table=dynamodb_table
+    )
     assert update_success
 
     item = dynamodb_table.get_item(
@@ -322,11 +376,16 @@ def test_update_after_send_minimal_args(dynamodb_table, valid_context_object, ex
 
 def test_update_after_send_append_message(dynamodb_table, valid_context_object, existing_record_params, update_args):
     """Test that messages are correctly appended."""
-    create_success = dynamodb_service.create_initial_conversation_record(valid_context_object)
+    # Create - pass table
+    create_success = dynamodb_service.create_initial_conversation_record(
+        context_object=valid_context_object, ddb_table=dynamodb_table
+    )
     assert create_success
 
-    # First update
-    update1_success = dynamodb_service.update_conversation_after_send(**update_args)
+    # First update - pass table
+    update1_success = dynamodb_service.update_conversation_after_send(
+        **update_args, ddb_table=dynamodb_table
+    )
     assert update1_success
 
     # Second update (simulate another message)
@@ -342,7 +401,10 @@ def test_update_after_send_append_message(dynamodb_table, valid_context_object, 
     update_args2["thread_id"] = None # Don't update thread id again perhaps
     update_args2["processing_time_ms"] = None
 
-    update2_success = dynamodb_service.update_conversation_after_send(**update_args2)
+    # Second update - pass table
+    update2_success = dynamodb_service.update_conversation_after_send(
+        **update_args2, ddb_table=dynamodb_table
+    )
     assert update2_success
 
     item = dynamodb_table.get_item(
@@ -362,26 +424,40 @@ def test_update_after_send_append_message(dynamodb_table, valid_context_object, 
 
 def test_update_after_send_no_table(update_args, caplog):
     """Test update failure if the table is not initialized."""
+    # This test still checks the global table behavior
     with patch.dict(os.environ, {"CONVERSATIONS_TABLE": ""}, clear=True):
+        from importlib import reload
         reload(dynamodb_service)
         assert dynamodb_service.conversations_table is None
+        # Call without passing table
         success = dynamodb_service.update_conversation_after_send(**update_args)
         assert not success
         assert "DynamoDB conversations table is not initialized" in caplog.text
+    # Reload again to restore
     reload(dynamodb_service)
 
 def test_update_after_send_client_error(dynamodb_table, valid_context_object, update_args, caplog):
     """Test update failure on a DynamoDB ClientError."""
-    create_success = dynamodb_service.create_initial_conversation_record(valid_context_object)
+    # Create - pass table
+    create_success = dynamodb_service.create_initial_conversation_record(
+        context_object=valid_context_object, ddb_table=dynamodb_table
+    )
     assert create_success
 
-    # Mock the update_item call to raise an error
-    with patch.object(dynamodb_service.conversations_table, 'update_item') as mock_update:
+    # Mock the update_item call on the *passed* table object
+    with patch.object(dynamodb_table, 'update_item') as mock_update:
         error_response = {'Error': {'Code': 'ResourceNotFoundException', 'Message': 'Table not found'}}
         mock_update.side_effect = ClientError(error_response, 'UpdateItem')
 
-        success = dynamodb_service.update_conversation_after_send(**update_args)
+        # Call update - pass table
+        success = dynamodb_service.update_conversation_after_send(
+            **update_args, ddb_table=dynamodb_table
+        )
         assert not success
         assert "DynamoDB ClientError updating record" in caplog.text
         assert "Table not found" in caplog.text
-        mock_update.assert_called_once() 
+        mock_update.assert_called_once()
+
+    # Restore env var for other tests via aws_credentials fixture reloading
+    # Similar to above, omitting reload for now.
+    # reload(dynamodb_service) 

@@ -3,10 +3,8 @@
 import pytest
 import os
 import boto3
-# from moto import mock_aws # Use new decorator style
 from moto import mock_dynamodb # Use specific decorator for moto 4.x
 from decimal import Decimal
-# import sys # Removed
 from unittest.mock import patch, MagicMock # Keep patch for env var test
 from botocore.exceptions import ClientError # Import ClientError
 from importlib import reload
@@ -30,28 +28,34 @@ from src_dev.channel_router.app.lambda_pkg.services.dynamodb_service import (
     CONFIGURATION_ERROR
 )
 
-# --- Test Constants ---
-TABLE_NAME = 'test-company-data-table'
+# Environment variable for the table name (adjust if needed)
+TABLE_NAME = os.environ.get('COMPANY_DATA_TABLE_NAME_DEV', 'test-company-data-table')
 TEST_COMPANY_ID = 'comp-moto-1'
 TEST_PROJECT_ID = 'proj-moto-a'
 
 # --- Fixtures ---
 
 @pytest.fixture(scope='function')
-def aws_credentials():
-    """Mocked AWS Credentials for moto."""
-    os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
-    os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
-    os.environ['AWS_SECURITY_TOKEN'] = 'testing'
-    os.environ['AWS_SESSION_TOKEN'] = 'testing'
-    os.environ['AWS_DEFAULT_REGION'] = 'eu-north-1' # Or your preferred region
+def aws_credentials(monkeypatch):
+    """Mocked AWS Credentials for moto using monkeypatch."""
+    monkeypatch.setenv('AWS_ACCESS_KEY_ID', 'testing')
+    monkeypatch.setenv('AWS_SECRET_ACCESS_KEY', 'testing')
+    monkeypatch.setenv('AWS_SECURITY_TOKEN', 'testing')
+    monkeypatch.setenv('AWS_SESSION_TOKEN', 'testing')
+    monkeypatch.setenv('AWS_DEFAULT_REGION', 'eu-north-1') # Or your preferred region
 
 @pytest.fixture(scope='function')
-def dynamodb_table(aws_credentials):
+def dynamodb_table(aws_credentials): # aws_credentials ensures env vars are set by monkeypatch
     """Creates a mock DynamoDB table for testing."""
-    # with mock_aws():
-    with mock_dynamodb(): # Use specific decorator
-        dynamodb = boto3.resource('dynamodb', region_name=os.environ['AWS_DEFAULT_REGION'])
+    with mock_dynamodb():
+        # Explicitly pass dummy credentials and region
+        dynamodb = boto3.resource(
+            'dynamodb',
+            region_name=os.environ['AWS_DEFAULT_REGION'],
+            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+            aws_session_token=os.environ['AWS_SESSION_TOKEN']
+        )
         table = dynamodb.create_table(
             TableName=TABLE_NAME,
             KeySchema=[

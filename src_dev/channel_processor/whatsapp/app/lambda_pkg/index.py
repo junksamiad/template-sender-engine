@@ -122,6 +122,16 @@ def lambda_handler(
             # Record start time for processing duration calculation
             processing_start_time = time.time()
 
+            # Get ApproximateReceiveCount
+            attributes = record.get('attributes', {})
+            approx_receive_count_str = attributes.get('ApproximateReceiveCount', '1')
+            try:
+                approx_receive_count = int(approx_receive_count_str)
+            except (ValueError, TypeError):
+                log.warning(f"Could not parse ApproximateReceiveCount '{approx_receive_count_str}' for record {record_id}. Assuming 1.")
+                approx_receive_count = 1
+            log.info(f"Record {record_id} ApproximateReceiveCount: {approx_receive_count}")
+
             # 1. Parse SQS message body to get the Context Object JSON string
             context_json = record.get('body')
             if not context_json:
@@ -194,16 +204,31 @@ def lambda_handler(
 
             # 4. Create/Update DynamoDB Conversation Record (Idempotent)
             #    - Uses injected db_service module
-            # record_created_ok = create_initial_conversation_record(context_object)
-            record_created_ok = db_service.create_initial_conversation_record(context_object)
+            record_created_ok = db_service.create_initial_conversation_record(
+                context_object=context_object, ddb_table=None
+                )
             if not record_created_ok:
-                # If the record creation failed (and it wasn't due to ConditionalCheckFailedException handled within the function),
-                # we should fail the processing for this SQS message.
-                log.error(f"Failed to create or verify existence of DynamoDB record for conversation ID {conv_id}. Halting processing for record {record_id}.") # Use injected logger
-                # Raise an error to ensure the message is not deleted and will be retried / DLQ'd
-                raise RuntimeError(f"Failed to create/verify DynamoDB record for {conv_id}")
+                # ConditionalCheckFailed or other error during create prevented record creation/returned False.
+                # Check the receive count to determine the likely scenario.
+                if approx_receive_count == 1:
+                    # Likely a duplicate request via Router (Scenario 1)
+                    log.warning(f"Halting processing for record {record_id} (Receive Count: 1) as record already exists (likely duplicate request).")
+                else: 
+                    # SQS Redelivery after previous failure (Scenario 2)
+                    log.warning(f"Halting processing for redelivered record {record_id} (Receive Count: {approx_receive_count}) as record already exists.")
+                
+                # In both cases (duplicate request or redelivery), the current design is to stop processing.
+                # We treat this as a success for SQS message deletion purposes to avoid infinite loops/DLQ for handled duplicates.
+                successful_record_ids.append(record_id) 
+                if heartbeat and heartbeat.running:
+                    heartbeat.stop()
+                    log.info(f"SQS Heartbeat stopped for halted record {record_id} (duplicate/redelivered).")
+                
+                # *** ADD EXTRA LOGGING BEFORE CONTINUE ***
+                log.info(f"INTENTIONAL CONTINUE for duplicate/redelivered record {record_id}. Skipping rest of loop iteration.")
+                continue # Skip rest of processing for this duplicate/redelivered message
             else:
-                # Record exists or was created successfully.
+                # Record created successfully
                 log.info(f"DynamoDB record check/creation successful for conversation ID {conv_id} (SQS ID: {record_id})") # Use injected logger
 
             # 5. Fetch Credentials (Twilio, OpenAI) from Secrets Manager
@@ -510,6 +535,51 @@ def lambda_handler(
                  log.info(f"SQS Heartbeat for {record_id} was not running or already stopped when error occurred.") # Use injected logger
             else:
                  log.debug(f"No active SQS Heartbeat during error handling for {record_id}.") # Use injected logger
+
+            # --- ADDED: Attempt to update DynamoDB status on failure --- #
+            # *** ADD EXTRA LOGGING IN EXCEPTION HANDLER ***
+            log.error(f"Caught exception in main handler for record {record_id}. Type: {type(e).__name__}, Message: {str(e)}. Attempting to update status.")
+            
+            # We need primary_channel and conversation_id. These might not be set if
+            # parsing/validation failed early. Add checks.
+            primary_channel_val = None
+            conv_id_val = None
+            try:
+                # Try to get IDs if context_object was parsed
+                if 'context_object' in locals() and context_object:
+                    conv_id_val = context_object.get('conversation_data', {}).get('conversation_id')
+                    channel_method_val = context_object.get('frontend_payload', {}).get('request_data', {}).get('channel_method')
+                    if channel_method_val in ['whatsapp', 'sms']:
+                        primary_channel_val = context_object.get('frontend_payload', {}).get('recipient_data', {}).get('recipient_tel')
+                    elif channel_method_val == 'email':
+                         primary_channel_val = context_object.get('frontend_payload', {}).get('recipient_data', {}).get('recipient_email')
+            except Exception as id_ex:
+                log.warning(f"Could not reliably determine primary_channel/conversation_id during error handling: {id_ex}")
+
+            if primary_channel_val and conv_id_val:
+                failure_status_code = "failed_unknown"
+                # Crude check for specific failure types based on exception
+                if isinstance(e, ValueError) and ("credentials" in str(e).lower() or "secret" in str(e).lower()):
+                    failure_status_code = "failed_secrets_fetch"
+                elif isinstance(e, ValueError) and ("openai" in str(e).lower() or "ai process" in str(e).lower()):
+                     failure_status_code = "failed_to_process_ai"
+                elif isinstance(e, RuntimeError) and ("twilio" in str(e).lower() or "send message" in str(e).lower()):
+                    failure_status_code = "failed_to_send_message"
+                # Add more specific status codes based on potential exceptions
+                
+                # *** ADD EXTRA LOGGING BEFORE DB UPDATE ***
+                log.info(f"Updating failure status for conv_id '{conv_id_val}' on channel '{primary_channel_val}' to '{failure_status_code}' due to caught exception.")
+                
+                db_service.update_conversation_status_on_failure(
+                    primary_channel_pk=primary_channel_val,
+                    conversation_id_sk=conv_id_val,
+                    failure_status=failure_status_code,
+                    failure_reason=f"Unhandled exception: {type(e).__name__} - {str(e)[:200]}", # Truncate long errors
+                    log=log # Pass injected logger
+                )
+            else:
+                 log.error(f"Cannot update DynamoDB failure status for record {record_id} as identifiers could not be determined.")
+            # --- END ADDED SECTION --- #
 
     log.info(f"Processing complete. Successful: {len(successful_record_ids)}, Failed: {len(failed_record_ids)}") # Use injected logger
 
