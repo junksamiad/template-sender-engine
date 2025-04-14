@@ -2,10 +2,13 @@ import pytest
 import boto3
 import os
 from moto import mock_dynamodb
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import datetime
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ParamValidationError
 from typing import TYPE_CHECKING
+from decimal import Decimal
+import json
+import time
 
 # Import boto3 types for type hinting if available
 if TYPE_CHECKING:
@@ -23,26 +26,34 @@ DUMMY_VERSION = "processor-1.2.3"
 
 # --- Fixtures ---
 
-@pytest.fixture(scope="function", autouse=True)
-def aws_credentials():
-    """Mocked AWS Credentials for moto."""
-    os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-    os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-    # os.environ["AWS_SECURITY_TOKEN"] = "testing" # Remove - often causes issues with moto
-    # os.environ["AWS_SESSION_TOKEN"] = "testing" # Remove - often causes issues with moto
-    os.environ["AWS_SECURITY_TOKEN"] = "testing" # Reverted
-    os.environ["AWS_SESSION_TOKEN"] = "testing" # Reverted
-    os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-    os.environ["CONVERSATIONS_TABLE"] = DUMMY_TABLE_NAME
-    os.environ["VERSION"] = DUMMY_VERSION
+@pytest.fixture(scope="function")
+def aws_credentials(monkeypatch):
+    """Mocked AWS Credentials and env vars for moto using monkeypatch."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_SECURITY_TOKEN", "testing")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
+    # Use a consistent region, e.g., eu-north-1 if that's used elsewhere
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-north-1")
+    # Set the env vars needed by the service module upon reload
+    monkeypatch.setenv("CONVERSATIONS_TABLE", DUMMY_TABLE_NAME)
+    monkeypatch.setenv("VERSION", DUMMY_VERSION)
 
 @pytest.fixture(scope="function")
 def dynamodb_table(aws_credentials):
     """Creates a mock DynamoDB table for the tests."""
     with mock_dynamodb():
-        dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
-        dynamodb.create_table(
-            TableName=DUMMY_TABLE_NAME,
+        # Explicitly pass dummy credentials and region
+        dynamodb = boto3.resource(
+            'dynamodb',
+            # Use the region set by monkeypatch
+            region_name=os.environ['AWS_DEFAULT_REGION'],
+            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+            aws_session_token=os.environ['AWS_SESSION_TOKEN']
+        )
+        table = dynamodb.create_table(
+            TableName=DUMMY_TABLE_NAME, # Use the dummy name consistent with env var
             KeySchema=[
                 {'AttributeName': 'primary_channel', 'KeyType': 'HASH'}, # Partition key
                 {'AttributeName': 'conversation_id', 'KeyType': 'RANGE'}  # Sort key
@@ -55,9 +66,10 @@ def dynamodb_table(aws_credentials):
         )
         # Reload the service module AFTER the table is created and env vars are set
         reload(dynamodb_service)
-        table = dynamodb_service.conversations_table
-        assert table is not None
-        assert table.name == DUMMY_TABLE_NAME
+        # Check that the reload worked and the table is initialized in the service module
+        assert dynamodb_service.conversations_table is not None
+        assert dynamodb_service.conversations_table.name == DUMMY_TABLE_NAME
+        # Yield the boto3 table object (useful if tests need direct interaction)
         yield table
 
 @pytest.fixture
