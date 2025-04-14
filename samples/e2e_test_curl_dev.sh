@@ -51,7 +51,7 @@ read -r -d '' REQUEST_BODY <<'EOF'
     ]
   },
   "request_data": {
-    "request_id": "550e8400-e29b-41d4-a716-446655440001",
+    "request_id": "550e8400-e29b-41d4-a716-446655440000",
     "channel_method": "whatsapp",
     "initial_request_timestamp": "2023-09-15T11:45:32.789Z"
   }

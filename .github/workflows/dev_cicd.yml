@@ -1,0 +1,98 @@
+# .github/workflows/dev_cicd.yml
+name: Dev CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request: # Added trigger for pull requests
+    branches:
+      - develop
+
+permissions: # Added permissions for AWS OIDC (needed for deploy job)
+  id-token: write
+  contents: read
+
+jobs:
+  pr_checks:
+    # Run this job only on pull request events
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install flake8 along with main requirements
+          pip install -r requirements.txt flake8
+
+      - name: Lint with flake8
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run unit tests
+        run: | # Add src_dev to PYTHONPATH
+          export PYTHONPATH=$PYTHONPATH:./src_dev
+          pytest tests/unit/
+
+      - name: Build SAM application (Check Only)
+        run: sam build --use-container
+
+  build-and-deploy-dev:
+    # Run this job only on push events to the develop branch
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop' # Condition added
+    runs-on: ubuntu-latest
+    environment: dev # Optional: Define a GitHub Environment for 'dev'
+    # Optionally, make deploy depend on PR checks if required by branch protection rules
+    # needs: pr_checks # Note: This dependency might behave unexpectedly with the current trigger logic.
+                      # Branch protection rules are a better way to enforce checks before merge.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      # Linting and unit tests removed from this job
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # !! IMPORTANT !! - Requires configuration (OIDC recommended)
+          role-to-assume: arn:aws:iam::337909745089:role/GitHubActions-template-sender-engine-dev # Updated ARN
+          aws-region: eu-north-1 # Confirmed region
+
+          # --- OR --- Use Access Keys (Less Secure)
+          # aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          # aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # aws-region: eu-north-1
+
+      - name: Build SAM application
+        run: sam build --use-container # Build again before deploy
+
+      - name: Deploy SAM application to Dev
+        run: |
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name ai-multi-comms-dev \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --resolve-s3 \
+            --parameter-overrides EnvironmentName=dev LogLevel=DEBUG \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset 

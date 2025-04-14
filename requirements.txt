@@ -23,7 +23,8 @@ structlog==23.1.0
 pyyaml==6.0
 
 # OpenAI Integration
-openai==0.27.9
+# openai==0.27.9 # Old version causing mismatch
+openai>=1.24.0,<2.0.0 # Use modern V1 API compatible with service code
 
 # External Services
 twilio==8.5.0

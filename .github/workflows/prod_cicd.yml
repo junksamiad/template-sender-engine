@@ -1,0 +1,84 @@
+# .github/workflows/prod_cicd.yml
+name: Prod CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  pr_checks:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt flake8
+
+      - name: Lint with flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run unit tests
+        run: |
+          export PYTHONPATH=$PYTHONPATH:./src_dev
+          pytest tests/unit/
+
+      - name: Build SAM application (Check Only)
+        run: sam build --use-container
+
+  build-and-deploy-prod:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # !! IMPORTANT !! - Requires configuration for PROD role
+          role-to-assume: arn:aws:iam::337909745089:role/GitHubActions-template-sender-engine-prod
+          aws-region: eu-north-1
+
+      - name: Build SAM application
+        run: sam build --use-container
+
+      - name: Deploy SAM application to Prod
+        run: |
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name ai-multi-comms-prod \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --resolve-s3 \
+            --parameter-overrides EnvironmentName=prod LogLevel=INFO \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset 

@@ -8,7 +8,7 @@ import sys
 
 # --- Configuration ---
 # Get target environment (dev or prod), default to dev
-DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "prod").lower()
+DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "dev").lower()
 if DEPLOY_ENV not in ['dev', 'prod']:
     print(f"Error: Invalid DEPLOY_ENV specified: {DEPLOY_ENV}. Must be 'dev' or 'prod'.")
     sys.exit(1)
@@ -98,10 +98,8 @@ def create_dynamodb_record(record_path):
 
 # Main execution block - removed argparse
 if __name__ == "__main__":
-    # Determine the directory where the script is located
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Construct the path to the JSON file relative to the script directory
-    input_json_file = os.path.join(script_dir, "create_new_company_data_record.json")
+    # Point directly to the desired sample file relative to project root
+    input_json_file = "samples/recruitment_company_data_record_example_dev.json"
 
     print(f"--- Starting Company Record Creation for environment: {DEPLOY_ENV.upper()} ---")
     print(f"Target Table: {TABLE_NAME}")

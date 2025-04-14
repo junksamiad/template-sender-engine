@@ -243,8 +243,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${ProjectPrefix}-whatsapp-channel-processor-${EnvironmentName}'
-      CodeUri: src_dev/channel_processor/whatsapp/lambda/
-      Handler: index.lambda_handler
+      CodeUri: src_dev/channel_processor/whatsapp/app/
+      Handler: lambda_pkg.index.lambda_handler
       Runtime: python3.11
       Timeout: !Ref WhatsAppProcessorTimeout
       MemorySize: !Ref WhatsAppProcessorMemory
@@ -319,8 +319,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${ProjectPrefix}-channel-router-${EnvironmentName}'
-      CodeUri: src_dev/channel_router/lambda/
-      Handler: index.lambda_handler
+      CodeUri: src_dev/channel_router/app/
+      Handler: lambda_pkg.index.lambda_handler
       Runtime: python3.11
       Role: !GetAtt ChannelRouterRole.Arn # Assign the Channel Router Role
       Timeout: 30 # Default, adjust if needed
