@@ -94,4 +94,5 @@ jobs:
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --resolve-s3 \
             --parameter-overrides EnvironmentName=dev LogLevel=DEBUG \
-            --no-confirm-changeset 
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset 

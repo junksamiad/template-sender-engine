@@ -80,4 +80,5 @@ jobs:
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --resolve-s3 \
             --parameter-overrides EnvironmentName=prod LogLevel=INFO \
-            --no-confirm-changeset 
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset 
