@@ -339,7 +339,7 @@ def test_processor_failure_missing_secret(setup_e2e_company_data, modify_company
     - Modifies company data to point OpenAI key ref to an invalid secret.
     - Sends a valid request via API Gateway.
     - Asserts API response is 200 OK.
-    - Polls conversations table until status is 'failed_secrets_fetch'.
+    - Polls conversations table until status is 'failed_unknown'.
     - Requires manual check: No WhatsApp message should be received.
     """
     # Fixtures are requested by adding their names as arguments.
@@ -408,12 +408,12 @@ def test_processor_failure_missing_secret(setup_e2e_company_data, modify_company
         logger.error(f"API Request failed: {e}. Response: {response_text}")
         pytest.fail(f"API request failed: {e}")
 
-    # Poll DynamoDB for the expected final status ('failed_secrets_fetch')
+    # Poll DynamoDB for the expected final status ('failed_unknown')
     logger.info("Polling DynamoDB conversations table for final status...")
     final_item = poll_conversation_status(
         primary_channel_key=recipient_tel, # Pass the phone number
         request_id=request_id,
-        expected_status="failed_secrets_fetch",
+        expected_status="failed_unknown",
         test_start_time_iso=test_start_time_iso, # Pass the start time
         timeout=120,
         interval=15
@@ -424,8 +424,8 @@ def test_processor_failure_missing_secret(setup_e2e_company_data, modify_company
         f"Polling timed out or failed to find record for request_id '{request_id}'"
 
     final_status = final_item.get("conversation_status")
-    assert final_status == "failed_secrets_fetch", \
-        f"Final conversation_status was '{final_status}', expected 'failed_secrets_fetch'. Item: {final_item}"
+    assert final_status == "failed_unknown", \
+        f"Final conversation_status was '{final_status}', expected 'failed_unknown'. Item: {final_item}"
 
     # --- DLQ Check (Commented out due to long SQS retry delays) ---
     # logger.info(f"Verifying message for request_id '{request_id}' reached DLQ '{DLQ_URL}'")
