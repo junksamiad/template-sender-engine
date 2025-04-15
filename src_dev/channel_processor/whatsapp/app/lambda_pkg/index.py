@@ -231,61 +231,43 @@ def lambda_handler(
                 # Record created successfully
                 log.info(f"DynamoDB record check/creation successful for conversation ID {conv_id} (SQS ID: {record_id})") # Use injected logger
 
-            # 5. Fetch Credentials (Twilio, OpenAI) from Secrets Manager
+            # 5. Fetch Credentials (Secrets Manager)
             #    - Uses injected sm_service module
-            # ... existing credential reference logic ...
+            log.info(f"Initiating Step 5: Fetch credentials for {conv_id}") # Use injected logger
             try:
-                # Determine the correct keys for fetching references based on channel_method
-                # We already have channel_method from context validation step
+                # --- Fetch OpenAI Key ---
+                openai_api_key_ref = context_object.get('company_data_payload', {}).get('ai_config', {}).get('openai_config', {}).get(channel_method, {}).get('api_key_reference')
+                if not openai_api_key_ref:
+                     raise ValueError("Missing OpenAI api_key_reference in context")
+                openai_api_key = sm_service.get_secret(openai_api_key_ref)
+                if not openai_api_key: # Double-check service didn't return None silently
+                     raise ValueError("Failed to retrieve OpenAI credentials")
+                log.info(f"Successfully fetched OpenAI credentials for conversation {conv_id}") # ADDED LOG
 
-                # --- Get OpenAI API Key Reference --- 
-                # ai_config = context_object.get('company_data_payload', {}).get('ai_config', {}).get('openai_config', {})
-                # channel_ai_config = ai_config.get(channel_method, {}) # Definition moved earlier
+                # --- Fetch Twilio Credentials ---
+                twilio_creds_ref = context_object.get('company_data_payload', {}).get('channel_config', {}).get(channel_method, {}).get('whatsapp_credentials_id')
+                if not twilio_creds_ref:
+                     raise ValueError("Missing Twilio whatsapp_credentials_id in context")
+                twilio_creds_string = sm_service.get_secret(twilio_creds_ref)
+                if not twilio_creds_string:
+                     raise ValueError("Failed to retrieve Twilio credentials string")
                 
-                # Check if channel_ai_config was found - Moved earlier
-                # if not channel_ai_config:
-                #     logger.error(f"Missing 'openai_config.{channel_method}' in context_object. Cannot fetch credentials or assistant ID.")
-                #     raise ValueError(f"Missing OpenAI channel configuration for {channel_method}")
-
-                openai_secret_ref = channel_ai_config.get('api_key_reference')
-                if not openai_secret_ref:
-                    log.error(f"Missing OpenAI 'api_key_reference' in context_object for channel {channel_method}. Cannot fetch credentials.") # Use injected logger
-                    raise ValueError(f"Missing OpenAI credential reference for {channel_method}")
-                
-                # --- Get Channel Credentials Reference (e.g., Twilio for WhatsApp) --- 
-                # (Keep this part within the try block as it uses channel_method defined before)
-                channel_config = context_object.get('company_data_payload', {}).get('channel_config', {})
-                provider_config = channel_config.get(channel_method, {})
-                # Construct the dynamic key for the credential ID (e.g., 'whatsapp_credentials_id')
-                credential_key = f"{channel_method}_credentials_id"
-                channel_secret_ref = provider_config.get(credential_key)
-                if not channel_secret_ref:
-                    log.error(f"Missing channel '{credential_key}' in context_object for channel {channel_method}. Cannot fetch credentials.") # Use injected logger
-                    raise ValueError(f"Missing channel credential reference for {channel_method}")
-
-                # --- Fetch Secrets ---
-                log.info(f"Fetching OpenAI credentials using reference: {openai_secret_ref}") # Use injected logger
-                # openai_credentials = get_secret(openai_secret_ref)
-                openai_credentials = sm_service.get_secret(openai_secret_ref)
-
-                log.info(f"Fetching {channel_method} credentials using reference: {channel_secret_ref}") # Use injected logger
-                # channel_credentials = get_secret(channel_secret_ref)
-                channel_credentials = sm_service.get_secret(channel_secret_ref)
-
-                # --- Validate Fetched Secrets ---
-                if not openai_credentials:
-                    log.error(f"Failed to retrieve OpenAI credentials from Secrets Manager using reference: {openai_secret_ref}") # Use injected logger
-                    raise ValueError("Failed to retrieve OpenAI credentials")
-                if not channel_credentials:
-                    log.error(f"Failed to retrieve {channel_method} credentials from Secrets Manager using reference: {channel_secret_ref}") # Use injected logger
-                    raise ValueError(f"Failed to retrieve {channel_method} credentials")
-
-                log.info(f"Successfully fetched credentials for OpenAI and {channel_method} for Request ID: {req_id}") # Use injected logger
-
-            except Exception as cred_error:
-                # Catch errors during reference extraction or secret fetching
-                log.exception(f"Error fetching credentials for Request ID {req_id}: {cred_error}") # Use injected logger
-                # Re-raise to fail the SQS message processing
+                # Parse Twilio credentials string (assuming JSON)
+                try:
+                    twilio_creds = json.loads(twilio_creds_string)
+                    # --- ADD LOG AFTER SUCCESSFUL FETCH AND PARSE ---
+                    log.info(f"Successfully fetched Twilio credentials for conversation {conv_id}") # ADDED LOG
+                    # Validate required keys exist after parsing
+                    if 'twilio_account_sid' not in twilio_creds or 'twilio_auth_token' not in twilio_creds:
+                         raise ValueError("Parsed Twilio credentials missing required keys (account_sid/auth_token)")
+                except json.JSONDecodeError as json_err:
+                    log.error(f"Failed to parse Twilio credentials JSON for ref {twilio_creds_ref}: {json_err}")
+                    raise ValueError(f"Failed to parse Twilio credentials JSON: {json_err}") from json_err
+                    
+            except (ValueError, sm_service.SecretsManagerError) as cred_error:
+                log.error(f"Error fetching credentials for Request ID {req_id}: {cred_error}") # Use injected logger
+                # Raise the error to be caught by the main exception handler,
+                # which will update DynamoDB status to 'failed_secrets_fetch'
                 raise cred_error
 
             # 6. Core Message Processing Logic (OpenAI Interaction)
@@ -356,7 +338,7 @@ def lambda_handler(
             # --- Call OpenAI Service ---
             log.info(f"Calling OpenAI service for conversation {conv_id}...") # Use injected logger
             # openai_result = process_message_with_ai(conversation_details, openai_credentials)
-            openai_result = ai_service.process_message_with_ai(conversation_details, openai_credentials)
+            openai_result = ai_service.process_message_with_ai(conversation_details, openai_api_key)
 
 
             # --- Handle OpenAI Result ---
@@ -378,7 +360,7 @@ def lambda_handler(
             logger.info(f"Initiating Step 7: Send message via Twilio for conversation {conv_id}")
             
             # --- Extract required data for Twilio ---
-            # We already have 'channel_credentials' from Step 5
+            # We already have 'twilio_creds' from Step 5
             # We already have 'openai_result' containing 'content_variables' from Step 6
             
             # Get recipient telephone number from context object
@@ -403,10 +385,10 @@ def lambda_handler(
                  raise ValueError("Missing content_variables from OpenAI result")
 
             # --- Call Twilio Service ---
-            # Pass channel_credentials directly as it contains SID, token, and template SID
+            # Pass twilio_creds directly as it contains SID, token, and template SID
             # twilio_result = send_whatsapp_template_message( ... )
             twilio_result = msg_service.send_whatsapp_template_message(
-                twilio_config=channel_credentials,
+                twilio_config=twilio_creds,
                 recipient_tel=recipient_tel,
                 twilio_sender_number=twilio_sender_number, # Pass sender number separately
                 content_variables=content_variables_dict
