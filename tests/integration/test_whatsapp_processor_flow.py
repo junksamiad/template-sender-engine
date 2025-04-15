@@ -73,7 +73,7 @@ def sample_context_object() -> dict:
             "ai_config": { # Realistic AI config structure
                 "openai_config": { # Correct nesting based on LLD
                     "whatsapp": {
-                        "api_key_reference": "openai-api-key/whatsapp", 
+                        "api_key_reference": "ai-multi-comms/openai-api-key/whatsapp-dev", 
                         "assistant_id_template_sender": "asst_abc123xyz789" # Placeholder/dev Assistant ID
                     }
                  }
@@ -81,7 +81,7 @@ def sample_context_object() -> dict:
             "channel_config": {
                  "whatsapp": {
                     "company_whatsapp_number": "+14155238886", # Example number
-                    "whatsapp_credentials_id": "dev/twilio/whatsapp/creds" # Placeholder/dev secret name
+                    "whatsapp_credentials_id": "ai-multi-comms/whatsapp-credentials/cucumber-recruitment/clarify-cv/twilio-dev" 
                  }
             }
             # Other config fields omitted for brevity if not needed by processor directly
