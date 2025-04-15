@@ -6,7 +6,7 @@ import logging
 import os
 import json
 from botocore.exceptions import ClientError
-from typing import Dict, Any, Optional, TYPE_CHECKING # Import TYPE_CHECKING
+from typing import Dict, Any, Optional, TYPE_CHECKING, Union # Import Union
 
 # Import boto3 types for type hinting if available
 if TYPE_CHECKING:
@@ -30,16 +30,18 @@ def get_secret(
     secret_name_or_arn: str,
     # Add optional client argument for DI
     sm_client: Optional['SecretsManagerClient'] = None
-) -> Optional[Dict[str, Any]]:
+) -> Optional[Union[Dict[str, Any], str]]: # Updated return type hint
     """
-    Retrieves a secret from AWS Secrets Manager and parses it as JSON.
+    Retrieves a secret from AWS Secrets Manager.
+    Attempts to parse the secret as JSON. If parsing fails, returns the raw string.
 
     Args:
         secret_name_or_arn: The name or ARN of the secret to retrieve.
         sm_client: Optional boto3 SecretsManager client for testing/injection.
 
     Returns:
-        A dictionary representing the parsed JSON secret, or None if retrieval fails.
+        A dictionary representing the parsed JSON secret, the raw secret string
+        if JSON parsing fails, or None if retrieval or client initialization fails.
     """
     # Initialize client inside function if not provided
     if sm_client is None:
@@ -82,15 +84,15 @@ def get_secret(
             logger.error(f"Secret value not found in response for: {secret_name_or_arn}")
             return None
 
-        # Parse the secret string (assuming it's JSON)
+        # Attempt to parse the secret string as JSON
         try:
             parsed_secret = json.loads(secret_value)
+            logger.debug(f"Successfully parsed secret {secret_name_or_arn} as JSON.")
             return parsed_secret
         except json.JSONDecodeError:
-            logger.error(f"Failed to parse secret JSON for: {secret_name_or_arn}. Returning raw string.")
-            # Depending on use case, might return the raw string or None/raise error
-            # For now, returning None as we expect a dict
-            return None
+            # If it's not JSON, return the raw string value.
+            logger.warning(f"Value for secret {secret_name_or_arn} is not valid JSON. Returning raw string.")
+            return secret_value # Return the original string
 
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code')

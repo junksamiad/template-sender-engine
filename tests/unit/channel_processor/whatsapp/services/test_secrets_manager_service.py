@@ -71,8 +71,8 @@ def test_get_secret_not_json(secrets_manager_client, caplog):
 
     # Pass the mocked client
     result = secrets_manager_service.get_secret(DUMMY_SECRET_NAME, sm_client=secrets_manager_client)
-    assert result is None # Expect None as per function logic
-    assert f"Failed to parse secret JSON for: {DUMMY_SECRET_NAME}" in caplog.text
+    assert result == non_json_string # Expect raw string back
+    assert f"Value for secret {DUMMY_SECRET_NAME} is not valid JSON. Returning raw string." in caplog.text
 
 def test_get_secret_access_denied(secrets_manager_client, caplog):
     """Test handling AccessDeniedException (simulated via mock)."""

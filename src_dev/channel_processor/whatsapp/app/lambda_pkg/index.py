@@ -233,42 +233,65 @@ def lambda_handler(
 
             # 5. Fetch Credentials (Secrets Manager)
             #    - Uses injected sm_service module
-            log.info(f"Initiating Step 5: Fetch credentials for {conv_id}") # Use injected logger
+            log.info(f"Initiating Step 5: Fetch credentials for {conv_id}")
             try:
-                # --- Fetch OpenAI Key ---
+                # --- Fetch and Process OpenAI Key ---
                 openai_api_key_ref = context_object.get('company_data_payload', {}).get('ai_config', {}).get('openai_config', {}).get(channel_method, {}).get('api_key_reference')
                 if not openai_api_key_ref:
-                     raise ValueError("Missing OpenAI api_key_reference in context")
-                openai_api_key = sm_service.get_secret(openai_api_key_ref)
-                if not openai_api_key: # Double-check service didn't return None silently
-                     raise ValueError("Failed to retrieve OpenAI credentials")
-                log.info(f"Successfully fetched OpenAI credentials for conversation {conv_id}") # ADDED LOG
+                    raise ValueError("Missing OpenAI api_key_reference in context")
+                
+                openai_secret_value = sm_service.get_secret(openai_api_key_ref)
+                if openai_secret_value is None:
+                    raise ValueError("Failed to retrieve OpenAI credentials value")
 
-                # --- Fetch Twilio Credentials ---
+                # Extract the actual key string (since we know it's stored as JSON: {'ai_api_key': 'sk-...'}) 
+                openai_api_key_string = None
+                if isinstance(openai_secret_value, dict):
+                    # Look for the key used in openai_service.py
+                    openai_api_key_string = openai_secret_value.get('ai_api_key') 
+                    if not openai_api_key_string:
+                        raise ValueError("OpenAI secret dictionary missing expected key 'ai_api_key'")
+                elif isinstance(openai_secret_value, str):
+                    # Handle case where secret might be stored as plain string unexpectedly
+                    log.warning("OpenAI secret was retrieved as a string, not the expected dictionary format.")
+                    openai_api_key_string = openai_secret_value 
+                else:
+                    raise ValueError(f"Unexpected type ({type(openai_secret_value)}) for OpenAI credentials value")
+
+                # Log success *after* successfully processing/extracting the key
+                log.info(f"Successfully processed OpenAI credentials for conversation {conv_id}") 
+
+                # --- Fetch and Process Twilio Credentials ---
                 twilio_creds_ref = context_object.get('company_data_payload', {}).get('channel_config', {}).get(channel_method, {}).get('whatsapp_credentials_id')
                 if not twilio_creds_ref:
-                     raise ValueError("Missing Twilio whatsapp_credentials_id in context")
-                twilio_creds_string = sm_service.get_secret(twilio_creds_ref)
-                if not twilio_creds_string:
-                     raise ValueError("Failed to retrieve Twilio credentials string")
+                    raise ValueError("Missing Twilio whatsapp_credentials_id in context")
                 
-                # Parse Twilio credentials string (assuming JSON)
-                try:
-                    twilio_creds = json.loads(twilio_creds_string)
-                    # --- ADD LOG AFTER SUCCESSFUL FETCH AND PARSE ---
-                    log.info(f"Successfully fetched Twilio credentials for conversation {conv_id}") # ADDED LOG
-                    # Validate required keys exist after parsing
-                    if 'twilio_account_sid' not in twilio_creds or 'twilio_auth_token' not in twilio_creds:
-                         raise ValueError("Parsed Twilio credentials missing required keys (account_sid/auth_token)")
-                except json.JSONDecodeError as json_err:
-                    log.error(f"Failed to parse Twilio credentials JSON for ref {twilio_creds_ref}: {json_err}")
-                    raise ValueError(f"Failed to parse Twilio credentials JSON: {json_err}") from json_err
+                twilio_secret_value = sm_service.get_secret(twilio_creds_ref)
+                if twilio_secret_value is None:
+                    raise ValueError("Failed to retrieve Twilio credentials value")
+                
+                # Ensure we have a dictionary for Twilio credentials
+                twilio_creds = {}
+                if isinstance(twilio_secret_value, str):
+                    try:
+                        twilio_creds = json.loads(twilio_secret_value)
+                        log.info(f"Successfully fetched and parsed Twilio credentials string for conversation {conv_id}")
+                    except json.JSONDecodeError as json_err:
+                        log.error(f"Failed to parse Twilio credentials JSON string for ref {twilio_creds_ref}: {json_err}")
+                        raise ValueError(f"Failed to parse Twilio credentials JSON: {json_err}") from json_err
+                elif isinstance(twilio_secret_value, dict):
+                    twilio_creds = twilio_secret_value
+                    log.info(f"Successfully fetched pre-parsed Twilio credentials dictionary for conversation {conv_id}")
+                else:
+                    raise ValueError(f"Unexpected type ({type(twilio_secret_value)}) for Twilio credentials value")
+                
+                # Validate required keys exist in the final dictionary
+                if 'twilio_account_sid' not in twilio_creds or 'twilio_auth_token' not in twilio_creds:
+                    raise ValueError("Processed Twilio credentials missing required keys (account_sid/auth_token)")
                     
             except (ValueError, sm_service.SecretsManagerError) as cred_error:
-                log.error(f"Error fetching credentials for Request ID {req_id}: {cred_error}") # Use injected logger
-                # Raise the error to be caught by the main exception handler,
-                # which will update DynamoDB status to 'failed_secrets_fetch'
-                raise cred_error
+                log.error(f"Error fetching/processing credentials for Request ID {req_id}: {cred_error}")
+                raise cred_error # Re-raise to be caught by main handler
 
             # 6. Core Message Processing Logic (OpenAI Interaction)
             #    - Uses injected ai_service module
@@ -336,9 +359,9 @@ def lambda_handler(
             log.debug(f"Conversation details prepared for OpenAI: { {k: v for k, v in conversation_details.items() if k != 'project_data'} }...") # Use injected logger # Avoid logging large project_data
 
             # --- Call OpenAI Service ---
-            log.info(f"Calling OpenAI service for conversation {conv_id}...") # Use injected logger
-            # openai_result = process_message_with_ai(conversation_details, openai_credentials)
-            openai_result = ai_service.process_message_with_ai(conversation_details, openai_api_key)
+            log.info(f"Calling OpenAI service for conversation {conv_id}...")
+            # Pass the secret value (dict or potentially string) directly to the AI service
+            openai_result = ai_service.process_message_with_ai(conversation_details, openai_secret_value)
 
 
             # --- Handle OpenAI Result ---
