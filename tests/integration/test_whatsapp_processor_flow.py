@@ -38,24 +38,31 @@ def logs_client():
 
 @pytest.fixture(scope="function")
 def sample_context_object() -> dict:
-    """Generates a sample valid Context Object structure as a dictionary."""
+    """Generates a sample valid Context Object structure using real dev data."""
     test_request_id = str(uuid.uuid4())
     conversation_id = str(uuid.uuid4()) # Unique ID for the conversation
-    company_id = "ci-aaa-001" # Matching data used in previous tests
-    project_id = "pi-aaa-001"
+    company_id = "ci-aaa-001" # Real Test Company ID
+    project_id = "pi-aaa-001" # Real Test Project ID
 
     context = {
         "frontend_payload": {
             "company_data": {"company_id": company_id, "project_id": project_id},
             "recipient_data": {
-                "recipient_first_name": "Integration",
-                "recipient_last_name": "Test",
-                "recipient_tel": "+447123456789", # Use a distinct test number if needed
-                "recipient_email": "integ-test@example.com",
+                "recipient_first_name": "Lee",         # Use real test name
+                "recipient_last_name": "Hayton",      # Use real test name
+                "recipient_tel": "+447835065013", # Use real, valid test number
+                "recipient_email": "junksamiad@gmail.com", # Use real test email
                 "comms_consent": True
             },
-            "project_data": { # Minimal project data needed by processor initially
-                 "jobID": "integ-test-job-123"
+            "project_data": { # Use realistic project data from curl test
+                 "analysisEngineID": "analysis_1234567890_abc123def",
+                 "jobID": "9999",
+                 "jobRole": "Healthcare Assistant",
+                 "clarificationPoints": [
+                     {"point": "Point 1", "pointConfirmed": "false"},
+                     {"point": "Point 2", "pointConfirmed": "false"}
+                     # Simplified points for integration test brevity if needed
+                 ]
             },
             "request_data": {
                 "request_id": test_request_id,
@@ -64,34 +71,38 @@ def sample_context_object() -> dict:
             }
         },
         "company_data_payload": {
-            # Include fields needed by the processor, especially secret refs & AI config
+            # Include fields needed by the processor, using real dev values
             "company_id": company_id,
             "project_id": project_id,
-            "company_name": "Test Company A",
-            "project_name": "Test Project A1",
-            "company_rep": "Test Rep",
-            "ai_config": { # Realistic AI config structure
-                "openai_config": { # Correct nesting based on LLD
+            "company_name": "Cucumber Recruitment", # From DB record
+            "project_name": "Clarify CV",         # From DB record
+            "company_rep": {"company_rep_1": "Carol"}, # Simplified from DB record
+            "ai_config": {
+                "openai_config": {
                     "whatsapp": {
-                        "api_key_reference": "ai-multi-comms/openai-api-key/whatsapp-dev", 
-                        "assistant_id_template_sender": "asst_abc123xyz789" # Placeholder/dev Assistant ID
+                        # Use the correct actual dev secret name
+                        "api_key_reference": "ai-multi-comms/openai-api-key/whatsapp-dev",
+                        # Use the correct actual dev Assistant ID
+                        "assistant_id_template_sender": "asst_B4jqDfEI6P0bBSOVZqK1UBMH"
                     }
                  }
             },
             "channel_config": {
                  "whatsapp": {
-                    "company_whatsapp_number": "+14155238886", # Example number
-                    "whatsapp_credentials_id": "ai-multi-comms/whatsapp-credentials/cucumber-recruitment/clarify-cv/twilio-dev" 
+                    # Use the correct actual dev sender number
+                    "company_whatsapp_number": "+447588713814",
+                    # Use the correct actual dev secret name
+                    "whatsapp_credentials_id": "ai-multi-comms/whatsapp-credentials/cucumber-recruitment/clarify-cv/twilio-dev"
                  }
             }
-            # Other config fields omitted for brevity if not needed by processor directly
+            # Assume other fields like allowed_channels etc are correctly configured in dev DB
         },
         "conversation_data": {
             "conversation_id": conversation_id,
             "conversation_start_timestamp": datetime.now(timezone.utc).isoformat()
         },
         "metadata": {
-            "router_version": "test-router-v1",
+            "router_version": "test-router-v1", # Keep generic version for test context
             "context_creation_timestamp": datetime.now(timezone.utc).isoformat()
         }
     }
@@ -144,10 +155,8 @@ def test_sqs_trigger_creates_dynamodb_record(sqs_client, dynamodb_client, sample
         assert message_id is not None
         print(f"Message sent successfully. SQS Message ID: {message_id}")
 
-        # 2. Wait for Lambda processing
-        # This duration needs to be long enough for SQS trigger, Lambda execution (including potential cold start),
-        # and DynamoDB write propagation. Adjust as needed.
-        wait_seconds = 10
+        # 2. Wait for Lambda processing - Increase slightly to allow for full success path
+        wait_seconds = 20 # Might need adjustment based on OpenAI/Twilio latency
         print(f"Waiting {wait_seconds} seconds for Lambda processing...")
         time.sleep(wait_seconds)
 
@@ -163,17 +172,17 @@ def test_sqs_trigger_creates_dynamodb_record(sqs_client, dynamodb_client, sample
         item = get_response['Item']
         print("DynamoDB item found!")
 
-        # 4. Validate Item Content (Basic Checks)
+        # 4. Validate Item Content (Expecting Success)
         assert item.get("conversation_id", {}).get("S") == conversation_id_value
         assert item.get("primary_channel", {}).get("S") == primary_channel_value
-        # Check initial status (assuming it's set during creation)
-        initial_status = item.get("conversation_status", {}).get("S")
-        print(f"Found item status: {initial_status}")
-        # Allow for initial 'processing' or potentially 'failed' if external calls are not mocked and fail fast
-        # Also allow for the new failure status if secrets don't exist
-        assert initial_status in ["processing", "failed_to_process_ai", "failed_to_send_message", "failed_secrets_fetch"], f"Unexpected initial status: {initial_status}"
+        # Check for the final success status
+        final_status = item.get("conversation_status", {}).get("S")
+        print(f"Found item status: {final_status}")
+        # Assert final success status
+        assert final_status == "initial_message_sent", f"Expected status 'initial_message_sent', but got: {final_status}"
         assert "created_at" in item # Check timestamp exists
-        print("Basic item validation successful.")
+        assert "thread_id" in item and item["thread_id"].get("S"), "Expected thread_id to exist and be non-empty" # Check thread_id
+        print("Item validation successful (status and thread_id indicate success).")
 
     finally:
         # --- Cleanup: Delete the DynamoDB item --- #
@@ -224,17 +233,20 @@ def test_sqs_trigger_idempotency(sqs_client, dynamodb_client, logs_client, sampl
         assert message_id1 is not None
         print(f"First message sent. SQS Message ID: {message_id1}")
 
-        # Wait for the first message to likely be processed
-        initial_wait = 15 # Give it a bit longer to ensure the first one creates the record
+        # Wait for the first message to likely be processed and reach success state
+        initial_wait = 25 # Slightly longer to ensure success state
         print(f"Waiting {initial_wait} seconds for first message processing...")
         time.sleep(initial_wait)
 
-        # Check DDB item exists after first send (quick sanity check)
+        # Check DDB item exists and has success status after first send
         get_response_after_first = dynamodb_client.get_item(
             TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME, Key=key_to_use, ConsistentRead=True
         )
         assert 'Item' in get_response_after_first, "Item NOT created after first message send!"
-        print("Item confirmed created after first send.")
+        item_after_first = get_response_after_first['Item']
+        status_after_first = item_after_first.get("conversation_status", {}).get("S")
+        assert status_after_first == "initial_message_sent", f"Item status after first send was '{status_after_first}', expected 'initial_message_sent'"
+        print("Item confirmed created with success status after first send.")
 
         # --- Log Stream Check Setup ---
         # Get current time to filter logs later
@@ -247,12 +259,12 @@ def test_sqs_trigger_idempotency(sqs_client, dynamodb_client, logs_client, sampl
         assert message_id2 is not None
         print(f"Second message sent. SQS Message ID: {message_id2}")
 
-        # 3. Wait for the second message to be processed
-        second_wait = 15 # Allow time for the second attempt
+        # 3. Wait for the second message to be processed (or ignored)
+        second_wait = 15 # Allow time for the second attempt to be handled
         print(f"Waiting {second_wait} seconds for second message processing attempt...")
         time.sleep(second_wait)
 
-        # 4. Verify DynamoDB Record (Still exists, status potentially updated by FIRST run only)
+        # 4. Verify DynamoDB Record (Still exists, status should remain 'initial_message_sent')
         print("Verifying DynamoDB item state after second send...")
         get_response_after_second = dynamodb_client.get_item(
             TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME, Key=key_to_use, ConsistentRead=True
@@ -261,57 +273,11 @@ def test_sqs_trigger_idempotency(sqs_client, dynamodb_client, logs_client, sampl
         item_after_second = get_response_after_second['Item']
         status_after_second = item_after_second.get("conversation_status", {}).get("S")
         print(f"Found item status after second send: {status_after_second}")
-        # Status should reflect the outcome of the FIRST processing run
-        # Also allow for the new failure status if secrets don't exist
-        assert status_after_second in ["processing", "failed_to_process_ai", "failed_to_send_message", "failed_secrets_fetch"], f"Unexpected status after second send: {status_after_second}"
+        # Status should NOT have changed from the first successful run
+        assert status_after_second == "initial_message_sent", f"Unexpected status after second send: {status_after_second}. Should have remained 'initial_message_sent'."
 
-        # # 5. Verify CloudWatch Logs for ConditionalCheckFailed or similar message
-        # print(f"Checking CloudWatch logs ({PROCESSOR_LAMBDA_LOG_GROUP}) for idempotency evidence...")
-        # log_event_found = False
-        # # Give logs some time to propagate
-        # log_wait_attempts = 5
-        # log_wait_interval = 5 # seconds
-        # for attempt in range(log_wait_attempts):
-        #     print(f"Log poll attempt {attempt + 1}/{log_wait_attempts}...")
-        #     try:
-        #         # Look for events since we sent the second message
-        #         log_events_response = logs_client.filter_log_events(
-        #             logGroupName=PROCESSOR_LAMBDA_LOG_GROUP,
-        #             startTime=start_time_ms,
-        #             # Filter for messages indicating the record already existed or conditional check failed
-        #             # Adjust filter pattern based on actual Lambda logging
-        #             filterPattern=f'"DynamoDB record check/creation" "conversation ID {conversation_id_value}" OR "ConditionalCheckFailedException" "conversation ID {conversation_id_value}"'
-        #             # Example alternative: filterPattern=f'"Record already exists" "conversation ID {conversation_id_value}"'
-        #         )
-        #         events = log_events_response.get('events', [])
-        #         print(f"Found {len(events)} potentially relevant log events.")
-        #         for event in events:
-        #             log_message = event.get('message', '')
-        #             # Check if the log indicates the record already existed
-        #             # This pattern depends heavily on your Lambda's logging
-        #             if (f"conversation ID {conversation_id_value}" in log_message and
-        #                 ("Record already exists" in log_message or "ConditionalCheckFailedException" in log_message or "DynamoDB record check/creation successful" in log_message)): # Check for success message too
-        #                 print(f"Found relevant log event: {log_message}")
-        #                 # Specifically look for the indication that the create step recognized the existing record
-        #                 if "Record already exists" in log_message or "ConditionalCheckFailedException" in log_message:
-        #                      log_event_found = True
-        #                      print("Found specific log evidence of conditional check failure/existing record handling.")
-        #                      break # Found what we need
-        #         if log_event_found:
-        #             break
-        #     except logs_client.exceptions.ResourceNotFoundException:
-        #         print(f"Warning: Log group {PROCESSOR_LAMBDA_LOG_GROUP} not found.")
-        #         break # Cannot check logs
-        #     except Exception as log_e:
-        #         print(f"Warning: Error querying CloudWatch Logs: {log_e}")
-        #     
-        #     if not log_event_found:
-        #          print(f"Relevant log event not found yet, waiting {log_wait_interval}s...")
-        #          time.sleep(log_wait_interval)
-        #
-        # assert log_event_found, f"Did not find log evidence of idempotency check for conversation {conversation_id_value}"
-        # print("Idempotency check successful (log evidence found).")
-        print("Idempotency check passed (verified item state stable after second message).") # Updated success message
+        # Log check removed as DynamoDB state is sufficient for idempotency check here
+        print("Idempotency check passed (verified item state stable after second message).")
 
     finally:
         # Cleanup the record
@@ -324,21 +290,19 @@ def test_sqs_trigger_idempotency(sqs_client, dynamodb_client, logs_client, sampl
 
 def test_processor_attempts_secret_fetch(sqs_client, dynamodb_client, logs_client, sample_context_object):
     """
-    Verify that the processor lambda attempts to fetch the correct secrets 
-    based on the context object by checking CloudWatch Logs.
-    Note: This test doesn't verify successful fetching, just the attempt.
+    Verify that the processor lambda successfully processes a message
+    using valid secrets, indicated by the final DDB status.
+    (Original intent changed - now verifies success path using valid secrets)
     """
     context_object = sample_context_object
     conversation_id_value = context_object["conversation_data"]["conversation_id"]
     primary_channel_value = context_object["frontend_payload"]["recipient_data"]["recipient_tel"]
-    openai_secret_ref = context_object["company_data_payload"]["ai_config"]["openai_config"]["whatsapp"]["api_key_reference"]
-    channel_secret_ref = context_object["company_data_payload"]["channel_config"]["whatsapp"]["whatsapp_credentials_id"]
     key_to_use = {
         "primary_channel": {"S": primary_channel_value},
         "conversation_id": {"S": conversation_id_value}
     }
 
-    print(f"\n--- Test: Secret Fetch Attempt --- ")
+    print(f"\n--- Test: Successful Processing with Valid Secrets --- ")
     print(f"Conversation ID: {conversation_id_value}")
 
     # Ensure item does NOT exist before test
@@ -360,12 +324,12 @@ def test_processor_attempts_secret_fetch(sqs_client, dynamodb_client, logs_clien
         assert message_id is not None
         print(f"Message sent successfully. SQS Message ID: {message_id}")
     
-        # 2. Wait for Lambda processing attempt
-        wait_seconds = 40 # Keep increased wait time for safety
-        print(f"Waiting {wait_seconds} seconds for Lambda processing attempt...")
+        # 2. Wait for Lambda processing attempt - Use longer wait for success path
+        wait_seconds = 40 # Allow ample time for OpenAI + Twilio
+        print(f"Waiting {wait_seconds} seconds for Lambda processing...")
         time.sleep(wait_seconds)
     
-        # 3. Check DynamoDB status to ensure it's not 'failed_secrets_fetch'
+        # 3. Check DynamoDB status for success
         print(f"Checking DynamoDB table {DYNAMODB_CONVERSATIONS_TABLE_NAME} for item status...")
         get_response = dynamodb_client.get_item(
             TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
@@ -381,24 +345,13 @@ def test_processor_attempts_secret_fetch(sqs_client, dynamodb_client, logs_clien
         
         print(f"Found DynamoDB status: {current_status}")
         
-        # Assert that the status is NOT the specific failure code for secret fetching
-        failure_code_to_avoid = "failed_secrets_fetch"
-        assert current_status != failure_code_to_avoid, \
-               f"Expected status NOT to be '{failure_code_to_avoid}', but it was. Indicates a secret fetch failure."
-        
-        print(f"DynamoDB status is not '{failure_code_to_avoid}', indicating secret fetch attempt did not cause immediate failure.")
+        # Assert that the status IS the final success code
+        expected_success_status = "initial_message_sent"
+        assert current_status == expected_success_status, \
+               f"Expected status to be '{expected_success_status}', but it was '{current_status}'."
+        assert "thread_id" in item and item["thread_id"].get("S"), "Expected thread_id to exist and be non-empty for successful run"
 
-        # --- Remove the old CloudWatch log checking logic --- 
-        # print(f"Checking CloudWatch logs ({PROCESSOR_LAMBDA_LOG_GROUP}) for secret fetch attempts...")
-        # openai_fetch_log_found = False
-        # channel_fetch_log_found = False
-        # log_wait_attempts = 5
-        # log_wait_interval = 5 # seconds
-        # ... [REST OF LOG POLLING LOOP REMOVED] ...
-        # assert openai_fetch_log_found, ...
-        # assert channel_fetch_log_found, ...
-
-        print("Secret fetch attempt verification successful (status check passed).")
+        print(f"DynamoDB status is '{expected_success_status}' with a thread_id, indicating successful processing.")
 
     finally:
         # Cleanup: Attempt to delete the item regardless of test outcome
