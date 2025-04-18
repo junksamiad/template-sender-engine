@@ -196,13 +196,33 @@ def create_initial_conversation_record(context_object: Dict[str, Any], ddb_table
             'function_call_type': None,
             'thread_id': None,
             'hand_off_to_human': False,
-            'hand_off_to_human_reason': None
+            'hand_off_to_human_reason': None,
+
+            # --- Denormalized Fields for GSIs --- (Populated conditionally)
+            # Note: These duplicate data for efficient querying via GSIs
+            # Removed defaults to None to create sparse indexes
         }
 
-        # Remove keys with None values if DynamoDB SDK version requires it
-        # (Newer Boto3 versions handle None gracefully by omitting the attribute)
-        # item_cleaned = {k: v for k, v in item.items() if v is not None}
-        # For simplicity, assuming Boto3 handles None correctly.
+        # Conditionally add GSI attributes only if they have a value
+        recipient_tel_val = recipient_tel or None
+        if recipient_tel_val:
+            item['gsi_recipient_tel'] = recipient_tel_val
+
+        recipient_email_val = recipient_email or None
+        if recipient_email_val:
+            item['gsi_recipient_email'] = recipient_email_val
+
+        company_whatsapp_val = channel_config.get('company_whatsapp_number')
+        if company_whatsapp_val:
+            item['gsi_company_whatsapp_number'] = company_whatsapp_val
+
+        company_sms_val = channel_config.get('company_sms_number')
+        if company_sms_val:
+            item['gsi_company_sms_number'] = company_sms_val
+
+        company_email_val = channel_config.get('company_email')
+        if company_email_val:
+            item['gsi_company_email'] = company_email_val
 
     except Exception as e:
         logger.exception(f"Error constructing item dictionary: {e}")
