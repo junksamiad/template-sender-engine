@@ -105,12 +105,12 @@ Resources:
           AttributeType: S
         - AttributeName: gsi_company_sms_number # <-- Uncomment this
           AttributeType: S
-        # - AttributeName: gsi_company_email         # Use gsi_ prefix (Commented for prod GSI deployment 1)
-        #   AttributeType: S
-        - AttributeName: gsi_recipient_tel         # Use gsi_ prefix
+        - AttributeName: gsi_company_email # <-- Uncomment this
           AttributeType: S
-        # - AttributeName: gsi_recipient_email       # Use gsi_ prefix (Commented for prod GSI deployment 1)
-        #   AttributeType: S
+        - AttributeName: gsi_recipient_tel # Used as SK in new GSIs
+          AttributeType: S
+        - AttributeName: gsi_recipient_email # <-- Uncomment this
+          AttributeType: S
       KeySchema:
         - AttributeName: primary_channel
           KeyType: HASH # Partition key
@@ -143,15 +143,14 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-        # --- GSI 2: Commented out for prod GSI deployment 1 ---
-        # - IndexName: company-email-recipient-email-index
-        #   KeySchema:
-        #     - AttributeName: gsi_company_email         # Use gsi_ prefix
-        #       KeyType: HASH
-        #     - AttributeName: gsi_recipient_email       # Use gsi_ prefix
-        #       KeyType: RANGE
-        #   Projection:
-        #     ProjectionType: ALL
+        - IndexName: company-email-recipient-email-index # <-- Uncomment this block
+          KeySchema:
+            - AttributeName: gsi_company_email
+              KeyType: HASH
+            - AttributeName: gsi_recipient_email
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       LocalSecondaryIndexes:
         - IndexName: created-at-index
           KeySchema:
