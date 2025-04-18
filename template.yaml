@@ -103,9 +103,9 @@ Resources:
         # --- New GSI Key Attributes ---
         - AttributeName: gsi_company_whatsapp_number # Use gsi_ prefix
           AttributeType: S
-        # - AttributeName: gsi_company_sms_number    # Use gsi_ prefix (Commented for deployment 1)
-        #   AttributeType: S
-        # - AttributeName: gsi_company_email         # Use gsi_ prefix (Commented for deployment 1)
+        - AttributeName: gsi_company_sms_number    # Use gsi_ prefix (Uncommented for deployment 2)
+          AttributeType: S
+        # - AttributeName: gsi_company_email         # Use gsi_ prefix (Commented for deployment 2)
         #   AttributeType: S
         - AttributeName: gsi_recipient_tel         # Use gsi_ prefix
           AttributeType: S
@@ -135,16 +135,16 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-        # --- GSI 2: Commented out for deployment 1 ---
-        # - IndexName: company-sms-number-recipient-tel-index
-        #   KeySchema:
-        #     - AttributeName: gsi_company_sms_number    # Use gsi_ prefix
-        #       KeyType: HASH
-        #     - AttributeName: gsi_recipient_tel         # Use gsi_ prefix
-        #       KeyType: RANGE
-        #   Projection:
-        #     ProjectionType: ALL
-        # --- GSI 3: Commented out for deployment 1 ---
+        # --- GSI 2: Uncommented for deployment 2 ---
+        - IndexName: company-sms-number-recipient-tel-index
+          KeySchema:
+            - AttributeName: gsi_company_sms_number    # Use gsi_ prefix
+              KeyType: HASH
+            - AttributeName: gsi_recipient_tel         # Use gsi_ prefix
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # --- GSI 3: Commented out for deployment 2 ---
         # - IndexName: company-email-recipient-email-index
         #   KeySchema:
         #     - AttributeName: gsi_company_email         # Use gsi_ prefix
