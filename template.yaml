@@ -100,6 +100,17 @@ Resources:
           AttributeType: S
         - AttributeName: channel_method # LSI SK 4
           AttributeType: S
+        # --- New GSI Key Attributes ---
+        - AttributeName: gsi_company_whatsapp_number
+          AttributeType: S
+        - AttributeName: gsi_company_sms_number
+          AttributeType: S
+        - AttributeName: gsi_company_email
+          AttributeType: S
+        - AttributeName: gsi_recipient_tel
+          AttributeType: S
+        - AttributeName: gsi_recipient_email
+          AttributeType: S
       KeySchema:
         - AttributeName: primary_channel
           KeyType: HASH # Partition key
@@ -115,6 +126,31 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL # Project all attributes
+        # --- New GSIs ---
+        - IndexName: company-whatsapp-number-recipient-tel-index
+          KeySchema:
+            - AttributeName: gsi_company_whatsapp_number
+              KeyType: HASH
+            - AttributeName: gsi_recipient_tel
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: company-sms-number-recipient-tel-index
+          KeySchema:
+            - AttributeName: gsi_company_sms_number
+              KeyType: HASH
+            - AttributeName: gsi_recipient_tel
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: company-email-recipient-email-index
+          KeySchema:
+            - AttributeName: gsi_company_email
+              KeyType: HASH
+            - AttributeName: gsi_recipient_email
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       LocalSecondaryIndexes:
         - IndexName: created-at-index
           KeySchema:

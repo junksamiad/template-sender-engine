@@ -196,7 +196,16 @@ def create_initial_conversation_record(context_object: Dict[str, Any], ddb_table
             'function_call_type': None,
             'thread_id': None,
             'hand_off_to_human': False,
-            'hand_off_to_human_reason': None
+            'hand_off_to_human_reason': None,
+
+            # --- Denormalized Fields for GSIs ---
+            # Note: These duplicate data for efficient querying via GSIs
+            'gsi_recipient_tel': recipient_tel or None,
+            'gsi_recipient_email': recipient_email or None,
+            # Extract company identifiers from the nested channel_config
+            'gsi_company_whatsapp_number': channel_config.get('company_whatsapp_number') or None,
+            'gsi_company_sms_number': channel_config.get('company_sms_number') or None,
+            'gsi_company_email': channel_config.get('company_email') or None
         }
 
         # Remove keys with None values if DynamoDB SDK version requires it
