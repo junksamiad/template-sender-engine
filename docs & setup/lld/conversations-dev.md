@@ -76,6 +76,11 @@ This structure allows:
 | `hand_off_to_human` | Boolean (BOOL) | Yes | Flag indicating request for human intervention. | `false`, `true` | Initialized `false`. |
 | `hand_off_to_human_reason` | String | No | Reason provided by AI for hand-off request. | `"User requested agent"` | Initialized null. |
 | `ttl` | Number (N) | No | DynamoDB Time-to-Live attribute (epoch timestamp). | `1678886400` | Optional for auto-deletion. |
+| `gsi_recipient_tel` | String | No | Denormalized `recipient_tel` for GSI support. | `"+447123456789"` | Top-level copy of `recipient_tel`. Only present if `recipient_tel` has a value (supports sparse indexing). |
+| `gsi_recipient_email` | String | No | Denormalized `recipient_email` for GSI support. | `"j.doe@example.com"` | Top-level copy of `recipient_email`. Only present if `recipient_email` has a value (supports sparse indexing). |
+| `gsi_company_whatsapp_number` | String | No | Denormalized `company_whatsapp_number` from `channel_config` for GSI support. | `"+447588713814"` | Top-level copy. Only present if the channel is WhatsApp and value exists in `channel_config` (supports sparse indexing). |
+| `gsi_company_sms_number` | String | No | Denormalized `company_sms_number` from `channel_config` for GSI support. | `"+447700900444"` | Top-level copy. Only present if the channel is SMS and value exists in `channel_config` (supports sparse indexing). |
+| `gsi_company_email` | String | No | Denormalized `company_email` from `channel_config` for GSI support. | `"replies@company.com"` | Top-level copy. Only present if the channel is Email and value exists in `channel_config` (supports sparse indexing). |
 
 ## Complex Attribute Structures
 
@@ -115,16 +120,51 @@ See schema definition in `company-data-db-dev.md`. Copied from the Context Objec
 ### `project_data` (Map)
 Flexible map to store any project-specific key-value pairs passed in the `frontend_payload`.
 
+## Denormalization for Global Secondary Indexes
+
+**Note on `gsi_` Prefixed Attributes:** DynamoDB requires that attributes used as keys (Partition Key or Sort Key) in Global Secondary Indexes (GSIs) must be top-level attributes of scalar type (String, Number, or Binary). They cannot be nested within maps (like `channel_config`) or lists.
+
+To enable efficient querying based on combinations like the company's sending identifier and the recipient's identifier, we introduce denormalized, top-level attributes prefixed with `gsi_` (e.g., `gsi_company_whatsapp_number`, `gsi_recipient_tel`).
+
+- These attributes are populated by the application code (specifically, the channel processor Lambdas when writing the record).
+- They contain copies of data found elsewhere in the record (e.g., `recipient_tel` or nested within `channel_config`).
+- The code only adds these `gsi_` attributes to an item if the source data actually exists. This creates **sparse indexes**, meaning an item is only included in a specific GSI if it contains the required key attributes for that index. This prevents validation errors when writing items for one channel type (e.g., WhatsApp) that don't naturally have the key data needed for another channel's GSI (e.g., `gsi_company_sms_number`).
+
 ## Global Secondary Index (GSI)
 
-- **Index Name**: `company-id-project-id-index`
-- **Key Schema**:
-    - **Partition Key (PK)**: `company_id` (String)
-    - **Sort Key (SK)**: `project_id` (String)
-- **Projection Type**: `ALL` (All attributes are projected from the table to the index).
-- **Provisioned Throughput**: Uses the table's billing mode (`PAY_PER_REQUEST`).
+The following GSIs are defined to provide alternative query patterns beyond the primary key.
 
-**Purpose**: Allows querying conversations filtered by `company_id` and `project_id`, useful for company/project-level reporting or dashboards.
+1.  **`company-id-project-id-index`**
+    *   **Key Schema**:
+        *   Partition Key (PK): `company_id` (String)
+        *   Sort Key (SK): `project_id` (String)
+    *   **Projection Type**: `ALL` (All attributes are projected from the table to the index).
+    *   **Provisioned Throughput**: Uses the table's billing mode (`PAY_PER_REQUEST`).
+    *   **Purpose**: Allows querying conversations filtered by `company_id` and `project_id`, useful for company/project-level reporting or dashboards.
+
+2.  **`company-whatsapp-number-recipient-tel-index`**
+    *   **Key Schema**:
+        *   Partition Key (PK): `gsi_company_whatsapp_number` (String)
+        *   Sort Key (SK): `gsi_recipient_tel` (String)
+    *   **Projection Type**: `ALL`
+    *   **Provisioned Throughput**: Uses the table's billing mode (`PAY_PER_REQUEST`).
+    *   **Purpose**: Allows efficiently finding a conversation based on the company's WhatsApp sending number and the recipient's phone number. Primarily used for linking incoming WhatsApp replies.
+
+3.  **`company-sms-number-recipient-tel-index`**
+    *   **Key Schema**:
+        *   Partition Key (PK): `gsi_company_sms_number` (String)
+        *   Sort Key (SK): `gsi_recipient_tel` (String)
+    *   **Projection Type**: `ALL`
+    *   **Provisioned Throughput**: Uses the table's billing mode (`PAY_PER_REQUEST`).
+    *   **Purpose**: Allows efficiently finding a conversation based on the company's SMS sending number and the recipient's phone number. Primarily used for linking incoming SMS replies.
+
+4.  **`company-email-recipient-email-index`**
+    *   **Key Schema**:
+        *   Partition Key (PK): `gsi_company_email` (String)
+        *   Sort Key (SK): `gsi_recipient_email` (String)
+    *   **Projection Type**: `ALL`
+    *   **Provisioned Throughput**: Uses the table's billing mode (`PAY_PER_REQUEST`).
+    *   **Purpose**: Allows efficiently finding a conversation based on the company's email sending address and the recipient's email address. Primarily used for linking incoming email replies.
 
 ## Local Secondary Indexes (LSIs)
 
