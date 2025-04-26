@@ -15,10 +15,16 @@ from boto3.dynamodb.conditions import Key, Attr # Import Attr for FilterExpressi
 API_ENDPOINT_BASE_URL = os.environ.get("API_ENDPOINT")
 if not API_ENDPOINT_BASE_URL:
     # Fallback or error if not set
-    print("ERROR: API_ENDPOINT environment variable not set. Exiting.")
-    exit(1)
+    print("ERROR: API_ENDPOINT environment variable not set. Using hardcoded value.")
+    # Use a hardcoded fallback url that doesn't duplicate the path
+    API_ENDPOINT_URL = "https://xlijn1k4xh.execute-api.eu-north-1.amazonaws.com/dev/initiate-conversation"
+else:
+    # Ensure we don't end up with a duplicate path segment
+    if API_ENDPOINT_BASE_URL.endswith('/initiate-conversation'):
+        API_ENDPOINT_URL = API_ENDPOINT_BASE_URL
+    else:
+        API_ENDPOINT_URL = f"{API_ENDPOINT_BASE_URL.rstrip('/')}/initiate-conversation"
 
-API_ENDPOINT_URL = f"{API_ENDPOINT_BASE_URL.rstrip('/')}/initiate-conversation"
 API_KEY = os.environ.get("API_KEY", "YbgTABlGlg6s2YZ9gcyuB4AUhi5jJcC05yeKcCWR") # Get API key from env or use default (less secure)
 
 DYNAMODB_COMPANY_TABLE_NAME = "ai-multi-comms-company-data-dev"
@@ -180,24 +186,53 @@ def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
 
     finally:
         # --- Cleanup: Delete the specific conversation record --- #
-        if conversation_record:
-            convo_id_to_delete = conversation_record.get('conversation_id', {}).get('S')
-            pk_to_delete = conversation_record.get('primary_channel', {}).get('S')
-            
-            if convo_id_to_delete and pk_to_delete:
-                print(f"\n--- Test Teardown: Deleting conversation {pk_to_delete} / {convo_id_to_delete} (request_id: {request_id}) ---")
-                try:
+        try:
+            if 'conversation_record' in locals() and conversation_record:
+                # Check record format and extract keys
+                convo_id = conversation_record.get('conversation_id', {}).get('S')
+                pk = conversation_record.get('primary_channel', {}).get('S')
+                
+                if convo_id and pk:
+                    print(f"Cleaning up conversation record: {pk}/{convo_id}")
                     dynamodb_client.delete_item(
                         TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
-                        Key={"primary_channel": {"S": pk_to_delete}, "conversation_id": {"S": convo_id_to_delete}}
+                        Key={"primary_channel": {"S": pk}, "conversation_id": {"S": convo_id}}
                     )
-                    print("Conversation record deleted.")
-                except Exception as e:
-                    print(f"Warning: Error during conversation record cleanup: {e}")
+                    print("Record deleted successfully")
+                else:
+                    print("Conversation record missing required key information for deletion")
             else:
-                 print(f"\n--- Test Teardown: Skipping delete, missing keys in found record for request_id: {request_id} ---")
-        else:
-            print(f"\n--- Test Teardown: Skipping delete, conversation record not found for request_id: {request_id} ---")
+                # Try to find it directly with a query using the primary_channel and request_id
+                print(f"Checking if there's a record to clean up for request_id {request_id}")
+                query_response = dynamodb_client.query(
+                    TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
+                    KeyConditionExpression="primary_channel = :pk",
+                    FilterExpression="request_id = :rid",
+                    ExpressionAttributeValues={
+                        ":pk": {"S": primary_channel},
+                        ":rid": {"S": request_id}
+                    }
+                )
+                
+                items = query_response.get('Items', [])
+                if items:
+                    item = items[0]
+                    convo_id = item.get('conversation_id', {}).get('S')
+                    pk = item.get('primary_channel', {}).get('S')
+                    
+                    if convo_id and pk:
+                        print(f"Found record to clean up: {pk}/{convo_id}")
+                        dynamodb_client.delete_item(
+                            TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
+                            Key={"primary_channel": {"S": pk}, "conversation_id": {"S": convo_id}}
+                        )
+                        print("Record deleted successfully")
+                    else:
+                        print("Found record missing required key information for deletion")
+                else:
+                    print(f"No record found for cleanup with request_id {request_id}")
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
             
     print("\n--- E2E Happy Path Test Complete --- ")
     print(f"--> MANUAL VERIFICATION NEEDED: Check WhatsApp on {primary_channel} for received message.")

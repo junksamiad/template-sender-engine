@@ -449,8 +449,25 @@ def test_processor_failure_missing_secret(dynamodb_client, setup_e2e_company_dat
     finally:
         # --- Cleanup: Delete the specific conversation record --- #
         if conversation_record: # If we found the record in the try block
-            convo_id_to_delete = conversation_record.get('conversation_id', {}).get('S')
-            pk_to_delete = conversation_record.get('primary_channel', {}).get('S')
+            # Handle different possible formats of conversation_record 
+            if isinstance(conversation_record, dict):
+                if 'conversation_id' in conversation_record:
+                    if isinstance(conversation_record['conversation_id'], dict):
+                        # DynamoDB formatted item
+                        convo_id_to_delete = conversation_record.get('conversation_id', {}).get('S')
+                        pk_to_delete = conversation_record.get('primary_channel', {}).get('S')
+                    else:
+                        # Regular dictionary format
+                        convo_id_to_delete = conversation_record.get('conversation_id')
+                        pk_to_delete = conversation_record.get('primary_channel')
+                else:
+                    print(f"Warning: conversation_record doesn't have expected structure: {conversation_record}")
+                    convo_id_to_delete = None
+                    pk_to_delete = None
+            else:
+                print(f"Warning: conversation_record is not a dictionary: {type(conversation_record)}")
+                convo_id_to_delete = None
+                pk_to_delete = None
             
             if convo_id_to_delete and pk_to_delete:
                 print(f"\n--- Test Teardown: Deleting conversation {pk_to_delete} / {convo_id_to_delete} (request_id: {request_id}) ---")
@@ -465,34 +482,6 @@ def test_processor_failure_missing_secret(dynamodb_client, setup_e2e_company_dat
                     print(f"Warning: Error during conversation record cleanup: {e}")
             else:
                  print(f"\n--- Test Teardown: Skipping delete, missing keys in found record for request_id: {request_id} ---")
-        else: 
-            # If we didn't find it in the try block, try one last query based on request_id
-            print(f"\n--- Test Teardown: Checking for conversation record for request_id {request_id} before exit ---")
-            try:
-                query_response = dynamodb_client.query(
-                    TableName=CONVERSATIONS_TABLE,
-                    KeyConditionExpression="primary_channel = :pk",
-                    FilterExpression=Attr('request_id').eq(request_id),
-                    ExpressionAttributeValues={
-                        ":pk": {"S": primary_channel} 
-                    }
-                )
-                items = query_response.get('Items', [])
-                if items:
-                    item_to_delete = items[0]
-                    convo_id_to_delete = item_to_delete.get('conversation_id', {}).get('S')
-                    pk_to_delete = item_to_delete.get('primary_channel', {}).get('S')
-                    if convo_id_to_delete and pk_to_delete:
-                         print(f"Deleting conversation {pk_to_delete} / {convo_id_to_delete} found during teardown query.")
-                         dynamodb_client.delete_item(
-                             TableName=CONVERSATIONS_TABLE,
-                             Key={"primary_channel": {"S": pk_to_delete}, "conversation_id": {"S": convo_id_to_delete}}
-                         )
-                         print("Conversation record deleted.")
-                else:
-                     print(f"No conversation record found for request_id {request_id} during final cleanup query.")
-            except Exception as e:
-                print(f"Warning: Error during final conversation record cleanup query/delete: {e}")
 
 def test_processor_failure_invalid_twilio_number(dynamodb_client, setup_e2e_company_data):
     """
@@ -605,8 +594,25 @@ def test_processor_failure_invalid_twilio_number(dynamodb_client, setup_e2e_comp
     finally:
         # --- Cleanup: Delete the specific conversation record --- #
         if conversation_record: # If we found the record in the try block
-            convo_id_to_delete = conversation_record.get('conversation_id', {}).get('S')
-            pk_to_delete = conversation_record.get('primary_channel', {}).get('S')
+            # Handle different possible formats of conversation_record 
+            if isinstance(conversation_record, dict):
+                if 'conversation_id' in conversation_record:
+                    if isinstance(conversation_record['conversation_id'], dict):
+                        # DynamoDB formatted item
+                        convo_id_to_delete = conversation_record.get('conversation_id', {}).get('S')
+                        pk_to_delete = conversation_record.get('primary_channel', {}).get('S')
+                    else:
+                        # Regular dictionary format
+                        convo_id_to_delete = conversation_record.get('conversation_id')
+                        pk_to_delete = conversation_record.get('primary_channel')
+                else:
+                    print(f"Warning: conversation_record doesn't have expected structure: {conversation_record}")
+                    convo_id_to_delete = None
+                    pk_to_delete = None
+            else:
+                print(f"Warning: conversation_record is not a dictionary: {type(conversation_record)}")
+                convo_id_to_delete = None
+                pk_to_delete = None
             
             if convo_id_to_delete and pk_to_delete:
                 print(f"\n--- Test Teardown: Deleting conversation {pk_to_delete} / {convo_id_to_delete} (request_id: {request_id}) ---")
@@ -693,8 +699,8 @@ def test_idempotency_e2e(dynamodb_client, setup_e2e_company_data):
     }
     logger.debug(f"Request payload (used twice): {json.dumps(payload, indent=2)}")
 
-    # Save the valid recipient phone number for later cleanup
-    valid_phone = "+447123456789"
+    # Use the recipient_tel for polling and cleanup instead of a separate hardcoded value
+    primary_channel = recipient_tel
     
     test_start_time_iso = datetime.now(timezone.utc).isoformat()
     time.sleep(0.1) # Ensure slight delay
@@ -730,7 +736,7 @@ def test_idempotency_e2e(dynamodb_client, setup_e2e_company_data):
         
         # Poll DynamoDB to get the final conversation status
         final_item = poll_conversation_status(
-            primary_channel_key=valid_phone,
+            primary_channel_key=primary_channel, # Use the actual phone number instead of valid_phone
             request_id=request_id,
             expected_status="sent_message",
             test_start_time_iso=test_start_time_iso,
@@ -781,7 +787,7 @@ def test_idempotency_e2e(dynamodb_client, setup_e2e_company_data):
                     KeyConditionExpression="primary_channel = :pk",
                     FilterExpression="request_id = :rid",
                     ExpressionAttributeValues={
-                        ":pk": {"S": valid_phone},
+                        ":pk": {"S": primary_channel},
                         ":rid": {"S": request_id}
                     }
                 )
