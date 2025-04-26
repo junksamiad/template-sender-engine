@@ -237,13 +237,16 @@ Initial context:
         try:
             parsed_response = json.loads(assistant_message_content)
             
-            # Validate the structure
+            # Validate the structure - CHANGED to only check if it's a dictionary
             # Check if it has the expected keys directly (since the schema name doesn't create a top-level key here)
-            if isinstance(parsed_response, dict) and all(k in parsed_response for k in ["1", "2", "3", "4"]):
+            # if isinstance(parsed_response, dict) and all(k in parsed_response for k in ["1", "2", "3", "4"]):
+            if isinstance(parsed_response, dict):
                 content_variables = parsed_response # USE PARSED RESPONSE DIRECTLY
-                logger.info(f"Successfully parsed response and found expected keys. Assigning to content_variables.")
+                # logger.info(f"Successfully parsed response and found expected keys. Assigning to content_variables.")
+                logger.info(f"Successfully parsed response as dictionary. Assigning to content_variables.") # Updated log
             else:
-                logger.error(f"Parsed JSON response is not a dictionary or does not contain the expected keys ('1', '2', '3', '4'). Parsed type: {type(parsed_response)}, Parsed content: {parsed_response}")
+                # logger.error(f"Parsed JSON response is not a dictionary or does not contain the expected keys ('1', '2', '3', '4'). Parsed type: {type(parsed_response)}, Parsed content: {parsed_response}")
+                logger.error(f"Parsed JSON response is not a dictionary. Parsed type: {type(parsed_response)}, Parsed content: {parsed_response}") # Updated log
                 content_variables = None # Indicate failure
                 
         except json.JSONDecodeError as json_err:

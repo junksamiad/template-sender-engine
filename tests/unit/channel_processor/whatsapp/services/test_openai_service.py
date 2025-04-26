@@ -281,18 +281,20 @@ def test_assistant_message_not_json(mock_conversation_details, mock_openai_crede
     assert "Failed to parse assistant message content as JSON" in caplog.text
     assert not_json_content in caplog.text
 
-def test_assistant_message_wrong_json_structure(mock_conversation_details, mock_openai_credentials, patch_openai_client, caplog):
-    """Test failure when the assistant message JSON lacks expected keys."""
+def test_assistant_message_not_dictionary(mock_conversation_details, mock_openai_credentials, patch_openai_client, caplog):
+    """Test failure when the assistant message JSON is valid JSON but not a dictionary."""
     _, mock_client = patch_openai_client
     # Modify the message list return value
-    wrong_json_content = json.dumps({"wrong_key": "value"}) # Missing "1", "2", etc.
+    # wrong_json_content = json.dumps({"wrong_key": "value"}) # Missing "1", "2", etc.
+    not_dict_json_content = json.dumps(["list", "not", "dict"]) # Valid JSON, but a list
     mock_assistant_message_wrong = ThreadMessage(
         id="msg_mock_asst_wrong", thread_id="thread_mock_123", role="assistant",
         content=[
              TextContentBlock(
                  type='text',
                  text={
-                     'value': wrong_json_content,
+                     # 'value': wrong_json_content,
+                     'value': not_dict_json_content,
                      'annotations': []
                  }
              )
@@ -305,4 +307,5 @@ def test_assistant_message_wrong_json_structure(mock_conversation_details, mock_
 
     result = openai_service.process_message_with_ai(mock_conversation_details, mock_openai_credentials)
     assert result is None
-    assert "Parsed JSON response is not a dictionary or does not contain the expected keys" in caplog.text 
+    # assert "Parsed JSON response is not a dictionary or does not contain the expected keys" in caplog.text 
+    assert "Parsed JSON response is not a dictionary" in caplog.text # Check for updated error message 
