@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 # --- Configuration (Shared) ---
 REGION = "eu-north-1"
 DYNAMODB_COMPANY_TABLE_NAME = "ai-multi-comms-company-data-dev"
-COMPANY_DATA_SAMPLE_PATH = "samples/recruitment_company_data_record_example_dev.json"
+COMPANY_DATA_SAMPLE_PATH = "scripts/recruitment_company_data_record_example_dev.json"
 
 # --- Shared Fixtures ---
 
@@ -98,8 +98,6 @@ def setup_e2e_company_data(dynamodb_client, request):
 
     # Yield the IDs in case a test needs them
     yield company_id, project_id
-
-# Add other shared fixtures or helpers below if needed
 
 @pytest.fixture(scope="function")
 def modify_company_data_inactive_project(setup_e2e_company_data, dynamodb_client, request):
