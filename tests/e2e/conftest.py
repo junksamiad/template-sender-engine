@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 # --- Configuration (Shared) ---
 REGION = "eu-north-1"
 DYNAMODB_COMPANY_TABLE_NAME = "ai-multi-comms-company-data-dev"
-COMPANY_DATA_SAMPLE_PATH = "samples/recruitment_company_data_record_example_dev.json"
+COMPANY_DATA_SAMPLE_PATH = "scripts/recruitment_company_data_record_example_dev.json"
 
 # --- Shared Fixtures ---
 
