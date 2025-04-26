@@ -110,9 +110,10 @@ def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
         query_response = dynamodb_client.query(
             TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
             KeyConditionExpression="primary_channel = :pk",
-            FilterExpression=Attr('request_id').eq(request_id),
+            FilterExpression="request_id = :rid",
             ExpressionAttributeValues={
-                ":pk": {"S": primary_channel}
+                ":pk": {"S": primary_channel},
+                ":rid": {"S": request_id}
             },
             ConsistentRead=True # Use consistent read for testing immediately after action
         )
