@@ -6,76 +6,33 @@ import uuid
 import time
 from datetime import datetime, timezone
 import os # For loading sample data
+from boto3.dynamodb.conditions import Key, Attr # Import Attr for FilterExpression
 
 # --- Configuration ---
 # Using known dev resource names and URLs
-API_ENDPOINT_URL = "https://xlijn1k4xh.execute-api.eu-north-1.amazonaws.com/dev/" # Ensure trailing slash
-API_KEY = "YbgTABlGlg6s2YZ9gcyuB4AUhi5jJcC05yeKcCWR"
+# API_ENDPOINT_URL = "https://xlijn1k4xh.execute-api.eu-north-1.amazonaws.com/dev/" # Ensure trailing slash
+# Retrieve API endpoint from environment variable set by CI/CD or .env file for local
+API_ENDPOINT_BASE_URL = os.environ.get("API_ENDPOINT")
+if not API_ENDPOINT_BASE_URL:
+    # Fallback or error if not set
+    print("ERROR: API_ENDPOINT environment variable not set. Exiting.")
+    exit(1)
+
+API_ENDPOINT_URL = f"{API_ENDPOINT_BASE_URL.rstrip('/')}/initiate-conversation"
+API_KEY = os.environ.get("API_KEY", "YbgTABlGlg6s2YZ9gcyuB4AUhi5jJcC05yeKcCWR") # Get API key from env or use default (less secure)
+
 DYNAMODB_COMPANY_TABLE_NAME = "ai-multi-comms-company-data-dev"
 DYNAMODB_CONVERSATIONS_TABLE_NAME = "ai-multi-comms-conversations-dev"
 REGION = "eu-north-1"
 # Sample data file paths (relative to project root)
-COMPANY_DATA_SAMPLE_PATH = "samples/recruitment_company_data_record_example_dev.json"
-E2E_PAYLOAD_SAMPLE_PATH = "samples/e2e_test_curl_dev.sh" # We'll parse the JSON from this
+# COMPANY_DATA_SAMPLE_PATH = "samples/recruitment_company_data_record_example_dev.json"
+E2E_PAYLOAD_TEMPLATE_PATH = "scripts/e2e_test_curl_dev.sh" # Path to the script template
 
-# --- Fixtures ---
+# --- Fixtures --- (Assumes conftest.py fixtures are available)
 
-# @pytest.fixture(scope="module")
-# def dynamodb_client():
-#     """Boto3 DynamoDB client configured for the correct region."""
-#     print(f"\nCreating DynamoDB client fixture for region: {REGION}")
-#     return boto3.client("dynamodb", region_name=REGION)
-#
-# @pytest.fixture(scope="function")
-# def setup_e2e_company_data(dynamodb_client):
-#     """Ensures the specific company data record exists for the E2E test and cleans up."""
-#     print(f"\n--- Fixture Setup: Loading Company Data from {COMPANY_DATA_SAMPLE_PATH} ---")
-#     try:
-#         with open(COMPANY_DATA_SAMPLE_PATH, 'r') as f:
-#             company_data_item = json.load(f)
-#     except Exception as e:
-#         pytest.fail(f"Failed to load company data sample: {e}")
-#     
-#     company_id = company_data_item.get("company_id")
-#     project_id = company_data_item.get("project_id")
-#     if not company_id or not project_id:
-#         pytest.fail("Company/Project ID missing in sample data file.")
-#
-#     print(f"Ensuring company data exists: {company_id}/{project_id} in {DYNAMODB_COMPANY_TABLE_NAME}")
-#     # Use put_item for simplicity (create or overwrite)
-#     # Note: DynamoDB expects specific type descriptors (S, N, M, L, BOOL)
-#     # Need a helper to format the JSON correctly for put_item
-#     try:
-#         formatted_item = format_json_for_dynamodb(company_data_item)
-#         dynamodb_client.put_item(
-#             TableName=DYNAMODB_COMPANY_TABLE_NAME,
-#             Item=formatted_item
-#         )
-#         print("Company data put/overwrite successful.")
-#     except Exception as e:
-#         pytest.fail(f"Failed to put company data item into DynamoDB: {e}")
-#
-#     yield company_id, project_id # Provide IDs to the test if needed
-#
-#     # --- Teardown --- 
-#     print(f"\n--- Fixture Teardown: Deleting Company Data {company_id}/{project_id} ---")
-#     try:
-#         dynamodb_client.delete_item(
-#             TableName=DYNAMODB_COMPANY_TABLE_NAME,
-#             Key={"company_id": {"S": company_id}, "project_id": {"S": project_id}}
-#         )
-#         print("Company data deleted successfully.")
-#     except Exception as e:
-#         print(f"Warning: Error during company data cleanup: {e}")
-#
-# Helper function to format JSON for DynamoDB put_item
-# This is a simplified version; a more robust one would handle all types
-# def format_json_for_dynamodb(data):
-#    # ... function body removed ...
-
-# Helper function to parse JSON payload from the curl script
-def parse_payload_from_curl_script(script_path):
-    print(f"\nParsing payload from {script_path}...")
+# Helper function to parse JSON payload from the curl script template
+def parse_payload_template_from_script(script_path):
+    print(f"\nParsing payload template from {script_path}...")
     try:
         with open(script_path, 'r') as f:
             content = f.read()
@@ -85,96 +42,84 @@ def parse_payload_from_curl_script(script_path):
         start_index = content.find(start_marker) + len(start_marker)
         end_index = content.find(end_marker)
         if start_index == -1 or end_index == -1 or start_index >= end_index:
-            raise ValueError("Could not find heredoc markers EOF in script")
+            raise ValueError("Could not find heredoc markers EOF in script template")
         json_string = content[start_index:end_index]
-        payload = json.loads(json_string)
-        print("Payload parsed successfully.")
-        return payload
+        payload_template = json.loads(json_string)
+        print("Payload template parsed successfully.")
+        return payload_template
     except Exception as e:
-        pytest.fail(f"Failed to parse JSON payload from {script_path}: {e}")
+        pytest.fail(f"Failed to parse JSON payload template from {script_path}: {e}")
 
 # --- Test Case ---
 
 def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
     """
     Tests the full end-to-end happy path for initiating a WhatsApp conversation.
-    Sends request, waits, verifies final DynamoDB state.
+    Sends request, waits, verifies final DynamoDB state, and cleans up.
     Manual verification of received WhatsApp message is required separately.
     """
-    # Record test start time for querying later
-    test_start_timestamp = datetime.now(timezone.utc).isoformat()
-    time.sleep(0.1) # Ensure a slight delay before request timestamp
-
-    # 1. Get Payload
-    request_payload = parse_payload_from_curl_script(E2E_PAYLOAD_SAMPLE_PATH)
-    # Update request_id and timestamp for uniqueness
+    # Generate unique data for this test run
     request_id = str(uuid.uuid4())
+    request_timestamp = datetime.now(timezone.utc).isoformat()
+
+    # Load payload template and inject unique data
+    request_payload = parse_payload_template_from_script(E2E_PAYLOAD_TEMPLATE_PATH)
     request_payload["request_data"]["request_id"] = request_id
-    request_payload["request_data"]["initial_request_timestamp"] = datetime.now(timezone.utc).isoformat()
+    request_payload["request_data"]["initial_request_timestamp"] = request_timestamp
     
-    recipient_tel = request_payload["recipient_data"]["recipient_tel"]
+    primary_channel = request_payload["recipient_data"]["recipient_tel"] # Use for cleanup query
     
-    # 2. Send API Request
-    headers = {"Content-Type": "application/json", "x-api-key": API_KEY}
-    initiate_url = f"{API_ENDPOINT_URL.rstrip('/')}/initiate-conversation"
+    # Ensure company data is set up by using the fixture
+    company_id, project_id = setup_e2e_company_data
     
-    print(f"\n--- Test: E2E Happy Path --- ")
-    print(f"Sending E2E request to {initiate_url} with request_id: {request_id}")
-    response = requests.post(initiate_url, headers=headers, json=request_payload)
-    print(f"API Response Status: {response.status_code}")
-    print(f"API Response Body: {response.text}")
-    
-    assert response.status_code == 200
-    response_data = response.json()
-    assert response_data.get("status") == "success"
-    assert response_data.get("request_id") == request_id
-    print("API request successful.")
-    
-    # 3. Wait for processing
-    wait_seconds = 15 # Significantly reduced wait time
-    print(f"Waiting {wait_seconds} seconds for end-to-end processing...")
-    time.sleep(wait_seconds)
-    
-    # 4. Verify Final State in Conversations DynamoDB (Single Attempt)
-    conversation_record = None
-    final_exception = None # Keep track of errors
-
-    # Record time *before* querying starts (approximate)
-    query_start_time_iso = datetime.fromtimestamp(time.time() - wait_seconds - 1, tz=timezone.utc).isoformat()
-
-    print(f"\n--- Verification Attempt --- ")
-    print(f"Checking {DYNAMODB_CONVERSATIONS_TABLE_NAME} for final record state for recipient {recipient_tel}...")
     try:
-        # Query using the created-at-index
-        print(f"Querying created-at-index for items after {query_start_time_iso}")
+        # 1. Send API Request
+        headers = {"Content-Type": "application/json", "x-api-key": API_KEY}
+        
+        print(f"\n--- Test: E2E Happy Path --- ")
+        print(f"Request ID for this run: {request_id}")
+        print(f"Sending E2E request to {API_ENDPOINT_URL}")
+        response = requests.post(API_ENDPOINT_URL, headers=headers, json=request_payload)
+        print(f"API Response Status: {response.status_code}")
+        print(f"API Response Body: {response.text}")
+        
+        assert response.status_code == 200
+        response_data = response.json()
+        assert response_data.get("status") == "success"
+        assert response_data.get("request_id") == request_id
+        print("API request successful.")
+        
+        # 2. Wait for processing
+        # Reduced wait time, adjust based on typical processing latency
+        wait_seconds = 25 
+        print(f"Waiting {wait_seconds} seconds for end-to-end processing...")
+        time.sleep(wait_seconds)
+        
+        # 3. Verify Final State in Conversations DynamoDB
+        conversation_record = None
+        print(f"\n--- Verification Attempt --- ")
+        print(f"Checking {DYNAMODB_CONVERSATIONS_TABLE_NAME} for record with request_id {request_id}...")
+        
+        # Query by PK and filter by request_id
         query_response = dynamodb_client.query(
             TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
-            IndexName='created-at-index', # Use the LSI
-            KeyConditionExpression="primary_channel = :pk AND created_at > :start_ts", # Query PK and SK range
+            KeyConditionExpression="primary_channel = :pk",
+            FilterExpression=Attr('request_id').eq(request_id),
             ExpressionAttributeValues={
-                ":pk": {"S": recipient_tel},
-                ":start_ts": {"S": query_start_time_iso}
+                ":pk": {"S": primary_channel}
             },
-            ScanIndexForward=False, # Get newest items first
-            Limit=5 
+            ConsistentRead=True # Use consistent read for testing immediately after action
         )
-        
+            
         items = query_response.get('Items', [])
-        print(f"Found {len(items)} conversation items using created-at-index.")
-        temp_conversation_record = None
-        for item in items:
-            # Check if this item matches our request_id (best match)
-            if item.get('request_id', {}).get('S') == request_id:
-                temp_conversation_record = item
-                print(f"Found matching record by request_id: {item.get('conversation_id', {}).get('S')}")
-                break
+        print(f"Found {len(items)} conversation item(s) matching request_id {request_id}.")
 
-        if temp_conversation_record is None:
-                print(f"Conversation record for request_id {request_id} not found.")
-                # Fail immediately if not found after the wait
-                pytest.fail(f"Could not find conversation record for request_id {request_id} after {wait_seconds}s wait.") 
+        if not items:
+            pytest.fail(f"Could not find conversation record for request_id {request_id} after {wait_seconds}s wait.") 
+        elif len(items) > 1:
+             pytest.fail(f"Found multiple conversation records for request_id {request_id}. This should not happen.")
         else:
-            conversation_record = temp_conversation_record # Store the found record
+            conversation_record = items[0] # Store the found record for cleanup
             # Verify final status
             final_status = conversation_record.get("conversation_status", {}).get("S")
             print(f"Final conversation status: {final_status}")
@@ -192,7 +137,6 @@ def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
             messages_list = conversation_record.get("messages", {}).get("L", [])
             assert len(messages_list) > 0, "Messages list should not be empty after successful send"
             print(f"Found {len(messages_list)} message(s) in history.")
-            # Optional: Check first message details
             first_message = messages_list[0].get("M", {})
             assert first_message.get("role", {}).get("S") == "assistant", "First message role should be assistant"
             message_id_val = first_message.get("message_id", {}).get("S", "")
@@ -210,17 +154,16 @@ def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
             print(f"Found processing_time_ms: {processing_time}")
 
             # Check some key copied fields
-            assert conversation_record.get("company_id", {}).get("S") == request_payload["company_data"]["company_id"]
-            assert conversation_record.get("project_id", {}).get("S") == request_payload["company_data"]["project_id"]
+            assert conversation_record.get("company_id", {}).get("S") == company_id
+            assert conversation_record.get("project_id", {}).get("S") == project_id
 
             # Verify channel_method and conditional recipient identifier
             channel_method_in_record = conversation_record.get("channel_method", {}).get("S")
             assert channel_method_in_record == "whatsapp", f"Expected channel_method 'whatsapp', got '{channel_method_in_record}'"
             if channel_method_in_record in ["whatsapp", "sms"]:
-                assert conversation_record.get("recipient_tel", {}).get("S") == recipient_tel, "Recipient telephone number mismatch in record"
+                assert conversation_record.get("recipient_tel", {}).get("S") == primary_channel, "Recipient telephone number mismatch in record"
                 print("Verified recipient_tel matches payload.")
             elif channel_method_in_record == "email":
-                # Add check for email if implementing email tests later
                 recipient_email = request_payload["recipient_data"]["recipient_email"]
                 assert conversation_record.get("recipient_email", {}).get("S") == recipient_email, "Recipient email mismatch in record"
                 print("Verified recipient_email matches payload.")
@@ -229,41 +172,38 @@ def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
             # --- End detailed assertions --- #
                 
             print("DynamoDB final state verification successful.")
-            # verification_success = True # No longer needed
-            # break # No longer needed
 
-    except AssertionError as ae: # Catch assertion errors specifically
-        # print(f"Assertion failed on attempt {attempt+1}: {ae}")
-        # final_exception = ae # Store the assertion error
-        pytest.fail(f"Assertion failed during verification: {ae}") # Fail immediately on assertion error
+    except AssertionError as ae:
+        pytest.fail(f"Assertion failed during verification: {ae}")
     except Exception as e:
-        # print(f"Error querying or verifying conversations table on attempt {attempt+1}: {e}")
-        # final_exception = e # Store other errors
-        pytest.fail(f"Error querying or verifying conversations table: {e}") # Fail immediately on other errors
-        # We might want to break immediately on unexpected Boto3 errors
+        pytest.fail(f"Error during test execution: {e}")
 
-    # Cleanup logic needs to be reliably executed
-    cleanup_dynamodb_record(dynamodb_client, conversation_record, recipient_tel)
+    finally:
+        # --- Cleanup: Delete the specific conversation record --- #
+        if conversation_record:
+            convo_id_to_delete = conversation_record.get('conversation_id', {}).get('S')
+            pk_to_delete = conversation_record.get('primary_channel', {}).get('S')
+            
+            if convo_id_to_delete and pk_to_delete:
+                print(f"\n--- Test Teardown: Deleting conversation {pk_to_delete} / {convo_id_to_delete} (request_id: {request_id}) ---")
+                try:
+                    dynamodb_client.delete_item(
+                        TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
+                        Key={"primary_channel": {"S": pk_to_delete}, "conversation_id": {"S": convo_id_to_delete}}
+                    )
+                    print("Conversation record deleted.")
+                except Exception as e:
+                    print(f"Warning: Error during conversation record cleanup: {e}")
+            else:
+                 print(f"\n--- Test Teardown: Skipping delete, missing keys in found record for request_id: {request_id} ---")
+        else:
+            print(f"\n--- Test Teardown: Skipping delete, conversation record not found for request_id: {request_id} ---")
             
     print("\n--- E2E Happy Path Test Complete --- ")
-    print(f"--> MANUAL VERIFICATION NEEDED: Check WhatsApp on {recipient_tel} for received message.")
+    print(f"--> MANUAL VERIFICATION NEEDED: Check WhatsApp on {primary_channel} for received message.")
 
-# Separate cleanup function for clarity and reliability
-def cleanup_dynamodb_record(dynamodb_client, conversation_record, recipient_tel):
-    """Helper function to delete the conversation record if found."""
-    if conversation_record:
-        convo_id_to_delete = conversation_record.get('conversation_id', {}).get('S')
-        if convo_id_to_delete:
-            print(f"\nAttempting E2E test cleanup: Deleting conversation {recipient_tel} / {convo_id_to_delete}")
-            try:
-                dynamodb_client.delete_item(
-                    TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
-                    Key={"primary_channel": {"S": recipient_tel}, "conversation_id": {"S": convo_id_to_delete}}
-                )
-                print("Conversation record deleted.")
-            except Exception as e:
-                print(f"Warning: Error during conversation record cleanup: {e}")
-    else:
-        print("\nSkipping conversation cleanup as record was not found/passed to cleanup.")
+# Removed separate cleanup function
+# def cleanup_dynamodb_record(dynamodb_client, conversation_record, recipient_tel):
+#    # ... 
 
 # Add more E2E tests based on plan... 

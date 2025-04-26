@@ -94,7 +94,7 @@ Both workflows share a similar structure and trigger configuration:
 
 #### 3.1.3 `build-and-deploy-dev` Job (`dev_cicd.yml`)
 
--   **Purpose:** Builds and deploys the application to the `dev` environment.
+-   **Purpose:** Builds and deploys the application to the `dev` environment, then runs integration and E2E tests against the deployed stack.
 -   **Condition:** `if: github.event_name == 'push' && github.ref == 'refs/heads/develop'`
 -   **Environment:** `environment: dev` (Optional GitHub Environment mapping)
 -   **Steps:**
@@ -111,6 +111,10 @@ Both workflows share a similar structure and trigger configuration:
         -   `--parameter-overrides EnvironmentName=dev LogLevel=DEBUG`
         -   `--no-confirm-changeset`
         -   `--no-fail-on-empty-changeset`
+    7.  `Install test dependencies`: Installs `pytest` and `requests`.
+    8.  `Get API Gateway Endpoint`: Queries the deployed CloudFormation stack outputs to find the API endpoint URL and exports it as `$GITHUB_ENV.API_ENDPOINT`.
+    9.  `Run integration tests`: Executes `pytest tests/integration/`, utilizing the `$API_ENDPOINT` environment variable.
+    10. `Run E2E tests`: Executes `pytest tests/e2e/`, utilizing the `$API_ENDPOINT` environment variable.
 
 #### 3.1.4 `build-and-deploy-prod` Job (`prod_cicd.yml`)
 
@@ -131,6 +135,7 @@ Both workflows share a similar structure and trigger configuration:
         -   `--parameter-overrides EnvironmentName=prod LogLevel=INFO`
         -   `--no-confirm-changeset`
         -   `--no-fail-on-empty-changeset`
+    *   **Note:** This job does **not** include steps to automatically run integration or E2E tests after deployment.
 
 ### 3.2 AWS IAM Configuration (OIDC)
 
@@ -208,6 +213,7 @@ Secure access to AWS is configured using IAM Roles assumed via OIDC.
 7.  The merge causes a push event to `develop`.
 8.  The `dev_cicd.yml` workflow triggers the `build-and-deploy-dev` job.
 9.  The job builds the SAM application and deploys it to the `ai-multi-comms-dev` stack in AWS.
+10. **Post-Deployment:** Integration and E2E tests are automatically executed against the newly deployed `dev` stack.
 
 ### 4.2 Production Environment
 
@@ -218,10 +224,11 @@ Secure access to AWS is configured using IAM Roles assumed via OIDC.
 5.  The merge causes a push event to `main`.
 6.  The `prod_cicd.yml` workflow triggers the `build-and-deploy-prod` job.
 7.  The job builds the SAM application and deploys it to the `ai-multi-comms-prod` stack in AWS.
+8.  **Post-Deployment:** No automated integration or E2E tests are run by this pipeline.
 
 ## 5. Future Enhancements
 
--   **Integration/E2E Tests:** Add steps to the `dev_cicd.yml` workflow (likely in the `build-and-deploy-dev` job after deployment) to run integration (`tests/integration/`) and/or E2E tests (`tests/e2e/`) against the deployed `dev` environment.
+-   **Production Tests:** Consider adding steps to the `prod_cicd.yml` workflow to run integration (`tests/integration/`) and/or E2E tests (`tests/e2e/`) against the deployed `prod` environment, perhaps after a manual approval step.
 -   **Stricter IAM Permissions:** Re-evaluate the Lambda permissions (`Resource: "*"`) in the deployment policies and attempt to scope them more tightly if possible (e.g., `arn:aws:lambda:REGION:ACCOUNT:function:STACK_NAME-*`).
 -   **Secrets Management:** Consider using GitHub Actions Environments secrets for storing non-AWS secrets or configuration if needed, rather than relying solely on AWS Secrets Manager for deployment-time config.
 -   **Manual Approval Step (Prod):** Add a manual approval step in the `prod_cicd.yml` workflow before the deployment to production for an extra layer of control.

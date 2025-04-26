@@ -99,8 +99,6 @@ def setup_e2e_company_data(dynamodb_client, request):
     # Yield the IDs in case a test needs them
     yield company_id, project_id
 
-# Add other shared fixtures or helpers below if needed
-
 @pytest.fixture(scope="function")
 def modify_company_data_inactive_project(setup_e2e_company_data, dynamodb_client, request):
     """
