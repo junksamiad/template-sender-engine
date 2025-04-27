@@ -1,6 +1,6 @@
 {
-  "company_id": "ci-aaa-001",
-  "project_id": "pi-aaa-001",
+  "company_id": "ci-aaa-XXX",
+  "project_id": "pi-aaa-XXX",
   "company_name": "Cucumber Recruitment",
   "project_name": "Clarify CV",
   "allowed_channels": ["whatsapp", "sms", "email"],
