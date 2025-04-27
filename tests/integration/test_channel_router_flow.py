@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 # Values from samples/e2e_test_curl_dev.sh and known dev environment
 API_ENDPOINT_URL = "https://xlijn1k4xh.execute-api.eu-north-1.amazonaws.com/dev/" # Ensure trailing slash
 API_KEY = "YbgTABlGlg6s2YZ9gcyuB4AUhi5jJcC05yeKcCWR"
-SQS_QUEUE_URL = "https://sqs.eu-north-1.amazonaws.com/906317985598/ai-multi-comms-whatsapp-queue-dev" # Actual dev queue URL
+SQS_QUEUE_URL = "https://sqs.eu-north-1.amazonaws.com/337909745089/ai-multi-comms-whatsapp-queue-dev" # Actual dev queue URL
 DYNAMODB_COMPANY_TABLE_NAME = "ai-multi-comms-company-data-dev" # Actual dev table name
 # --- End Configuration ---
 
@@ -38,8 +38,8 @@ def setup_test_company_config(dynamodb_client):
     exists in DynamoDB and cleans it up afterwards.
     Uses hardcoded table name and queue URL for dev testing.
     """
-    test_company_id = "ci-aaa-001" # From e2e script
-    test_project_id = "pi-aaa-001" # From e2e script
+    test_company_id = "ci-aaa-XXX"  # Updated from e2e script
+    test_project_id = "pi-aaa-XXX"  # Updated from e2e script
     config_item = {
         "company_id": {"S": test_company_id},
         "project_id": {"S": test_project_id},
@@ -103,7 +103,50 @@ def setup_test_company_config(dynamodb_client):
     except Exception as e:
         print(f"Error during DynamoDB cleanup: {e}") # Log cleanup errors
 
-# --- Test Cases ---
+def cleanup_dynamodb_conversation_record(dynamodb_client, primary_channel_value, request_id, company_id=None, project_id=None):
+    """
+    Helper function for cleaning up conversation records in integration tests.
+    Tries both direct key lookup and request_id scan approaches.
+    """
+    print(f"\nAttempting to cleanup conversation record for request_id: {request_id}")
+    
+    # AWS DynamoDB conversation table
+    table_name = "ai-multi-comms-conversations-dev"  # Actual dev table name
+    
+    # First attempt: Try to find by request_id which is unique to this test run
+    try:
+        print(f"Scanning for conversation record with request_id: {request_id}")
+        scan_response = dynamodb_client.scan(
+            TableName=table_name,
+            FilterExpression="request_id = :rid",
+            ExpressionAttributeValues={
+                ":rid": {"S": request_id}
+            }
+        )
+        
+        items = scan_response.get('Items', [])
+        if items:
+            for item in items:
+                pk = item.get('primary_channel', {}).get('S')
+                sk = item.get('conversation_id', {}).get('S')
+                if pk and sk:
+                    try:
+                        dynamodb_client.delete_item(
+                            TableName=table_name,
+                            Key={"primary_channel": {"S": pk}, "conversation_id": {"S": sk}}
+                        )
+                        print(f"Successfully deleted conversation record: {pk}/{sk}")
+                    except Exception as e:
+                        print(f"Failed to delete conversation record: {e}")
+            
+            print(f"Cleanup found and processed {len(items)} records")
+            return
+        else:
+            print(f"No conversation records found with request_id: {request_id}")
+    except Exception as e:
+        print(f"Error during conversation cleanup scan: {e}")
+
+    print("Cleanup complete")
 
 def test_channel_router_success_flow(api_headers, dynamodb_client, setup_test_company_config):
     """
@@ -111,180 +154,196 @@ def test_channel_router_success_flow(api_headers, dynamodb_client, setup_test_co
     POST to /initiate-conversation results in a correctly structured message on SQS.
     """
     company_id, project_id = setup_test_company_config # Get IDs managed by fixture
+    primary_channel_value = "+447835065013"  # The phone number used in the test
 
-    # Use payload structure from e2e_test_curl_dev.sh
-    # Generate a unique request_id for this test run
-    test_request_id = str(uuid.uuid4()) # Generate a valid UUID v4 string
-    request_body = {
-        "company_data": {
-            "company_id": company_id, # Use ID from fixture
-            "project_id": project_id  # Use ID from fixture
-        },
-        "recipient_data": { # Data from e2e script
-            "recipient_first_name": "Lee",
-            "recipient_last_name": "Hayton",
-            "recipient_tel": "+447835065013",
-            "recipient_email": "junksamiad@gmail.com",
-            "comms_consent": True
-        },
-        "project_data": { # Data from e2e script
-            "analysisEngineID": "analysis_1234567890_abc123def",
-            "jobID": "9999",
-            "jobRole": "Healthcare Assistant",
-            "clarificationPoints": [
-                {"point": "The CV does not mention a driving licence. This needs clarification.", "pointConfirmed": "false"},
-                {"point": "The CV does not mention owning a vehicle. This is a preference, not a requirement.", "pointConfirmed": "false"},
-                {"point": "There is a gap in the timeline of work experience between Sept 2021 and Feb 2022. This needs clarification.", "pointConfirmed": "false"},
-                {"point": "The candidate lives in Manchester but the job is in Liverpool which could be more than 30 miles travel from residence to workplace. Will this be an issue? This needs clarification.", "pointConfirmed": "false"},
-                {"point": "The job description explicitly states no sponsorship, indicating that the person needs to have a right to work in the UK. This needs clarification.", "pointConfirmed": "false"},
-                {"point": "The candidate's CV shows just 18 months experience working in care. The job states minimum 2 years. This needs clarification.", "pointConfirmed": "false"}
-            ]
-        },
-        "request_data": { # Use a unique request_id for test isolation
-            "request_id": test_request_id,
-            "channel_method": "whatsapp",
-            "initial_request_timestamp": datetime.now(timezone.utc).isoformat() # Use current time
-        }
-    }
-    # Construct URL using hardcoded base, ensure no double slash
-    initiate_url = f"{API_ENDPOINT_URL.rstrip('/')}/initiate-conversation"
-
-    print(f"\nSending POST request to {initiate_url} with request_id: {test_request_id}")
-    response = requests.post(initiate_url, headers=api_headers, json=request_body)
-
-    print(f"API Response Status: {response.status_code}")
-    print(f"API Response Body: {response.text}")
-
-    # 1. Check API Response
-    assert response.status_code == 200 # Channel router returns 200 on success
     try:
-        response_data = response.json()
-    except json.JSONDecodeError:
-        pytest.fail(f"API response was not valid JSON: {response.text}")
+        # Use payload structure from e2e_test_curl_dev.sh
+        # Generate a unique request_id for this test run
+        test_request_id = str(uuid.uuid4()) # Generate a valid UUID v4 string
+        request_body = {
+            "company_data": {
+                "company_id": company_id, # Use ID from fixture
+                "project_id": project_id  # Use ID from fixture
+            },
+            "recipient_data": { # Data from e2e script
+                "recipient_first_name": "Lee",
+                "recipient_last_name": "Hayton",
+                "recipient_tel": primary_channel_value,
+                "recipient_email": "junksamiad@gmail.com",
+                "comms_consent": True
+            },
+            "project_data": { # Data from e2e script
+                "analysisEngineID": "analysis_1234567890_abc123def",
+                "jobID": "9999",
+                "jobRole": "Healthcare Assistant",
+                "clarificationPoints": [
+                    {"point": "The CV does not mention a driving licence. This needs clarification.", "pointConfirmed": "false"},
+                    {"point": "The CV does not mention owning a vehicle. This is a preference, not a requirement.", "pointConfirmed": "false"},
+                    {"point": "There is a gap in the timeline of work experience between Sept 2021 and Feb 2022. This needs clarification.", "pointConfirmed": "false"},
+                    {"point": "The candidate lives in Manchester but the job is in Liverpool which could be more than 30 miles travel from residence to workplace. Will this be an issue? This needs clarification.", "pointConfirmed": "false"},
+                    {"point": "The job description explicitly states no sponsorship, indicating that the person needs to have a right to work in the UK. This needs clarification.", "pointConfirmed": "false"},
+                    {"point": "The candidate's CV shows just 18 months experience working in care. The job states minimum 2 years. This needs clarification.", "pointConfirmed": "false"}
+                ]
+            },
+            "request_data": { # Use a unique request_id for test isolation
+                "request_id": test_request_id,
+                "channel_method": "whatsapp",
+                "initial_request_timestamp": datetime.now(timezone.utc).isoformat() # Use current time
+            }
+        }
+        # Construct URL using hardcoded base, ensure no double slash
+        initiate_url = f"{API_ENDPOINT_URL.rstrip('/')}/initiate-conversation"
 
-    assert response_data.get("status") == "success"
-    # assert "conversation_id" in response_data # REMOVED: Not present in actual response
-    # Use the generated request_id for comparison if the API returns it
-    assert response_data.get("request_id") == test_request_id
+        print(f"\nSending POST request to {initiate_url} with request_id: {test_request_id}")
+        response = requests.post(initiate_url, headers=api_headers, json=request_body)
 
-    # conversation_id = response_data["conversation_id"] # REMOVED: Get from SQS message later
-    # print(f"Received conversation_id: {conversation_id}")
-    print(f"API Response successful for request_id: {test_request_id}")
+        print(f"API Response Status: {response.status_code}")
+        print(f"API Response Body: {response.text}")
 
-    # --- SQS Verification Temporarily Disabled (2025-04-12) ---
-    # The following SQS polling/verification steps consistently fail with
-    # botocore.exceptions.ClientError: InvalidAddress ... The address https://sqs.eu-north-1.amazonaws.com/ is not valid for this endpoint.
-    # This occurs despite:
-    #   - Correct region/endpoint config in boto3 client (tried multiple methods)
-    #   - Correct AWS config/credentials/env vars externally
-    #   - Successful DynamoDB calls in the same region
-    #   - A minimal standalone python script succeeding with the same SQS call
-    # This suggests a subtle interaction issue between pytest/plugins and the boto3 SQS client.
-    # If full verification of SQS message delivery becomes essential for this specific test,
-    # rewriting it using the built-in `unittest` framework (which pytest can still run)
-    # might be a potential workaround, as it uses a different execution context.
-    # For now, we verify the API response and assume the message is queued based on the successful API call.
-    # -------------------------------------------------------------
+        # 1. Check API Response
+        assert response.status_code == 200 # Channel router returns 200 on success
+        try:
+            response_data = response.json()
+        except json.JSONDecodeError:
+            pytest.fail(f"API response was not valid JSON: {response.text}")
 
-    # # 2. Check SQS Queue for the message # << COMMENTED OUT SECTION START
-    # # --- Create SQS client directly inside the test ---
-    # sqs_client = boto3.client(
-    #     "sqs",
-    #     region_name="eu-north-1",
-    #     endpoint_url="https://sqs.eu-north-1.amazonaws.com"
-    # )
-    # print("\nCreated SQS client inside test function.")
-    # # --- End SQS client creation ---
-    # message = None
-    # attempts = 0
-    # max_attempts = 10 # ~20 seconds total wait time
-    # wait_time = 2 # seconds between attempts
-    # conversation_id = None # Initialize conversation_id
-    #
-    # # print(f"Polling SQS queue {SQS_QUEUE_URL} for message with conversation_id: {conversation_id}...")
-    # print(f"Polling SQS queue {SQS_QUEUE_URL} for message with request_id: {test_request_id}...")
-    # while attempts < max_attempts:
-    #     print(f"SQS poll attempt {attempts + 1}/{max_attempts}")
-    #     receive_response = sqs_client.receive_message(
-    #         QueueUrl=SQS_QUEUE_URL,
-    #         MaxNumberOfMessages=10,
-    #         WaitTimeSeconds=1,
-    #         MessageAttributeNames=['All']
-    #     )
-    #
-    #     messages = receive_response.get("Messages", [])
-    #     for msg in messages:
-    #         try:
-    #             msg_body = json.loads(msg.get('Body', '{}'))
-    #             # Check if the request_id in the message body matches
-    #             if msg_body.get('frontend_payload', {}).get('request_data', {}).get('request_id') == test_request_id:
-    #                 message = msg
-    #                 # Extract conversation_id NOW that we found the right message
-    #                 conversation_id = msg_body.get('conversation_data', {}).get('conversation_id')
-    #                 print(f"Found message: {message['MessageId']} with conversation_id: {conversation_id}")
-    #                 if not conversation_id:
-    #                     pytest.fail(f"Found message for request {test_request_id}, but conversation_id is missing in SQS body.")
-    #                 break # Found our message
-    #         except json.JSONDecodeError:
-    #             print(f"Warning: Received non-JSON message body: {msg.get('Body')}")
-    #             continue # Skip non-json messages
-    #
-    #     if message:
-    #         break # Exit outer loop
-    #
-    #     attempts += 1
-    #     time.sleep(wait_time)
-    #
-    # assert message is not None, f"Message for request {test_request_id} not found in SQS after {max_attempts * wait_time} seconds."
-    # assert conversation_id is not None, "Failed to extract conversation_id from the found SQS message."
-    #
-    # # 3. Validate SQS Message Content (Context Object structure)
-    # print("Validating SQS message content...")
-    # message_body = json.loads(message['Body']) # Already parsed above, re-parse for clarity
-    #
-    # # Check top-level keys based on context_builder.py
-    # assert "frontend_payload" in message_body
-    # assert "company_data_payload" in message_body
-    # assert "conversation_data" in message_body
-    # assert "metadata" in message_body
-    #
-    # # Validate frontend_payload matches original request body
-    # # Comparing the whole dict is strict but ensures nothing is dropped/altered unexpectedly
-    # assert message_body["frontend_payload"] == request_body
-    #
-    # # Validate conversation_data
-    # conv_data = message_body["conversation_data"]
-    # assert conv_data.get("conversation_id") == conversation_id
-    # assert isinstance(conv_data.get("conversation_start_timestamp"), str) # Check type
-    #
-    # # Validate company_data_payload (check a few key fields from the fixture)
-    # comp_data = message_body["company_data_payload"]
-    # assert comp_data.get("company_id") == company_id
-    # assert comp_data.get("project_id") == project_id
-    # assert comp_data.get("company_name") == "Test Company A" # From fixture
-    # assert "routing_config" in comp_data # Check complex structures exist
-    # assert "ai_config" in comp_data
-    # assert "channel_config" in comp_data
-    #
-    # # Validate metadata
-    # meta = message_body["metadata"]
-    # assert meta.get("router_version").endswith("-dev") # Check version marker
-    # assert isinstance(meta.get("context_creation_timestamp"), str)
-    #
-    # print("SQS message content validation successful.")
-    #
-    # # 4. Cleanup SQS Message
-    # print(f"Deleting message {message['MessageId']} from SQS")
-    # try:
-    #     sqs_client.delete_message(
-    #         QueueUrl=SQS_QUEUE_URL,
-    #         ReceiptHandle=message['ReceiptHandle']
-    #     )
-    #     print("SQS message deleted.")
-    # except Exception as e:
-    #     # Log cleanup errors but don't fail the test
-    #     print(f"Warning: Error deleting SQS message during cleanup: {e}")
-    # << COMMENTED OUT SECTION END
+        assert response_data.get("status") == "success"
+        # assert "conversation_id" in response_data # REMOVED: Not present in actual response
+        # Use the generated request_id for comparison if the API returns it
+        assert response_data.get("request_id") == test_request_id
+
+        # conversation_id = response_data["conversation_id"] # REMOVED: Get from SQS message later
+        # print(f"Received conversation_id: {conversation_id}")
+        print(f"API Response successful for request_id: {test_request_id}")
+
+        # --- SQS Verification Temporarily Disabled (2025-04-12) ---
+        # The following SQS polling/verification steps consistently fail with
+        # botocore.exceptions.ClientError: InvalidAddress ... The address https://sqs.eu-north-1.amazonaws.com/ is not valid for this endpoint.
+        # This occurs despite:
+        #   - Correct region/endpoint config in boto3 client (tried multiple methods)
+        #   - Correct AWS config/credentials/env vars externally
+        #   - Successful DynamoDB calls in the same region
+        #   - A minimal standalone python script succeeding with the same SQS call
+        # This suggests a subtle interaction issue between pytest/plugins and the boto3 SQS client.
+        # If full verification of SQS message delivery becomes essential for this specific test,
+        # rewriting it using the built-in `unittest` framework (which pytest can still run)
+        # might be a potential workaround, as it uses a different execution context.
+        # For now, we verify the API response and assume the message is queued based on the successful API call.
+        # -------------------------------------------------------------
+
+        # # 2. Check SQS Queue for the message # << COMMENTED OUT SECTION START
+        # # --- Create SQS client directly inside the test ---
+        # sqs_client = boto3.client(
+        #     "sqs",
+        #     region_name="eu-north-1",
+        #     endpoint_url="https://sqs.eu-north-1.amazonaws.com"
+        # )
+        # print("\nCreated SQS client inside test function.")
+        # # --- End SQS client creation ---
+        # message = None
+        # attempts = 0
+        # max_attempts = 10 # ~20 seconds total wait time
+        # wait_time = 2 # seconds between attempts
+        # conversation_id = None # Initialize conversation_id
+        #
+        # # print(f"Polling SQS queue {SQS_QUEUE_URL} for message with conversation_id: {conversation_id}...")
+        # print(f"Polling SQS queue {SQS_QUEUE_URL} for message with request_id: {test_request_id}...")
+        # while attempts < max_attempts:
+        #     print(f"SQS poll attempt {attempts + 1}/{max_attempts}")
+        #     receive_response = sqs_client.receive_message(
+        #         QueueUrl=SQS_QUEUE_URL,
+        #         MaxNumberOfMessages=10,
+        #         WaitTimeSeconds=1,
+        #         MessageAttributeNames=['All']
+        #     )
+        #
+        #     messages = receive_response.get("Messages", [])
+        #     for msg in messages:
+        #         try:
+        #             msg_body = json.loads(msg.get('Body', '{}'))
+        #             # Check if the request_id in the message body matches
+        #             if msg_body.get('frontend_payload', {}).get('request_data', {}).get('request_id') == test_request_id:
+        #                 message = msg
+        #                 # Extract conversation_id NOW that we found the right message
+        #                 conversation_id = msg_body.get('conversation_data', {}).get('conversation_id')
+        #                 print(f"Found message: {message['MessageId']} with conversation_id: {conversation_id}")
+        #                 if not conversation_id:
+        #                     pytest.fail(f"Found message for request {test_request_id}, but conversation_id is missing in SQS body.")
+        #                 break # Found our message
+        #         except json.JSONDecodeError:
+        #             print(f"Warning: Received non-JSON message body: {msg.get('Body')}")
+        #             continue # Skip non-json messages
+        #
+        #     if message:
+        #         break # Exit outer loop
+        #
+        #     attempts += 1
+        #     time.sleep(wait_time)
+        #
+        # assert message is not None, f"Message for request {test_request_id} not found in SQS after {max_attempts * wait_time} seconds."
+        # assert conversation_id is not None, "Failed to extract conversation_id from the found SQS message."
+        #
+        # # 3. Validate SQS Message Content (Context Object structure)
+        # print("Validating SQS message content...")
+        # message_body = json.loads(message['Body']) # Already parsed above, re-parse for clarity
+        #
+        # # Check top-level keys based on context_builder.py
+        # assert "frontend_payload" in message_body
+        # assert "company_data_payload" in message_body
+        # assert "conversation_data" in message_body
+        # assert "metadata" in message_body
+        #
+        # # Validate frontend_payload matches original request body
+        # # Comparing the whole dict is strict but ensures nothing is dropped/altered unexpectedly
+        # assert message_body["frontend_payload"] == request_body
+        #
+        # # Validate conversation_data
+        # conv_data = message_body["conversation_data"]
+        # assert conv_data.get("conversation_id") == conversation_id
+        # assert isinstance(conv_data.get("conversation_start_timestamp"), str) # Check type
+        #
+        # # Validate company_data_payload (check a few key fields from the fixture)
+        # comp_data = message_body["company_data_payload"]
+        # assert comp_data.get("company_id") == company_id
+        # assert comp_data.get("project_id") == project_id
+        # assert comp_data.get("company_name") == "Test Company A" # From fixture
+        # assert "routing_config" in comp_data # Check complex structures exist
+        # assert "ai_config" in comp_data
+        # assert "channel_config" in comp_data
+        #
+        # # Validate metadata
+        # meta = message_body["metadata"]
+        # assert meta.get("router_version").endswith("-dev") # Check version marker
+        # assert isinstance(meta.get("context_creation_timestamp"), str)
+        #
+        # print("SQS message content validation successful.")
+        #
+        # # 4. Cleanup SQS Message
+        # print(f"Deleting message {message['MessageId']} from SQS")
+        # try:
+        #     sqs_client.delete_message(
+        #         QueueUrl=SQS_QUEUE_URL,
+        #         ReceiptHandle=message['ReceiptHandle']
+        #     )
+        #     print("SQS message deleted.")
+        # except Exception as e:
+        #     # Log cleanup errors but don't fail the test
+        #     print(f"Warning: Error deleting SQS message during cleanup: {e}")
+        # << COMMENTED OUT SECTION END
+
+    finally:
+        # Wait a bit to ensure the record has time to be created before we try to delete it
+        print(f"Waiting 10 seconds for record to be fully created before cleanup...")
+        time.sleep(10)
+        
+        # Clean up any conversation records created by this test
+        cleanup_dynamodb_conversation_record(
+            dynamodb_client, 
+            primary_channel_value, 
+            test_request_id, 
+            company_id, 
+            project_id
+        )
 
 # --- Placeholder for other tests from plan ---
 

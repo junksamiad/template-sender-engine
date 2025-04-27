@@ -1,0 +1,233 @@
+{
+    "Items": [
+        {
+            "company_id": {
+                "S": "ci-aaa-XXX"
+            },
+            "auto_queue_reply_message_from_email": {
+                "NULL": true
+            },
+            "auto_queue_initial_message_from_email": {
+                "NULL": true
+            },
+            "gsi_company_whatsapp_number": {
+                "S": "+14155238886"
+            },
+            "auto_queue_reply_message": {
+                "BOOL": false
+            },
+            "channel_config": {
+                "M": {
+                    "whatsapp_credentials_id": {
+                        "S": "dev/twilio/whatsapp/creds"
+                    },
+                    "company_whatsapp_number": {
+                        "S": "+14155238886"
+                    }
+                }
+            },
+            "company_rep": {
+                "S": "Test Rep"
+            },
+            "auto_queue_initial_message": {
+                "BOOL": false
+            },
+            "request_id": {
+                "S": "a1abe033-bd8d-4079-9561-3990483d6420"
+            },
+            "failure_reason": {
+                "S": "Unhandled exception: AttributeError - module 'lambda_pkg.services.secrets_manager_service' has no attribute 'SecretsManagerError'"
+            },
+            "recipient_tel": {
+                "S": "+447835065013"
+            },
+            "comms_consent": {
+                "BOOL": true
+            },
+            "ai_config": {
+                "M": {
+                    "api_key_reference": {
+                        "S": "dev/openai/api_key"
+                    },
+                    "assistant_id_template_sender": {
+                        "S": "asst_placeholderTemplateSender"
+                    }
+                }
+            },
+            "processor_version": {
+                "S": "dev-1.0.0"
+            },
+            "router_version": {
+                "S": "router-dev-1.0.1"
+            },
+            "allowed_channels": {
+                "L": [
+                    {
+                        "S": "whatsapp"
+                    },
+                    {
+                        "S": "email"
+                    }
+                ]
+            },
+            "initial_request_timestamp": {
+                "S": "2025-04-27T05:45:56.261874+00:00"
+            },
+            "conversation_status": {
+                "S": "failed_unknown"
+            },
+            "primary_channel": {
+                "S": "+447835065013"
+            },
+            "created_at": {
+                "S": "2025-04-27T05:45:57.068608+00:00Z"
+            },
+            "thread_id": {
+                "NULL": true
+            },
+            "recipient_email": {
+                "S": "junksamiad@gmail.com"
+            },
+            "conversation_id": {
+                "S": "ci-aaa-XXX#pi-aaa-XXX#a1abe033-bd8d-4079-9561-3990483d6420#14155238886"
+            },
+            "channel_method": {
+                "S": "whatsapp"
+            },
+            "project_data": {
+                "M": {
+                    "jobID": {
+                        "S": "9999"
+                    },
+                    "jobRole": {
+                        "S": "Healthcare Assistant"
+                    },
+                    "analysisEngineID": {
+                        "S": "analysis_1234567890_abc123def"
+                    },
+                    "clarificationPoints": {
+                        "L": [
+                            {
+                                "M": {
+                                    "point": {
+                                        "S": "The CV does not mention a driving licence. This needs clarification."
+                                    },
+                                    "pointConfirmed": {
+                                        "S": "false"
+                                    }
+                                }
+                            },
+                            {
+                                "M": {
+                                    "point": {
+                                        "S": "The CV does not mention owning a vehicle. This is a preference, not a requirement."
+                                    },
+                                    "pointConfirmed": {
+                                        "S": "false"
+                                    }
+                                }
+                            },
+                            {
+                                "M": {
+                                    "point": {
+                                        "S": "There is a gap in the timeline of work experience between Sept 2021 and Feb 2022. This needs clarification."
+                                    },
+                                    "pointConfirmed": {
+                                        "S": "false"
+                                    }
+                                }
+                            },
+                            {
+                                "M": {
+                                    "point": {
+                                        "S": "The candidate lives in Manchester but the job is in Liverpool which could be more than 30 miles travel from residence to workplace. Will this be an issue? This needs clarification."
+                                    },
+                                    "pointConfirmed": {
+                                        "S": "false"
+                                    }
+                                }
+                            },
+                            {
+                                "M": {
+                                    "point": {
+                                        "S": "The job description explicitly states no sponsorship, indicating that the person needs to have a right to work in the UK. This needs clarification."
+                                    },
+                                    "pointConfirmed": {
+                                        "S": "false"
+                                    }
+                                }
+                            },
+                            {
+                                "M": {
+                                    "point": {
+                                        "S": "The candidate's CV shows just 18 months experience working in care. The job states minimum 2 years. This needs clarification."
+                                    },
+                                    "pointConfirmed": {
+                                        "S": "false"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            },
+            "auto_queue_initial_message_from_number": {
+                "NULL": true
+            },
+            "gsi_recipient_email": {
+                "S": "junksamiad@gmail.com"
+            },
+            "gsi_recipient_tel": {
+                "S": "+447835065013"
+            },
+            "updated_at": {
+                "S": "2025-04-27T05:45:57.147125+00:00"
+            },
+            "function_call_type": {
+                "NULL": true
+            },
+            "hand_off_to_human": {
+                "BOOL": false
+            },
+            "project_name": {
+                "S": "Test Project A1"
+            },
+            "project_status": {
+                "S": "active"
+            },
+            "company_name": {
+                "S": "Test Company A"
+            },
+            "messages": {
+                "L": []
+            },
+            "task_complete": {
+                "N": "0"
+            },
+            "hand_off_to_human_reason": {
+                "NULL": true
+            },
+            "function_call": {
+                "BOOL": false
+            },
+            "recipient_first_name": {
+                "S": "Lee"
+            },
+            "project_id": {
+                "S": "pi-aaa-XXX"
+            },
+            "recipient_last_name": {
+                "S": "Hayton"
+            },
+            "auto_queue_reply_message_from_number": {
+                "NULL": true
+            },
+            "email_id": {
+                "NULL": true
+            }
+        }
+    ],
+    "Count": 1,
+    "ScannedCount": 1,
+    "ConsumedCapacity": null
+}

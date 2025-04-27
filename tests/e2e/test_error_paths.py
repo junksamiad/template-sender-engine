@@ -24,9 +24,9 @@ API_KEY = "YbgTABlGlg6s2YZ9gcyuB4AUhi5jJcC05yeKcCWR" # Hardcoded from happy path
 
 COMPANY_DATA_TABLE = "ai-multi-comms-company-data-dev" # Updated table name
 CONVERSATIONS_TABLE = "ai-multi-comms-conversations-dev" # Updated table name
-# Using identifiers from samples/recruitment_company_data_record_example_dev.json
-TEST_COMPANY_ID = "ci-aaa-001"
-TEST_PROJECT_ID = "pi-aaa-001"
+# Using identifiers from scripts/recruitment_company_data_record_example_dev.json
+TEST_COMPANY_ID = "ci-aaa-XXX"  # Updated value
+TEST_PROJECT_ID = "pi-aaa-XXX"  # Updated value
 # Define the invalid reference to use during the test
 INVALID_SECRET_REF = "invalid/secret/ref/for/e2e/testing"
 # Assumed GSI name for polling conversations by request_id
