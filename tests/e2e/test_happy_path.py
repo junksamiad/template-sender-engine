@@ -96,8 +96,8 @@ def test_whatsapp_happy_path(dynamodb_client, setup_e2e_company_data):
         print("API request successful.")
         
         # 2. Wait for processing
-        # Reduced wait time, adjust based on typical processing latency
-        wait_seconds = 25 
+        # Increased wait time to allow for full end-to-end processing
+        wait_seconds = 45  # Increased from 25 to 45 seconds
         print(f"Waiting {wait_seconds} seconds for end-to-end processing...")
         time.sleep(wait_seconds)
         

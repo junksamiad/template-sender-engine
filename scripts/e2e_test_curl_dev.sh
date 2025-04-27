@@ -9,8 +9,8 @@ API_KEY="YbgTABlGlg6s2YZ9gcyuB4AUhi5jJcC05yeKcCWR"
 read -r -d '' REQUEST_BODY <<'EOF'
 {
   "company_data": {
-    "company_id": "ci-aaa-001",
-    "project_id": "pi-aaa-001"
+    "company_id": "ci-aaa-XXX",
+    "project_id": "pi-aaa-XXX"
   },
   "recipient_data": {
     "recipient_first_name": "Lee",

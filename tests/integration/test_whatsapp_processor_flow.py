@@ -42,8 +42,8 @@ def sample_context_object() -> dict:
     """Generates a sample valid Context Object structure using real dev data."""
     test_request_id = str(uuid.uuid4())
     conversation_id = str(uuid.uuid4()) # Unique ID for the conversation
-    company_id = "ci-aaa-001" # Real Test Company ID
-    project_id = "pi-aaa-001" # Real Test Project ID
+    company_id = "ci-aaa-XXX" # Updated Test Company ID
+    project_id = "pi-aaa-XXX" # Updated Test Project ID
 
     context = {
         "frontend_payload": {
@@ -187,6 +187,98 @@ def sample_context_object() -> dict:
 #     # Return True only if both logs were found
 #     return openai_log_found and twilio_log_found
 
+def cleanup_dynamodb_record(dynamodb_client, context_object, primary_channel_value, conversation_id_value):
+    """
+    Helper function for robust DynamoDB record cleanup.
+    Tries multiple conversation_id formats and request_id scan as a last resort.
+    """
+    print(f"\nAttempting thorough cleanup for test record...")
+    
+    # Original key based on provided conversation_id from fixture
+    original_key = {
+        "primary_channel": {"S": primary_channel_value},
+        "conversation_id": {"S": conversation_id_value}
+    }
+    
+    # Try to get request_id for alternative search methods
+    request_id = None
+    if context_object and "frontend_payload" in context_object and "request_data" in context_object["frontend_payload"]:
+        request_id = context_object["frontend_payload"]["request_data"].get("request_id")
+    
+    # Extract company data for constructed ID
+    company_id = None
+    project_id = None
+    company_number = None
+    
+    if context_object and "company_data_payload" in context_object:
+        company_data = context_object["company_data_payload"]
+        company_id = company_data.get("company_id")
+        project_id = company_data.get("project_id")
+        if "channel_config" in company_data and "whatsapp" in company_data["channel_config"]:
+            company_number = company_data["channel_config"]["whatsapp"].get("company_whatsapp_number")
+    
+    # Construct potential conversation_id formats
+    potential_keys = [original_key]
+    
+    # Add constructed composite key if we have all components
+    if request_id and company_id and project_id and company_number:
+        clean_number = company_number.replace('+', '')
+        constructed_id = f"{company_id}#{project_id}#{request_id}#{clean_number}"
+        potential_keys.append({
+            "primary_channel": {"S": primary_channel_value},
+            "conversation_id": {"S": constructed_id}
+        })
+    
+    # Try each potential key
+    deleted = False
+    for key in potential_keys:
+        try:
+            convo_id = key["conversation_id"]["S"]
+            dynamodb_client.delete_item(
+                TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
+                Key=key
+            )
+            print(f"Successfully deleted item with conversation_id: {convo_id}")
+            deleted = True
+            break  # Exit once successful
+        except Exception as e:
+            print(f"Failed to delete with key {key['conversation_id']['S']}: {e}")
+    
+    # Last resort: scan and find by request_id (this is specific enough to be safe)
+    if not deleted and request_id:
+        try:
+            print(f"Scanning for items with request_id: {request_id}")
+            scan_response = dynamodb_client.scan(
+                TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
+                FilterExpression="request_id = :rid",
+                ExpressionAttributeValues={
+                    ":rid": {"S": request_id}
+                }
+            )
+            
+            items = scan_response.get('Items', [])
+            if items:
+                for item in items:
+                    pk = item.get('primary_channel', {}).get('S')
+                    sk = item.get('conversation_id', {}).get('S')
+                    if pk and sk:
+                        dynamodb_client.delete_item(
+                            TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
+                            Key={"primary_channel": {"S": pk}, "conversation_id": {"S": sk}}
+                        )
+                        print(f"Deleted item from scan: {pk}/{sk}")
+                        deleted = True
+            
+            if not items:
+                print(f"No items found with request_id: {request_id}")
+        except Exception as e3:
+            print(f"Failed scan deletion attempt: {e3}")
+    
+    if deleted:
+        print("Cleanup successful.")
+    else:
+        print("Warning: Could not find any records to clean up.")
+
 def test_sqs_trigger_creates_dynamodb_record(sqs_client, dynamodb_client, sample_context_object):
     """
     Verify that sending a valid context object message to SQS triggers the 
@@ -260,16 +352,13 @@ def test_sqs_trigger_creates_dynamodb_record(sqs_client, dynamodb_client, sample
         print(f"DynamoDB item check passed (status: {final_status})")
 
     finally:
-        # --- Cleanup: Delete the DynamoDB item --- #
-        print(f"\nAttempting cleanup: Deleting item primary_channel={primary_channel_value} / conversation_id={conversation_id_value}")
-        try:
-            dynamodb_client.delete_item(
-                TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME,
-                Key=key_to_use
-            )
-            print("Cleanup successful.")
-        except Exception as e:
-            print(f"Warning: Error during DynamoDB cleanup: {e}")
+        # --- Cleanup using the shared helper function --- #
+        cleanup_dynamodb_record(
+            dynamodb_client, 
+            context_object, 
+            primary_channel_value, 
+            conversation_id_value
+        )
 
 def test_sqs_trigger_idempotency(sqs_client, dynamodb_client, sample_context_object):
     """
@@ -347,13 +436,13 @@ def test_sqs_trigger_idempotency(sqs_client, dynamodb_client, sample_context_obj
         print("Idempotency check passed (verified item state stable after second message).")
 
     finally:
-        # Cleanup the record
-        print(f"\nAttempting final cleanup for idempotency test...")
-        try:
-            dynamodb_client.delete_item(TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME, Key=key_to_use)
-            print("Cleanup successful.")
-        except Exception as e:
-            print(f"Warning: Error during final DynamoDB cleanup: {e}")
+        # --- Cleanup using the shared helper function --- #
+        cleanup_dynamodb_record(
+            dynamodb_client, 
+            context_object, 
+            primary_channel_value, 
+            conversation_id_value
+        )
 
 # Removed test_processor_attempts_secret_fetch as it relied solely on log checks
 # def test_processor_attempts_secret_fetch(sqs_client, dynamodb_client, logs_client, sample_context_object):
@@ -440,13 +529,13 @@ def test_processor_fails_on_missing_secret(sqs_client, dynamodb_client, sample_c
         # print("Secret fetch failure verification successful.")
 
     finally:
-        # Cleanup the DynamoDB record
-        print(f"\nAttempting final cleanup for missing secret test...")
-        try:
-            dynamodb_client.delete_item(TableName=DYNAMODB_CONVERSATIONS_TABLE_NAME, Key=key_to_use)
-            print("Cleanup successful.")
-        except Exception as e:
-            print(f"Warning: Error during final DynamoDB cleanup: {e}")
+        # --- Cleanup using the shared helper function --- #
+        cleanup_dynamodb_record(
+            dynamodb_client, 
+            context_object, 
+            primary_channel_value, 
+            conversation_id_value
+        )
 
 # Placeholder for next test
 # def test_... 
